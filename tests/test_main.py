@@ -3,11 +3,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from auth import Project, User, get_current_user
-from azure_client import (
-    AzureVMDeploymentProperties,
-    DeploymentNotFound,
-    VMNotFound,
-)
+from azure_client import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
 from guacamole_client import GuacamoleConnectionNotFound
 from main import app, wait_for_deploy
 
