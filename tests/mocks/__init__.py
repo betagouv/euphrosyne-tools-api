@@ -1,0 +1,35 @@
+GUACAMOLE_CONNECTION_LIST_RESPONSE = {
+    "1": {
+        "name": "test",
+        "identifier": "1",
+        "parentIdentifier": "ROOT",
+        "protocol": "rdp",
+        "attributes": {
+            "guacd-encryption": None,
+            "failover-only": None,
+            "weight": None,
+            "max-connections": None,
+            "guacd-hostname": "test",
+            "guacd-port": "12343",
+            "max-connections-per-user": None,
+        },
+        "activeConnections": 0,
+    },
+    "2": {
+        "name": "test-02",
+        "identifier": "2",
+        "parentIdentifier": "ROOT",
+        "protocol": "rdp",
+        "attributes": {
+            "guacd-encryption": None,
+            "failover-only": None,
+            "weight": None,
+            "max-connections": None,
+            "guacd-hostname": None,
+            "guacd-port": None,
+            "max-connections-per-user": None,
+        },
+        "activeConnections": 0,
+        "lastActive": 1653897108000,
+    },
+}

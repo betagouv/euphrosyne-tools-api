@@ -1,8 +1,10 @@
-from fastapi import HTTPException, status
-from auth import get_current_user, ALGORITHM, User
-from jose import jwt
 from datetime import datetime, timedelta
+
 import pytest
+from fastapi import HTTPException, status
+from jose import jwt
+
+from auth import ALGORITHM, User, get_current_user
 
 
 def _generate_token(data: dict):
