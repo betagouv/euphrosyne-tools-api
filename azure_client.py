@@ -118,7 +118,7 @@ class AzureClient:
             return None
         template = self._get_latest_template_specs()
         parameters = {
-            "adminUsername": "euphrosyne",
+            "adminUsername": vm_name,
             "adminPassword": secrets.token_urlsafe(),
             "vmName": vm_name,
         }
@@ -139,7 +139,7 @@ class AzureClient:
         return AzureVMDeploymentProperties(
             vm_name,
             username=vm_name,
-            password=parameters["projectUserPassword"],
+            password=parameters["adminPassword"],
             deployment_process=poller,
         )
 
