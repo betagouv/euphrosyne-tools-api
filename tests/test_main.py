@@ -92,7 +92,9 @@ def test_wait_for_deploy_when_success():
         username="username",
         vm_name="vm_name",
     )
-    deployment_information = {"privateIPVM": {"value": "1.1.1.1"}}
+    deployment_information = MagicMock(
+        properties=MagicMock(outputs={"privateIPVM": {"value": "1.1.1.1"}})
+    )
     with patch("main.wait_for_deployment_completeness") as wait_deployment_mock:
         wait_deployment_mock.return_value = deployment_information
         with patch(
