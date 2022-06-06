@@ -1,5 +1,7 @@
+import os
 from fastapi import BackgroundTasks, Depends, FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from auth import User, get_current_user
 from azure_client import (
@@ -16,8 +18,17 @@ from exceptions import (
 from guacamole_client import GuacamoleClient, GuacamoleConnectionNotFound
 
 app = FastAPI()
+
 app.add_exception_handler(
     NoProjectMembershipException, no_project_membership_exception_handler
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ALLOWED_ORIGIN").split(" "),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 azure_client = AzureClient()
