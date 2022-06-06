@@ -85,7 +85,9 @@ def wait_for_deploy(vm_deployment_properties: AzureVMDeploymentProperties):
     if deployment_information:
         guacamole_client.create_connection(
             name=vm_deployment_properties.vm_name,
-            ip_address=deployment_information["privateIPVM"]["value"],
+            ip_address=deployment_information.properties.outputs["privateIPVM"][
+                "value"
+            ],
             password=vm_deployment_properties.password,
             username=vm_deployment_properties.username,
         )
