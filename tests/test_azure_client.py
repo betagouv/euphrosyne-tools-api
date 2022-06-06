@@ -11,8 +11,8 @@ from azure_client import (
     AzureVMDeploymentProperties,
     DeploymentNotFound,
     VMNotFound,
-    wait_for_deployment_completeness,
     _project_name_to_vm_name,
+    wait_for_deployment_completeness,
 )
 
 

@@ -26,7 +26,7 @@ app.add_exception_handler(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ALLOWED_ORIGIN").split(" "),
+    allow_origins=os.getenv("CORS_ALLOWED_ORIGIN", "").split(" "),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

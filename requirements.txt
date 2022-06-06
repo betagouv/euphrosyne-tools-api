@@ -13,5 +13,6 @@ pylint==2.13.8
 pytest==7.1.2 
 requests==2.27.1
 types-python-jose==3.3.1
+types-python-slugify==5.0.4 
 types-requests==2.27.29
 uvicorn[standard]==0.17.6 
