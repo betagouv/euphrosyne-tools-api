@@ -17,6 +17,17 @@ async def get_current_user_override():
 app.dependency_overrides[get_current_user] = get_current_user_override
 
 
+def test_no_project_membership_exception_handler():
+    def get_not_permitted_user_override():
+        return User(id=1, projects=[], is_admin=False)
+
+    app.dependency_overrides[get_current_user] = get_not_permitted_user_override
+    response = client.get("/connect/project_01")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "User does not have access to this project"
+    app.dependency_overrides[get_current_user] = get_current_user_override
+
+
 @patch("main.azure_client")
 def test_get_connection_link_when_no_vm(azure_mock: MagicMock):
     azure_mock.get_vm.side_effect = VMNotFound()
@@ -88,7 +99,7 @@ def test_deploy_vm_when_already_deployed(azure_mock: MagicMock):
 @patch("azure_client.AzureClient.delete_deployment")
 def test_wait_for_deploy_when_success(delete_deployment_mock: MagicMock):
     deployment_properties = AzureVMDeploymentProperties(
-        deployment_process=MagicMock,
+        deployment_process=MagicMock(),
         password="password",
         username="username",
         project_name="project_name",
