@@ -20,6 +20,7 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_GROUP_NAME", "resource_group_name")
     monkeypatch.setenv("AZURE_TEMPLATE_SPECS_NAME", "template_specs")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
+    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
     with patch("azure_client.ResourceManagementClient"):
         with patch("azure_client.ComputeManagementClient"):
             with patch("azure_client.TemplateSpecsClient"):
@@ -89,7 +90,8 @@ def test_get_vm_raises_if_absent(client: AzureClient):
 def test_get_vm_calls_azure_method_with_proper_args(client: AzureClient):
     client.get_vm("VM")
     client._compute_mgmt_client.virtual_machines.get.assert_called_with(
-        resource_group_name="resource_group_name", vm_name="VM"
+        resource_group_name="resource_group_name",
+        vm_name="{}VM".format(os.getenv("AZURE_RESOURCE_PREFIX")),
     )
 
 

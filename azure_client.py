@@ -69,7 +69,8 @@ class AzureClient:
         """Retrieves VM information."""
         try:
             return self._compute_mgmt_client.virtual_machines.get(
-                resource_group_name=self.resource_group_name, vm_name=vm_name
+                resource_group_name=self.resource_group_name,
+                vm_name="{}{}".format(os.getenv("AZURE_RESOURCE_PREFIX"), vm_name),
             )
         except ResourceNotFoundError as error:
             raise VMNotFound() from error
