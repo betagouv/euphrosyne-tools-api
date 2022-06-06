@@ -1,7 +1,8 @@
 import os
+
 from fastapi import BackgroundTasks, Depends, FastAPI
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from auth import User, get_current_user
 from azure_client import (
@@ -96,10 +97,11 @@ def wait_for_deploy(vm_deployment_properties: AzureVMDeploymentProperties):
     )
     if deployment_information:
         guacamole_client.create_connection(
-            name=vm_deployment_properties.vm_name,
+            name=vm_deployment_properties.project_name,
             ip_address=deployment_information.properties.outputs["privateIPVM"][
                 "value"
             ],
             password=vm_deployment_properties.password,
             username=vm_deployment_properties.username,
         )
+        azure_client.delete_deployment(deployment_information.name)

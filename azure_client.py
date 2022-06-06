@@ -11,6 +11,7 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentExtended
 from azure.mgmt.resource.templatespecs import TemplateSpecsClient
 from dotenv import load_dotenv
+from slugify import slugify
 
 load_dotenv()
 
@@ -25,7 +26,7 @@ class VMNotFound(Exception):
 
 @dataclass
 class AzureVMDeploymentProperties:
-    vm_name: str
+    project_name: str
     username: str
     password: str
     deployment_process: LROPoller[DeploymentExtended]
@@ -65,18 +66,24 @@ class AzureClient:
             template_spec_version=latest_version,
         ).main_template
 
-    def get_vm(self, vm_name: str):
-        """Retrieves VM information."""
+    def get_vm(self, project_name: str):
+        """Retrieves VM information with project name."""
         try:
             return self._compute_mgmt_client.virtual_machines.get(
                 resource_group_name=self.resource_group_name,
-                vm_name="{}{}".format(os.getenv("AZURE_RESOURCE_PREFIX"), vm_name),
+                vm_name=_project_name_to_vm_name(project_name),
             )
         except ResourceNotFoundError as error:
             raise VMNotFound() from error
 
+    def delete_deployment(self, project_name: str):
+        return self._resource_mgmt_client.deployments.begin_delete(
+            resource_group_name=self.resource_group_name,
+            deployment_name=slugify(project_name),
+        )
+
     def get_deployment_status(
-        self, vm_name: str
+        self, project_name: str
     ) -> Literal[
         "NotSpecified",
         "Accepted",
@@ -92,7 +99,8 @@ class AzureClient:
         """Retrieves VM information."""
         try:
             deployment = self._resource_mgmt_client.deployments.get(
-                resource_group_name=self.resource_group_name, deployment_name=vm_name
+                resource_group_name=self.resource_group_name,
+                deployment_name=slugify(project_name),
             )
         except ResourceNotFoundError as error:
             raise DeploymentNotFound() from error
@@ -100,7 +108,7 @@ class AzureClient:
 
     def deploy_vm(
         self,
-        vm_name: str,
+        project_name: str,
         vm_size: Literal[
             "Standard_B8ms",
             "Standard_B20ms",
@@ -113,21 +121,22 @@ class AzureClient:
         already been created before, the function returns None.
         """
         if self._resource_mgmt_client.deployments.check_existence(
-            resource_group_name=self.resource_group_name, deployment_name=vm_name
+            resource_group_name=self.resource_group_name,
+            deployment_name=slugify(project_name),
         ):
             return None
         template = self._get_latest_template_specs()
         parameters = {
-            "adminUsername": vm_name,
+            "adminUsername": project_name,
             "adminPassword": secrets.token_urlsafe(),
-            "vmName": vm_name,
+            "vmName": slugify(project_name),
         }
         if vm_size:
             parameters["vmSize"] = vm_size
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
         poller = self._resource_mgmt_client.deployments.begin_create_or_update(
             resource_group_name=self.resource_group_name,
-            deployment_name=vm_name,
+            deployment_name=slugify(project_name),
             parameters={
                 "properties": {
                     "template": template,
@@ -137,11 +146,16 @@ class AzureClient:
             },
         )
         return AzureVMDeploymentProperties(
-            vm_name,
-            username=vm_name,
+            project_name=project_name,
+            username=project_name,
             password=parameters["adminPassword"],
             deployment_process=poller,
         )
+
+
+def _project_name_to_vm_name(project_name: str):
+    """Returns a correct vm name (prefix added, slugified) based on a project name"""
+    return "{}{}".format(os.getenv("AZURE_RESOURCE_PREFIX"), slugify(project_name))
 
 
 def wait_for_deployment_completeness(

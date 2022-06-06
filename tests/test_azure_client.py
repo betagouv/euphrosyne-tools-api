@@ -1,6 +1,5 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +12,7 @@ from azure_client import (
     DeploymentNotFound,
     VMNotFound,
     wait_for_deployment_completeness,
+    _project_name_to_vm_name,
 )
 
 
@@ -37,6 +37,7 @@ def test_deploy_exits_when_vm_exists(client: AzureClient):
 
 
 @patch("azure_client.AzureClient._get_latest_template_specs", dict)
+@patch("azure_client._project_name_to_vm_name", lambda x: x)
 def test_deploys_with_proper_parameters(client: AzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
     result = client.deploy_vm("vm-test", vm_size="Standard_B8ms")
@@ -61,7 +62,7 @@ def test_deploys_with_proper_parameters(client: AzureClient):
         == "Standard_B8ms"
     )
     assert isinstance(result, AzureVMDeploymentProperties)
-    assert result.vm_name == "vm-test"
+    assert result.project_name == "vm-test"
     assert result.username == "vm-test"
     assert isinstance(result.password, str)
     assert (
@@ -92,11 +93,12 @@ def test_get_vm_raises_if_absent(client: AzureClient):
         client.get_vm("VM")
 
 
+@patch("azure_client._project_name_to_vm_name", lambda x: x)
 def test_get_vm_calls_azure_method_with_proper_args(client: AzureClient):
     client.get_vm("VM")
     client._compute_mgmt_client.virtual_machines.get.assert_called_with(
         resource_group_name="resource_group_name",
-        vm_name="{}VM".format(os.getenv("AZURE_RESOURCE_PREFIX")),
+        vm_name="VM",
     )
 
 
@@ -108,7 +110,7 @@ def test_get_deployment_status_returns_status(client: AzureClient):
     status = client.get_deployment_status("VM")
 
     client._resource_mgmt_client.deployments.get.assert_called_with(
-        resource_group_name="resource_group_name", deployment_name="VM"
+        resource_group_name="resource_group_name", deployment_name="vm"
     )
     assert status == "Succeeded"
 
@@ -134,3 +136,8 @@ def test_wait_for_deployment_completeness(status, is_ok):
         assert deployment
     else:
         assert not deployment
+
+
+def test_project_name_to_vm_name(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
+    assert _project_name_to_vm_name("BLABLA") == "test-blabla"

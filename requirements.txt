@@ -8,6 +8,7 @@ isort==5.10.1
 mypy==0.950
 python-dotenv==0.20.0 
 python-jose[cryptography]==3.3.0
+python-slugify==6.1.2
 pylint==2.13.8 
 pytest==7.1.2 
 requests==2.27.1

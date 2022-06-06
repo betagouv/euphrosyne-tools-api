@@ -11,7 +11,7 @@ client = TestClient(app)
 
 
 async def get_current_user_override():
-    return User(id=1, projects=[Project(id=1, name="project_01")])
+    return User(id=1, projects=[Project(id=1, name="project_01")], is_admin=False)
 
 
 app.dependency_overrides[get_current_user] = get_current_user_override
@@ -67,7 +67,7 @@ def test_deploy_vm_ok(azure_mock: MagicMock):
         deployment_process=MagicMock(),
         password="password",
         username="username",
-        vm_name="vm_name",
+        project_name="project_name",
     )
     azure_mock.deploy_vm.return_value = deploy_return_value
     with patch("fastapi.BackgroundTasks.add_task") as mock:
@@ -85,12 +85,13 @@ def test_deploy_vm_when_already_deployed(azure_mock: MagicMock):
         mock.assert_not_called()
 
 
-def test_wait_for_deploy_when_success():
+@patch("azure_client.AzureClient.delete_deployment")
+def test_wait_for_deploy_when_success(delete_deployment_mock: MagicMock):
     deployment_properties = AzureVMDeploymentProperties(
         deployment_process=MagicMock,
         password="password",
         username="username",
-        vm_name="vm_name",
+        project_name="project_name",
     )
     deployment_information = MagicMock(
         properties=MagicMock(outputs={"privateIPVM": {"value": "1.1.1.1"}})
@@ -102,11 +103,12 @@ def test_wait_for_deploy_when_success():
         ) as create_connection_mock:
             wait_for_deploy(deployment_properties)
             create_connection_mock.assert_called_once_with(
-                name=deployment_properties.vm_name,
+                name=deployment_properties.project_name,
                 ip_address="1.1.1.1",
                 password=deployment_properties.password,
                 username=deployment_properties.username,
             )
+            delete_deployment_mock.assert_called_once_with(deployment_information.name)
 
 
 def test_wait_for_deploy_when_failed():
@@ -114,7 +116,7 @@ def test_wait_for_deploy_when_failed():
         deployment_process=MagicMock,
         password="password",
         username="username",
-        vm_name="vm_name",
+        project_name="project_name",
     )
     with patch("main.wait_for_deployment_completeness") as wait_deployment_mock:
         wait_deployment_mock.return_value = None
