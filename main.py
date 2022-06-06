@@ -85,7 +85,7 @@ def deploy_vm(
     """Deploys a VM for a specific project."""
     if not current_user.is_admin and not current_user.has_project(project_name):
         raise NoProjectMembershipException()
-    vm_information = azure_client.deploy_vm(project_name)
+    vm_information = azure_client.deploy_vm(project_name, vm_size="Standard_DS1_v2")
     if vm_information:
         background_tasks.add_task(wait_for_deploy, vm_information)
 

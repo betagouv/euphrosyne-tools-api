@@ -98,7 +98,15 @@ class AzureClient:
             raise DeploymentNotFound() from error
         return deployment.properties.provisioning_state
 
-    def deploy_vm(self, vm_name: str) -> Optional[AzureVMDeploymentProperties]:
+    def deploy_vm(
+        self,
+        vm_name: str,
+        vm_size: Literal[
+            "Standard_B8ms",
+            "Standard_B20ms",
+            "Standard_DS1_v2",
+        ] = None,
+    ) -> Optional[AzureVMDeploymentProperties]:
         """Deploys a VM based on Template Specs specified
         with AZURE_TEMPLATE_SPECS_NAME env variable.
         In both cases where the deployment is created or it has
@@ -113,9 +121,9 @@ class AzureClient:
             "adminUsername": "euphrosyne",
             "adminPassword": secrets.token_urlsafe(),
             "vmName": vm_name,
-            "projectName": vm_name,
-            "projectUserPassword": secrets.token_urlsafe(),
         }
+        if vm_size:
+            parameters["vmSize"] = vm_size
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
         poller = self._resource_mgmt_client.deployments.begin_create_or_update(
             resource_group_name=self.resource_group_name,

@@ -1,5 +1,6 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,7 +29,7 @@ def client(monkeypatch: MonkeyPatch):
 
 
 @patch("azure_client.AzureClient._get_latest_template_specs", dict)
-def test_exit_when_vm_exists(client: AzureClient):
+def test_deploy_exits_when_vm_exists(client: AzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = True
     client.deploy_vm("vm-test")
 
@@ -38,7 +39,7 @@ def test_exit_when_vm_exists(client: AzureClient):
 @patch("azure_client.AzureClient._get_latest_template_specs", dict)
 def test_deploys_with_proper_parameters(client: AzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
-    result = client.deploy_vm("vm-test")
+    result = client.deploy_vm("vm-test", vm_size="Standard_B8ms")
 
     call_args = (
         client._resource_mgmt_client.deployments.begin_create_or_update.call_args[1]
@@ -49,11 +50,15 @@ def test_deploys_with_proper_parameters(client: AzureClient):
     assert "parameters" in call_args["parameters"]["properties"]
     assert (
         call_args["parameters"]["properties"]["parameters"]["adminUsername"]["value"]
-        == "euphrosyne"
+        == "vm-test"
     )
     assert (
         call_args["parameters"]["properties"]["parameters"]["vmName"]["value"]
         == "vm-test"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["vmSize"]["value"]
+        == "Standard_B8ms"
     )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.vm_name == "vm-test"
