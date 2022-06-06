@@ -31,6 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 azure_client = AzureClient()
 guacamole_client = GuacamoleClient()
 
@@ -41,7 +42,7 @@ def get_connection_link(
 ):
     """Shows connection URL for a deployed VM for a specific project.
     Responds with 404 if no VM is deployed for the project or no connection exists on Guacamole."""
-    if not current_user.has_project(project_name):
+    if not current_user.is_admin and not current_user.has_project(project_name):
         raise NoProjectMembershipException()
     try:
         azure_client.get_vm(project_name)
@@ -66,7 +67,7 @@ def get_deployment_status(
     project_name: str, current_user: User = Depends(get_current_user)
 ):
     """Get deployment status about a VM being deployed."""
-    if not current_user.has_project(project_name):
+    if not current_user.is_admin and not current_user.has_project(project_name):
         raise NoProjectMembershipException()
     try:
         status = azure_client.get_deployment_status(project_name)
@@ -82,7 +83,7 @@ def deploy_vm(
     current_user: User = Depends(get_current_user),
 ):
     """Deploys a VM for a specific project."""
-    if not current_user.has_project(project_name):
+    if not current_user.is_admin and not current_user.has_project(project_name):
         raise NoProjectMembershipException()
     vm_information = azure_client.deploy_vm(project_name)
     if vm_information:
