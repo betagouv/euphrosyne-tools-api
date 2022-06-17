@@ -8,6 +8,7 @@ import pytest
 from guacamole_client import (
     GuacamoleClient,
     GuacamoleConnectionNotFound,
+    GuacamoleHttpError,
     get_password_for_username,
 )
 
@@ -107,6 +108,33 @@ def test_create_user_if_absent_when_user_exists(client: GuacamoleClient):
             client.create_user_if_absent("username")
 
             requests_mock.post.assert_not_called()
+
+
+def test_delete_connection_with_proper_parameters(client: GuacamoleClient):
+    with patch.object(client, "_get_admin_token"):
+        with patch.object(client, "get_connection_by_name") as get_conn_by_name_mock:
+            with patch("guacamole_client.requests") as requests_mock:
+                get_conn_by_name_mock.return_value = 1
+                client.delete_connection("connection")
+                url, _ = requests_mock.delete.call_args
+                assert "/api/session/data/mysql/connections/1" in url[0]
+
+
+def test_delete_connection_raises_proper_error_on_404(client: GuacamoleClient):
+    with patch.object(client, "_get_admin_token"):
+        with patch("guacamole_client.requests") as requests_mock:
+            requests_mock.delete.return_value = MagicMock(ok=False, status_code=404)
+            with pytest.raises(GuacamoleConnectionNotFound):
+                client.delete_connection("connection")
+
+
+def test_delete_connection_raises_proper_error_on_http_error(client: GuacamoleClient):
+    with patch.object(client, "_get_admin_token"):
+        with patch.object(client, "get_connection_by_name"):
+            with patch("guacamole_client.requests") as requests_mock:
+                requests_mock.delete.return_value = MagicMock(ok=False, status_code=500)
+                with pytest.raises(GuacamoleHttpError):
+                    client.delete_connection("connection")
 
 
 def test_generate_connection_link(client: GuacamoleClient):

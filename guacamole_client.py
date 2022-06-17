@@ -13,8 +13,15 @@ class GuacamoleConnectionNotFound(Exception):
     pass
 
 
+class GuacamoleHttpError(Exception):
+    pass
+
+
 class GuacamoleClient:
-    """Provides an API to interact with Guacamole."""
+    """Provides functions to interact with Guacamole REST API.
+    Guacamole REST API doc is available at :
+    https://github.com/ridvanaltun/guacamole-rest-api-documentation
+    """
 
     def __init__(self):
         self._guamacole_root_url = os.environ["GUACAMOLE_ROOT_URL"]
@@ -44,7 +51,7 @@ class GuacamoleClient:
                 if conn["name"] == name
             )
         except StopIteration as error:
-            raise GuacamoleConnectionNotFound() from error
+            raise GuacamoleConnectionNotFound(f"Connection {name} not found") from error
 
     def create_connection(
         self,
@@ -148,6 +155,19 @@ class GuacamoleClient:
                 },
             },
         )
+
+    def delete_connection(self, name: str):
+        token = self._get_admin_token()
+        connection_id = self.get_connection_by_name(name)
+        # pylint: disable=consider-using-f-string
+        response = requests.delete(
+            "{}/api/session/data/mysql/connections/{}?token={}".format(
+                self._guamacole_root_url, connection_id, token
+            )
+        )
+        if response.ok:
+            return None
+        raise GuacamoleHttpError(f"{response.content} [{response.status_code}]")
 
     def assign_user_to_connection(self, connection_id: str, username: str):
         token = self._get_admin_token()

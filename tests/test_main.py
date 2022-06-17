@@ -14,6 +14,10 @@ async def get_current_user_override():
     return User(id=1, projects=[Project(id=1, name="project_01")], is_admin=False)
 
 
+def get_admin_user_override():
+    return User(id=1, projects=[], is_admin=True)
+
+
 app.dependency_overrides[get_current_user] = get_current_user_override
 
 
@@ -94,6 +98,48 @@ def test_deploy_vm_when_already_deployed(azure_mock: MagicMock):
         response = client.post("/deployments/project_01")
         assert response.status_code == 202
         mock.assert_not_called()
+
+
+@patch("main.azure_client")
+@patch("main.guacamole_client")
+def test_delete_vm(guacamole_mock: MagicMock, azure_mock: MagicMock):
+    app.dependency_overrides[get_current_user] = get_admin_user_override
+
+    response = client.delete("/vms/project_01")
+    assert response.status_code == 202
+    azure_mock.delete_vm.assert_called()
+    guacamole_mock.delete_connection.assert_called()
+
+    app.dependency_overrides[get_current_user] = get_current_user
+
+
+def test_delete_vm_restriced_when_not_admin():
+    response = client.delete("/vms/project_01")
+    assert response.status_code == 403
+
+
+@patch("main.azure_client")
+@patch("main.guacamole_client")
+def test_delete_vm_404_when_no_vm(_: MagicMock, azure_mock: MagicMock):
+    app.dependency_overrides[get_current_user] = get_admin_user_override
+
+    azure_mock.delete_vm.side_effect = VMNotFound()
+    response = client.delete("/vms/project_01")
+    assert response.status_code == 404
+
+    app.dependency_overrides[get_current_user] = get_current_user_override
+
+
+@patch("main.azure_client")
+@patch("main.guacamole_client")
+def test_delete_vm_404_when_no_connection(guacamole_mock: MagicMock, _: MagicMock):
+    app.dependency_overrides[get_current_user] = get_admin_user_override
+
+    guacamole_mock.delete_connection.side_effect = GuacamoleConnectionNotFound()
+    response = client.delete("/vms/project_01")
+    assert response.status_code == 404
+
+    app.dependency_overrides[get_current_user] = get_current_user_override
 
 
 @patch("azure_client.AzureClient.delete_deployment")

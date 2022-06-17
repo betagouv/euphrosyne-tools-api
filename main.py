@@ -63,6 +63,19 @@ def get_connection_link(
     return {"url": connection_link}
 
 
+# pylint: disable=inconsistent-return-statements
+@app.delete("/vms/{project_name}", status_code=202)
+def delete_vm(project_name: str, current_user: User = Depends(get_current_user)):
+    """Delete a VM and its connection information on Guacamole."""
+    if not current_user.is_admin:
+        return JSONResponse(status_code=403)
+    try:
+        guacamole_client.delete_connection(project_name)
+        azure_client.delete_vm(project_name)
+    except (VMNotFound, GuacamoleConnectionNotFound):
+        return JSONResponse(status_code=404)
+
+
 @app.get("/deployments/{project_name}", status_code=200)
 def get_deployment_status(
     project_name: str, current_user: User = Depends(get_current_user)

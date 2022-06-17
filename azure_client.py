@@ -74,7 +74,7 @@ class AzureClient:
                 vm_name=_project_name_to_vm_name(project_name),
             )
         except ResourceNotFoundError as error:
-            raise VMNotFound() from error
+            raise VMNotFound from error
 
     def delete_deployment(self, project_name: str):
         return self._resource_mgmt_client.deployments.begin_delete(
@@ -151,6 +151,16 @@ class AzureClient:
             password=parameters["adminPassword"],
             deployment_process=poller,
         )
+
+    def delete_vm(self, project_name: str):
+        try:
+            self._compute_mgmt_client.virtual_machines.begin_delete(
+                resource_group_name=self.resource_group_name,
+                vm_name=_project_name_to_vm_name(project_name),
+            )
+        except ResourceNotFoundError as error:
+            raise VMNotFound from error
+        return None
 
 
 def _project_name_to_vm_name(project_name: str):
