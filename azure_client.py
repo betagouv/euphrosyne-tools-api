@@ -152,15 +152,16 @@ class AzureClient:
             deployment_process=poller,
         )
 
-    def delete_vm(self, project_name: str):
+    def delete_vm(self, project_name: str) -> Literal["Failed", "Succeeded"]:
         try:
-            self._compute_mgmt_client.virtual_machines.begin_delete(
+            operation = self._compute_mgmt_client.virtual_machines.begin_delete(
                 resource_group_name=self.resource_group_name,
                 vm_name=_project_name_to_vm_name(project_name),
             )
         except ResourceNotFoundError as error:
             raise VMNotFound from error
-        return None
+        operation.result()
+        return operation.status()
 
 
 def _project_name_to_vm_name(project_name: str):
