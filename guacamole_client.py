@@ -167,7 +167,7 @@ class GuacamoleClient:
         )
         if response.ok:
             return None
-        raise GuacamoleHttpError(f"{response.content} [{response.status_code}]")
+        raise GuacamoleHttpError(f"{response.text} [{response.status_code}]")
 
     def assign_user_to_connection(self, connection_id: str, username: str):
         token = self._get_admin_token()
