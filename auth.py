@@ -6,6 +6,8 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
+from exceptions import NoProjectMembershipException
+
 load_dotenv()
 
 ALGORITHM = "HS256"
@@ -46,3 +48,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         projects=payload.get("projects"),
         is_admin=payload.get("is_admin"),
     )
+
+
+def verify_project_membership(
+    project_name: str, current_user: User = Depends(get_current_user)
+):
+    if not current_user.is_admin and not current_user.has_project(project_name):
+        raise NoProjectMembershipException()

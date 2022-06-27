@@ -4,7 +4,8 @@ import pytest
 from fastapi import HTTPException, status
 from jose import jwt
 
-from auth import ALGORITHM, User, get_current_user
+from auth import ALGORITHM, Project, User, get_current_user, verify_project_membership
+from exceptions import NoProjectMembershipException
 
 
 def _generate_token(data: dict):
@@ -39,3 +40,42 @@ async def test_returns_user_with_projects(monkeypatch):
     assert user.id == 1
     assert user.projects
     assert user.projects[0].id == 444
+
+
+def test_verify_project_membership_passes_for_ownership():
+    # pylint: disable=expression-not-assigned
+    verify_project_membership(
+        "hello-world",
+        User(
+            id=1,
+            is_admin=False,
+            projects=[
+                Project(id=1, name="hello-world"),
+                Project(id=2, name="bye-world"),
+            ],
+        ),
+    ) is None
+
+
+def test_verify_project_membership_passes_for_admin():
+    # pylint: disable=expression-not-assigned
+    verify_project_membership(
+        "hello-world",
+        User(
+            id=1,
+            is_admin=True,
+            projects=[],
+        ),
+    ) is None
+
+
+def test_verify_project_membership_fails_for_regular_user():
+    with pytest.raises(NoProjectMembershipException):
+        verify_project_membership(
+            "hello-world",
+            User(
+                id=1,
+                is_admin=False,
+                projects=[],
+            ),
+        )

@@ -4,7 +4,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from auth import User, get_current_user
+from auth import User, get_current_user, verify_project_membership
 from azure_client import (
     AzureClient,
     AzureVMDeploymentProperties,
@@ -37,14 +37,12 @@ azure_client = AzureClient()
 guacamole_client = GuacamoleClient()
 
 
-@app.get("/connect/{project_name}")
+@app.get("/connect/{project_name}", dependencies=[Depends(verify_project_membership)])
 def get_connection_link(
     project_name: str, current_user: User = Depends(get_current_user)
 ):
     """Shows connection URL for a deployed VM for a specific project.
     Responds with 404 if no VM is deployed for the project or no connection exists on Guacamole."""
-    if not current_user.is_admin and not current_user.has_project(project_name):
-        raise NoProjectMembershipException()
     try:
         azure_client.get_vm(project_name)
     except VMNotFound:
@@ -79,13 +77,13 @@ def delete_vm(project_name: str, current_user: User = Depends(get_current_user))
         pass
 
 
-@app.get("/deployments/{project_name}", status_code=200)
-def get_deployment_status(
-    project_name: str, current_user: User = Depends(get_current_user)
-):
+@app.get(
+    "/deployments/{project_name}",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+)
+def get_deployment_status(project_name: str):
     """Get deployment status about a VM being deployed."""
-    if not current_user.is_admin and not current_user.has_project(project_name):
-        raise NoProjectMembershipException()
     try:
         status = azure_client.get_deployment_status(project_name)
     except DeploymentNotFound:
@@ -93,18 +91,39 @@ def get_deployment_status(
     return {"status": status}
 
 
-@app.post("/deployments/{project_name}", status_code=202)
+@app.post(
+    "/deployments/{project_name}",
+    status_code=202,
+    dependencies=[Depends(verify_project_membership)],
+)
 def deploy_vm(
     project_name: str,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
 ):
     """Deploys a VM for a specific project."""
-    if not current_user.is_admin and not current_user.has_project(project_name):
-        raise NoProjectMembershipException()
     vm_information = azure_client.deploy_vm(project_name, vm_size="Standard_DS1_v2")
     if vm_information:
         background_tasks.add_task(wait_for_deploy, vm_information)
+
+
+@app.get(
+    "/data/{project_name}/runs/{run_name}/raw_data",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+)
+def list_run_raw_data(project_name: str, run_name: str):
+    files = azure_client.get_run_files(project_name, run_name, "raw_data")
+    return files
+
+
+@app.get(
+    "/data/{project_name}/runs/{run_name}/processed_data",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+)
+def list_run_raw_data(project_name: str, run_name: str):
+    files = azure_client.get_run_files(project_name, run_name, "processed_data")
+    return files
 
 
 def wait_for_deploy(vm_deployment_properties: AzureVMDeploymentProperties):

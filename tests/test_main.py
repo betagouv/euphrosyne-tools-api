@@ -1,9 +1,16 @@
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
+import pytest
 
 from auth import Project, User, get_current_user
-from azure_client import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
+from azure_client import (
+    AzureVMDeploymentProperties,
+    DeploymentNotFound,
+    ProjectFile,
+    VMNotFound,
+)
 from guacamole_client import GuacamoleConnectionNotFound
 from main import app, wait_for_deploy
 
@@ -129,6 +136,39 @@ def test_delete_vm_when_no_connection(guacamole_mock: MagicMock, _: MagicMock):
     assert response.status_code == 202
 
     app.dependency_overrides[get_current_user] = get_current_user_override
+
+
+@pytest.mark.parametrize(
+    ("data_type"),
+    (("raw_data"), ("processed_data")),
+)
+@patch("azure_client.AzureClient.get_run_files")
+def test_list_run_data(get_run_files_mock: MagicMock, data_type: tuple[str]):
+    def yield_project_files():
+        for i in range(4):
+            yield ProjectFile(
+                name=f"file-{i}.txt",
+                last_modified=datetime(2022, 6, 22, 11, 22, 33),
+                size=i * 222,
+                path=f"somepath/file-{i}.txt",
+            )
+
+    get_run_files_mock.return_value = yield_project_files()
+
+    response = client.get(f"/data/project_01/runs/run_01/{data_type}")
+    files = response.json()
+
+    assert get_run_files_mock.mock_calls[0][1] == (
+        "project_01",
+        "run_01",
+        f"{data_type}",
+    )
+    assert response.status_code == 200
+    assert len(files) == 4
+    assert "name" in files[0]
+    assert "last_modified" in files[0]
+    assert "size" in files[0]
+    assert "path" in files[0]
 
 
 @patch("azure_client.AzureClient.delete_deployment")
