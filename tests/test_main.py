@@ -14,7 +14,7 @@ async def get_current_user_override():
     return User(id=1, projects=[Project(id=1, name="project_01")], is_admin=False)
 
 
-def get_admin_user_override():
+async def get_admin_user_override():
     return User(id=1, projects=[], is_admin=True)
 
 
@@ -110,11 +110,12 @@ def test_delete_vm(guacamole_mock: MagicMock, azure_mock: MagicMock):
     azure_mock.delete_vm.assert_called()
     guacamole_mock.delete_connection.assert_called()
 
-    app.dependency_overrides[get_current_user] = get_current_user
+    app.dependency_overrides[get_current_user] = get_current_user_override
 
 
 def test_delete_vm_restriced_when_not_admin():
     response = client.delete("/vms/project_01")
+
     assert response.status_code == 403
 
 
@@ -127,7 +128,7 @@ def test_delete_vm_when_no_connection(guacamole_mock: MagicMock, _: MagicMock):
     response = client.delete("/vms/project_01")
     assert response.status_code == 202
 
-    app.dependency_overrides[get_current_user] = get_current_user
+    app.dependency_overrides[get_current_user] = get_current_user_override
 
 
 @patch("azure_client.AzureClient.delete_deployment")
