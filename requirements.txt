@@ -2,11 +2,17 @@ anyio[trio]==3.5.0
 azure-identity==1.10.0 
 azure-mgmt-resource==21.0.0
 azure-mgmt-compute==26.1.0
+black==22.3.0
 fastapi==0.75.2 
 isort==5.10.1 
 mypy==0.950
 python-dotenv==0.20.0 
 python-jose[cryptography]==3.3.0
+python-slugify==6.1.2
 pylint==2.13.8 
 pytest==7.1.2 
+requests==2.27.1
+types-python-jose==3.3.1
+types-python-slugify==5.0.4 
+types-requests==2.27.29
 uvicorn[standard]==0.17.6 

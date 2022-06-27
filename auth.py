@@ -22,6 +22,10 @@ class Project(BaseModel):
 class User(BaseModel):
     id: int
     projects: list[Project]
+    is_admin: bool
+
+    def has_project(self, project_name: str):
+        return project_name in (project.name for project in self.projects)
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -33,8 +37,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
-    except JWTError:
-        raise credentials_exception
+    except JWTError as error:
+        raise credentials_exception from error
     if not payload.get("user_id"):
         raise credentials_exception
-    return User(id=payload.get("user_id"), projects=payload.get("projects"))
+    return User(
+        id=payload.get("user_id"),
+        projects=payload.get("projects"),
+        is_admin=payload.get("is_admin"),
+    )

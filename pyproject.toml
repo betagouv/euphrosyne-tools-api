@@ -5,4 +5,18 @@ multi_line_output = 3
 [tool.pylint.messages_control]
 disable = [
     "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods"
 ]
+max-args = "6"
+
+[tool.pylint.basic]
+extension-pkg-whitelist = "pydantic"
+
+[tool.pylint.similarities]
+ignore-imports = "yes"
+
+[[tool.mypy.overrides]]
+module="azure.mgmt.*"
+ignore_missing_imports = true

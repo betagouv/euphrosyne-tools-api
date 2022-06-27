@@ -32,7 +32,7 @@ jobs:
       - name: Mypy check
         run: python -m mypy .
       - name: Pylint check
-        run: python -m pylint $(find . -type f -path '*.py'
+        run: python -m pylint $(find . -type f -path '*.py')
       - name: Pytest
         run: python -m pytest .
         env:
