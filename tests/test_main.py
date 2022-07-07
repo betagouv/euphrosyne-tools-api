@@ -1,8 +1,8 @@
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from auth import Project, User, get_current_user
 from azure_client import (
@@ -169,6 +169,52 @@ def test_list_run_data(get_run_files_mock: MagicMock, data_type: tuple[str]):
     assert "last_modified" in files[0]
     assert "size" in files[0]
     assert "path" in files[0]
+
+
+@patch("azure_client.AzureClient.generate_project_documents_sas_url")
+def test_generate_project_documents_sas_url_success(
+    generate_shared_access_signature_url_mock: MagicMock,
+):
+    generate_shared_access_signature_url_mock.return_value = "url"
+    response = client.get("/data/project_01/documents/shared_access_signature/file.txt")
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "url"
+    assert generate_shared_access_signature_url_mock.call_args[0] == (
+        "project_01",
+        "file.txt",
+    )
+
+
+@patch("azure_client.AzureClient.generate_run_data_sas_url")
+def test_generate_run_data_sas_url_success(
+    generate_shared_access_signature_url_mock: MagicMock,
+):
+    generate_shared_access_signature_url_mock.return_value = "url"
+    response = client.get(
+        "/data/project_01/runs/myrun/raw_data/shared_access_signature/file.txt"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "url"
+    assert generate_shared_access_signature_url_mock.call_args[0] == (
+        "project_01",
+        "myrun",
+        "raw_data",
+        "file.txt",
+    )
+
+
+@patch("azure_client.AzureClient.generate_run_data_sas_url")
+def test_generate_run_data_sas_fails_when_wrong_datatype(
+    generate_shared_access_signature_url_mock: MagicMock,
+):
+    generate_shared_access_signature_url_mock.return_value = "url"
+    response = client.get(
+        "/data/project_01/runs/myrun/wrongdatatype/shared_access_signature/file.txt"
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["path", "data_type"]
 
 
 @patch("azure_client.AzureClient.delete_deployment")

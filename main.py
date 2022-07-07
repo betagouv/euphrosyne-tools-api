@@ -1,6 +1,6 @@
 import os
 
-from fastapi import BackgroundTasks, Depends, FastAPI
+from fastapi import BackgroundTasks, Depends, FastAPI, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -9,6 +9,9 @@ from azure_client import (
     AzureClient,
     AzureVMDeploymentProperties,
     DeploymentNotFound,
+    ProjectDocumentsNotFound,
+    ProjectFile,
+    RunDataNotFound,
     VMNotFound,
     wait_for_deployment_completeness,
 )
@@ -107,23 +110,80 @@ def deploy_vm(
 
 
 @app.get(
+    "/data/{project_name}/documents",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+    response_model=list[ProjectFile],
+)
+def list_project_documents(project_name: str):
+    try:
+        return azure_client.get_project_documents(project_name)
+    except ProjectDocumentsNotFound:
+        return JSONResponse(
+            {"detail": "Folder for the project documents not found"}, status_code=404
+        )
+
+
+@app.get(
     "/data/{project_name}/runs/{run_name}/raw_data",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
+    response_model=list[ProjectFile],
 )
 def list_run_raw_data(project_name: str, run_name: str):
-    files = azure_client.get_run_files(project_name, run_name, "raw_data")
-    return files
+    try:
+        return azure_client.get_run_files(project_name, run_name, "raw_data")
+    except RunDataNotFound:
+        return JSONResponse({"detail": "Run data not found"}, status_code=404)
 
 
 @app.get(
     "/data/{project_name}/runs/{run_name}/processed_data",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
+    response_model=list[ProjectFile],
 )
-def list_run_raw_data(project_name: str, run_name: str):
-    files = azure_client.get_run_files(project_name, run_name, "processed_data")
-    return files
+def list_run_processed_data(project_name: str, run_name: str):
+    try:
+        return azure_client.get_run_files(project_name, run_name, "processed_data")
+    except RunDataNotFound:
+        return JSONResponse({"detail": "Run data not found"}, status_code=404)
+
+
+@app.get(
+    "/data/{project_name}/documents/shared_access_signature/{file_name}",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+)
+def generate_project_documents_shared_access_signature(
+    project_name: str, file_name: str
+):
+    """Return a token used to directly download/upload/delete project documents
+    from the place it is stored.
+    """
+    url = azure_client.generate_project_documents_sas_url(project_name, file_name)
+    return {"url": url}
+
+
+@app.get(
+    "/data/{project_name}/runs/{run_name}/{data_type}/shared_access_signature/{file_name}",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+)
+def generate_run_data_shared_access_signature(
+    project_name: str,
+    run_name: str,
+    file_name: str,
+    data_type: str = Path(default=None, regex="^(raw_data|procesed_data)$"),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a token used to directly download/upload/delete run data
+    from the place it is stored.
+    """
+    url = azure_client.generate_run_data_sas_url(
+        project_name, run_name, data_type, file_name, is_admin=current_user.is_admin
+    )
+    return {"url": url}
 
 
 def wait_for_deploy(vm_deployment_properties: AzureVMDeploymentProperties):

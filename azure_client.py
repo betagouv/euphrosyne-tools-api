@@ -1,7 +1,7 @@
 import os
 import secrets
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Generator, Literal, Optional
 
 from azure.core.credentials import TokenCredential
@@ -13,12 +13,21 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentExtended
 from azure.mgmt.resource.templatespecs import TemplateSpecsClient
 from azure.mgmt.storage import StorageManagementClient
-from azure.storage.fileshare import ShareDirectoryClient, ShareFileClient
+from azure.storage.file.models import FilePermissions
+from azure.storage.file.sharedaccesssignature import FileSharedAccessSignature
+from azure.storage.fileshare import (
+    CorsRule,
+    ShareDirectoryClient,
+    ShareFileClient,
+    ShareServiceClient,
+)
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from slugify import slugify
 
 load_dotenv()
+
+RunDataTypeType = Literal["processed_data", "raw_data"]
 
 
 class DeploymentNotFound(Exception):
@@ -26,6 +35,14 @@ class DeploymentNotFound(Exception):
 
 
 class VMNotFound(Exception):
+    pass
+
+
+class RunDataNotFound(Exception):
+    pass
+
+
+class ProjectDocumentsNotFound(Exception):
     pass
 
 
@@ -65,6 +82,10 @@ class AzureClient:
         # pylint: disable=line-too-long,consider-using-f-string
         self._storage_connection_string = "DefaultEndpointsProtocol=https;AccountName={};AccountKey={};EndpointSuffix=core.windows.net".format(
             self.storage_account_name, storage_key
+        )
+
+        self._file_shared_access_signature = FileSharedAccessSignature(
+            account_name=self.storage_account_name, account_key=storage_key
         )
 
         self._resource_mgmt_client = ResourceManagementClient(
@@ -174,19 +195,106 @@ class AzureClient:
         operation.result()
         return operation.status()
 
+    def get_project_documents(
+        self,
+        project_name: str,
+    ) -> list[ProjectFile]:
+        dir_path = os.path.join(_get_projects_path(), project_name, "documents")
+        files = self._list_files_recursive(dir_path)
+        try:
+            return list(files)
+        except ResourceNotFoundError as error:
+            raise ProjectDocumentsNotFound from error
+
     def get_run_files(
         self,
         project_name: str,
         run_name: str,
-        data_type: Literal["raw_data", "processed_data"],
-    ) -> Generator[ProjectFile, None, None]:
-        # pylint: disable=consider-using-f-string
-        projects_path_prefix = "{}/".format(
-            os.getenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX")
-        )
-        dir_path = projects_path_prefix + project_name + f"/runs/{run_name}/{data_type}"
+        data_type: RunDataTypeType,
+    ) -> list[ProjectFile]:
+        """Fetches run data files from Fileshare.
+        Specify `data_type` to get either 'raw_data' or 'processed_data'.
+        """
+        dir_path = _get_run_data_directory_name(project_name, run_name, data_type)
         files = self._list_files_recursive(dir_path)
-        return files
+        try:
+            return list(files)
+        except ResourceNotFoundError as error:
+            raise RunDataNotFound from error
+
+    def generate_project_documents_sas_url(self, project_name: str, file_name: str):
+        """Generate URL with Shared Access Signature to manage project documents in
+        an Azure Fileshare. Permission are read, write, create & delete.
+        """
+        dir_path = os.path.join(_get_projects_path(), project_name, "documents")
+        permission = FilePermissions(read=True, create=True, write=True, delete=True)
+        return self._generate_sas_url(dir_path, file_name, permission)
+
+    def generate_run_data_sas_url(
+        self,
+        project_name: str,
+        run_name: str,
+        data_type: RunDataTypeType,
+        file_name: str,
+        is_admin: bool,
+    ):
+        """Generate URL with Shared Access Signature to manage run data in an
+        Azure Fileshare. Regular users can read. Admins can also write, create & delete.
+        """
+        dir_path = _get_run_data_directory_name(project_name, run_name, data_type)
+        permission = FilePermissions(
+            read=True, create=is_admin, write=is_admin, delete=is_admin
+        )
+        return self._generate_sas_url(dir_path, file_name, permission)
+
+    def _generate_sas_url(
+        self,
+        dir_path: str,
+        file_name: str,
+        permission: FilePermissions,
+    ) -> str:
+        """Generate a signed URL (Shared Access Signature) that can be used
+        to perform authenticated operations on a file in an Azure Fileshare.
+        """
+        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
+        sas_params = self._file_shared_access_signature.generate_file(
+            share_name=share_name,
+            directory_name=dir_path,
+            file_name=file_name,
+            permission=permission,
+            expiry=datetime.utcnow() + timedelta(minutes=5),
+            start=datetime.utcnow(),
+        )
+        # pylint: ignore=line-too-long
+        return f"https://{self.storage_account_name}.file.core.windows.net/{share_name}/{dir_path}/{file_name}?{sas_params}"
+
+    def set_fileshare_cors_policy(self, allowed_origins: str):
+        """Set Cross-Origin Resource Sharing (CORS) for Azure Fileshare.
+
+        Arguments:
+        allowed_origins -- A string representing allowed origins as specified here :
+            https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+            Multiple origins can be specified by separating them with commas.
+        """
+        file_service = ShareServiceClient.from_connection_string(
+            self._storage_connection_string
+        )
+        file_service.set_service_properties(
+            cors=[
+                CorsRule(
+                    allowed_origins=allowed_origins.split(","),
+                    allowed_methods=["DELETE", "GET", "HEAD", "POST", "OPTIONS", "PUT"],
+                    allowed_headers=[
+                        "x-ms-content-length",
+                        "x-ms-type",
+                        "x-ms-version",
+                        "x-ms-write",
+                        "x-ms-range",
+                        "content-type",
+                    ],
+                )
+            ]
+        )
 
     def _list_files_recursive(
         self, dir_path: str
@@ -297,3 +405,14 @@ def _get_storage_key(
     )
 
     return key
+
+
+def _get_projects_path():
+    return os.getenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX")
+
+
+def _get_run_data_directory_name(
+    project_name: str, run_name: str, data_type: RunDataTypeType
+):
+    projects_path_prefix = _get_projects_path()
+    return os.path.join(projects_path_prefix, project_name, "runs", run_name, data_type)
