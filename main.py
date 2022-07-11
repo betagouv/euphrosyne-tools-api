@@ -180,8 +180,13 @@ def generate_run_data_shared_access_signature(
     """Return a token used to directly download/upload/delete run data
     from the place it is stored.
     """
+
     url = azure_client.generate_run_data_sas_url(
-        project_name, run_name, data_type, file_name, is_admin=current_user.is_admin
+        project_name,
+        run_name,
+        data_type,  # type: ignore
+        file_name,
+        is_admin=current_user.is_admin,
     )
     return {"url": url}
 
