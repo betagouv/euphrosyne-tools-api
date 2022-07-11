@@ -188,9 +188,7 @@ def test_get_project_documents_with_prefix(
     )
     with patch.object(client, "_list_files_recursive", _list_files_recursive_mock):
         files = client.get_project_documents("project")
-        assert _list_files_recursive_mock.call_args[0] == (
-            "/prefix/projects/project/documents",
-        )
+        assert _list_files_recursive_mock.call_args[0] == ("/prefix/project/documents",)
         assert isinstance(files, list)
         assert len(list(files)) == 1
 
@@ -219,9 +217,9 @@ def test_get_run_files_with_prefix(client: AzureClient, monkeypatch: MonkeyPatch
         assert len(list(files)) == 1
 
 
-@patch("azure_client._get_project_path_prefix")
+@patch("azure_client._get_projects_path")
 def test_generate_project_documents_sas_url(
-    _get_project_path_prefix_mock: MagicMock,
+    _get_projects_path_mock: MagicMock,
     client: AzureClient,
     monkeypatch: MonkeyPatch,
 ):
@@ -231,7 +229,7 @@ def test_generate_project_documents_sas_url(
         file_shared_access_signature_mock.generate_file.return_value = "params=params"
         monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
-        _get_project_path_prefix_mock.return_value = "dir_path"
+        _get_projects_path_mock.return_value = "dir_path"
 
         url = client.generate_project_documents_sas_url(
             project_name="project",
@@ -241,11 +239,11 @@ def test_generate_project_documents_sas_url(
     # pylint: disable=line-too-long
     assert (
         url
-        == "https://storageaccount.file.core.windows.net/fileshare/dir_path/projects/project/documents/hello.txt?params=params"
+        == "https://storageaccount.file.core.windows.net/fileshare/dir_path/project/documents/hello.txt?params=params"
     )
     mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
     assert mock_kwargs["share_name"] == "fileshare"
-    assert mock_kwargs["directory_name"] == "dir_path/projects/project/documents"
+    assert mock_kwargs["directory_name"] == "dir_path/project/documents"
     assert mock_kwargs["file_name"] == "hello.txt"
     assert mock_kwargs["permission"].read is True
     assert mock_kwargs["permission"].create is True
