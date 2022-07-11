@@ -238,7 +238,7 @@ def test_generate_project_documents_sas_url(
             file_name="hello.txt",
         )
 
-    # pylint: ignore=line-too-long
+    # pylint: disable=line-too-long
     assert (
         url
         == "https://storageaccount.file.core.windows.net/fileshare/dir_path/projects/project/documents/hello.txt?params=params"
@@ -288,7 +288,7 @@ def test_generate_run_data_sas_url(
     assert mock_kwargs["share_name"] == "fileshare"
     assert mock_kwargs["directory_name"] == "dir_path"
     assert mock_kwargs["file_name"] == "hello.txt"
-    assert mock_kwargs["permission"].read == True
+    assert mock_kwargs["permission"].read is True
     assert mock_kwargs["permission"].create == is_admin
     assert mock_kwargs["permission"].delete == is_admin
     assert mock_kwargs["permission"].write == is_admin

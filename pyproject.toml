@@ -17,6 +17,9 @@ extension-pkg-whitelist = "pydantic"
 [tool.pylint.similarities]
 ignore-imports = "yes"
 
+[tool.pylint.design]
+max-attributes=8
+
 [[tool.mypy.overrides]]
 module="azure.mgmt.*"
 ignore_missing_imports = true

@@ -265,7 +265,7 @@ class AzureClient:
             expiry=datetime.utcnow() + timedelta(minutes=5),
             start=datetime.utcnow(),
         )
-        # pylint: ignore=line-too-long
+        # pylint: disable=line-too-long
         return f"https://{self.storage_account_name}.file.core.windows.net/{share_name}/{dir_path}/{file_name}?{sas_params}"
 
     def set_fileshare_cors_policy(self, allowed_origins: str):
