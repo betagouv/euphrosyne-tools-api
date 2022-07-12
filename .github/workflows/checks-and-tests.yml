@@ -35,8 +35,3 @@ jobs:
         run: python -m pylint $(find . -type f -path '*.py')
       - name: Pytest
         run: python -m pytest .
-        env:
-          AZURE_RESOURCE_GROUP_NAME: resourcegroup
-          AZURE_TEMPLATE_SPECS_NAME: templatespecs
-          AZURE_SUBSCRIPTION_ID: subid
-          GUACAMOLE_ROOT_URL: guacaurl

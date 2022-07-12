@@ -1,6 +1,7 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
-from unittest.mock import MagicMock, patch
+from datetime import datetime
+from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 from azure.core.exceptions import ResourceNotFoundError
@@ -10,6 +11,7 @@ from azure_client import (
     AzureClient,
     AzureVMDeploymentProperties,
     DeploymentNotFound,
+    ProjectFile,
     VMNotFound,
     _project_name_to_vm_name,
     wait_for_deployment_completeness,
@@ -22,10 +24,16 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_TEMPLATE_SPECS_NAME", "template_specs")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
     monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
-    with patch("azure_client.ResourceManagementClient"):
-        with patch("azure_client.ComputeManagementClient"):
-            with patch("azure_client.TemplateSpecsClient"):
-                return AzureClient()
+    monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
+    with patch.multiple(
+        "azure_client",
+        ResourceManagementClient=DEFAULT,
+        ComputeManagementClient=DEFAULT,
+        TemplateSpecsClient=DEFAULT,
+        StorageManagementClient=DEFAULT,
+        FileSharedAccessSignature=DEFAULT,
+    ):
+        return AzureClient()
 
 
 @patch("azure_client.AzureClient._get_latest_template_specs", dict)
@@ -159,3 +167,192 @@ def test_delete_vm_raises_if_vm_absent(client: AzureClient):
 def test_project_name_to_vm_name(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
     assert _project_name_to_vm_name("BLABLA") == "test-blabla"
+
+
+def test_get_project_documents_with_prefix(
+    client: AzureClient, monkeypatch: MonkeyPatch
+):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "/prefix")
+    _list_files_recursive_mock = MagicMock(
+        return_value=(
+            p
+            for p in [
+                ProjectFile(
+                    name="file-1.txt",
+                    last_modified=datetime(2022, 6, 22, 11, 22, 33),
+                    size=222,
+                    path="/prefix/project/documents/file-1.txt",
+                )
+            ]
+        )
+    )
+    with patch.object(client, "_list_files_recursive", _list_files_recursive_mock):
+        files = client.get_project_documents("project")
+        assert _list_files_recursive_mock.call_args[0] == ("/prefix/project/documents",)
+        assert isinstance(files, list)
+        assert len(list(files)) == 1
+
+
+def test_get_run_files_with_prefix(client: AzureClient, monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "/prefix")
+    _list_files_recursive_mock = MagicMock(
+        return_value=(
+            p
+            for p in [
+                ProjectFile(
+                    name="file-1.txt",
+                    last_modified=datetime(2022, 6, 22, 11, 22, 33),
+                    size=222,
+                    path="/prefix/project/file-1.txt",
+                )
+            ]
+        )
+    )
+    with patch.object(client, "_list_files_recursive", _list_files_recursive_mock):
+        files = client.get_run_files("project", "run", "processed_data")
+        assert _list_files_recursive_mock.call_args[0] == (
+            "/prefix/project/runs/run/processed_data",
+        )
+        assert isinstance(files, list)
+        assert len(list(files)) == 1
+
+
+@patch("azure_client._get_projects_path")
+def test_generate_project_documents_sas_url(
+    _get_projects_path_mock: MagicMock,
+    client: AzureClient,
+    monkeypatch: MonkeyPatch,
+):
+    with patch.object(
+        client, "_file_shared_access_signature"
+    ) as file_shared_access_signature_mock:
+        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+        monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
+        monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
+        _get_projects_path_mock.return_value = "dir_path"
+
+        url = client.generate_project_documents_sas_url(
+            project_name="project",
+            file_name="hello.txt",
+        )
+
+    # pylint: disable=line-too-long
+    assert (
+        url
+        == "https://storageaccount.file.core.windows.net/fileshare/dir_path/project/documents/hello.txt?params=params"
+    )
+    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    assert mock_kwargs["share_name"] == "fileshare"
+    assert mock_kwargs["directory_name"] == "dir_path/project/documents"
+    assert mock_kwargs["file_name"] == "hello.txt"
+    assert mock_kwargs["permission"].read is True
+    assert mock_kwargs["permission"].create is True
+    assert mock_kwargs["permission"].delete is True
+    assert mock_kwargs["permission"].write is True
+
+
+@pytest.mark.parametrize(
+    ("is_admin"),
+    (True, False),
+)
+@patch("azure_client._get_run_data_directory_name")
+def test_generate_run_data_sas_url(
+    get_run_data_directory_name_mock: MagicMock,
+    client: AzureClient,
+    monkeypatch: MonkeyPatch,
+    is_admin: bool,
+):
+    with patch.object(
+        client, "_file_shared_access_signature"
+    ) as file_shared_access_signature_mock:
+        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+        monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
+        monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
+        get_run_data_directory_name_mock.return_value = "dir_path"
+
+        url = client.generate_run_data_sas_url(
+            project_name="project",
+            run_name="run",
+            data_type="processed_data",
+            file_name="hello.txt",
+            is_admin=is_admin,
+        )
+
+    assert (
+        url
+        == "https://storageaccount.file.core.windows.net/fileshare/dir_path/hello.txt?params=params"
+    )
+    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    assert mock_kwargs["share_name"] == "fileshare"
+    assert mock_kwargs["directory_name"] == "dir_path"
+    assert mock_kwargs["file_name"] == "hello.txt"
+    assert mock_kwargs["permission"].read is True
+    assert mock_kwargs["permission"].create == is_admin
+    assert mock_kwargs["permission"].delete == is_admin
+    assert mock_kwargs["permission"].write == is_admin
+
+
+@patch("azure_client.ShareDirectoryClient")
+@patch("azure_client.ShareFileClient")
+def test_list_files_recursive(
+    share_file_client: MagicMock,
+    share_directory_client: MagicMock,
+    client: AzureClient,
+    monkeypatch: MonkeyPatch,
+):
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
+    files_and_folders__root = [
+        {"name": "file-1.txt", "is_directory": False},
+        {"name": "directory-1", "is_directory": True},
+    ]
+    files_and_folders__dir_1 = [
+        {"name": "file-2.txt", "is_directory": False},
+        {"name": "file-3.txt", "is_directory": False},
+    ]
+    share_directory_client.from_connection_string.return_value = share_directory_client
+    share_file_client.from_connection_string.return_value = share_file_client
+
+    share_directory_client.list_directories_and_files.side_effect = [
+        files_and_folders__root,
+        files_and_folders__dir_1,
+    ]
+    share_file_client.get_file_properties.side_effect = [
+        {
+            "name": "file-1.txt",
+            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
+            "size": 123,
+            "path": "/file-1.txt",
+        },
+        {
+            "name": "file-2.txt",
+            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
+            "size": 345,
+            "path": "directory-1/file-2.txt",
+        },
+        {
+            "name": "file-3.txt",
+            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
+            "size": 123,
+            "path": "directory-1/file-3.txt",
+        },
+    ]
+
+    files = client._list_files_recursive(dir_path="/")
+    files_list = list(files)
+
+    assert len(files_list) == 3
+    assert all(isinstance(file, ProjectFile) for file in files_list)
+    assert len(share_directory_client.list_directories_and_files.call_args) == 2
+    assert len(share_directory_client.list_directories_and_files.call_args) == 2
+    assert (
+        share_directory_client.from_connection_string.call_args_list[0][1][
+            "directory_path"
+        ]
+        == "/"
+    )
+    assert (
+        share_directory_client.from_connection_string.call_args_list[1][1][
+            "directory_path"
+        ]
+        == "/directory-1"
+    )
