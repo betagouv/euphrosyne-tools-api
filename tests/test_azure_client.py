@@ -295,8 +295,12 @@ def test_generate_run_data_sas_url(
 @patch("azure_client.ShareDirectoryClient")
 @patch("azure_client.ShareFileClient")
 def test_list_files_recursive(
-    share_file_client: MagicMock, share_directory_client: MagicMock, client: AzureClient
+    share_file_client: MagicMock,
+    share_directory_client: MagicMock,
+    client: AzureClient,
+    monkeypatch: MonkeyPatch,
 ):
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
     files_and_folders__root = [
         {"name": "file-1.txt", "is_directory": False},
         {"name": "directory-1", "is_directory": True},
