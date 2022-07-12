@@ -39,4 +39,5 @@ jobs:
           AZURE_RESOURCE_GROUP_NAME: resourcegroup
           AZURE_TEMPLATE_SPECS_NAME: templatespecs
           AZURE_SUBSCRIPTION_ID: subid
+          AZURE_STORAGE_ACCOUNT: storageaccount
           GUACAMOLE_ROOT_URL: guacaurl
