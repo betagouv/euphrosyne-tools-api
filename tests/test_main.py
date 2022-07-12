@@ -6,15 +6,14 @@ from fastapi.testclient import TestClient
 
 from auth import Project, User, get_current_user
 from azure_client import (
+    AzureClient,
     AzureVMDeploymentProperties,
     DeploymentNotFound,
     ProjectFile,
     VMNotFound,
 )
-from guacamole_client import GuacamoleConnectionNotFound
-from main import app, wait_for_deploy
-
-client = TestClient(app)
+from guacamole_client import GuacamoleClient, GuacamoleConnectionNotFound
+from main import app, get_azure_client, get_guacamole_client, wait_for_deploy
 
 
 async def get_current_user_override():
@@ -25,10 +24,20 @@ async def get_admin_user_override():
     return User(id=1, projects=[], is_admin=True)
 
 
-app.dependency_overrides[get_current_user] = get_current_user_override
+_client = TestClient(app)
 
 
-def test_no_project_membership_exception_handler():
+@pytest.fixture(name="client")
+def fixture_client():
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(spec=AzureClient)
+    app.dependency_overrides[get_guacamole_client] = lambda: MagicMock(
+        spec=GuacamoleClient
+    )
+    app.dependency_overrides[get_current_user] = get_current_user_override
+    return _client
+
+
+def test_no_project_membership_exception_handler(client: TestClient):
     def get_not_permitted_user_override():
         return User(id=1, projects=[], is_admin=False)
 
@@ -36,80 +45,88 @@ def test_no_project_membership_exception_handler():
     response = client.get("/connect/project_01")
     assert response.status_code == 403
     assert response.json()["detail"] == "User does not have access to this project"
-    app.dependency_overrides[get_current_user] = get_current_user_override
 
 
-@patch("main.azure_client")
-def test_get_connection_link_when_no_vm(azure_mock: MagicMock):
-    azure_mock.get_vm.side_effect = VMNotFound()
+def test_get_connection_link_when_no_vm(client: TestClient):
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+        get_vm=MagicMock(side_effect=VMNotFound())
+    )
     response = client.get("/connect/project_01")
     assert response.status_code == 404
     assert response.json()["detail"] == "Azure VM not found"
 
 
-@patch("main.azure_client", MagicMock())
-@patch("main.guacamole_client")
-def test_get_connection_link_when_no_guaca_conn(guacamole_client):
-    guacamole_client.get_connection_by_name.side_effect = GuacamoleConnectionNotFound()
+def test_get_connection_link_when_no_guaca_conn(client: TestClient):
+    app.dependency_overrides[get_guacamole_client] = lambda: MagicMock(
+        get_connection_by_name=MagicMock(side_effect=GuacamoleConnectionNotFound())
+    )
     response = client.get("/connect/project_01")
     assert response.status_code == 404
     assert response.json()["detail"] == "Guacamole connection not found"
 
 
-@patch("main.azure_client", MagicMock())
-@patch("main.guacamole_client")
-def test_get_connection_link_ok(guacamole_client):
-    guacamole_client.generate_connection_link.return_value = "url"
+def test_get_connection_link_ok(client: TestClient):
+    guacamole_client_mock = MagicMock(
+        generate_connection_link=MagicMock(return_value="url")
+    )
+    app.dependency_overrides[get_guacamole_client] = lambda: guacamole_client_mock
     response = client.get("/connect/project_01")
     assert response.status_code == 200
     assert response.json()["url"] == "url"
-    guacamole_client.create_user_if_absent.assert_called_once_with("1")
-    guacamole_client.create_user_if_absent.assert_called_once()
-    guacamole_client.generate_connection_link.assert_called_once()
+    guacamole_client_mock.create_user_if_absent.assert_called_once_with("1")
+    guacamole_client_mock.create_user_if_absent.assert_called_once()
+    guacamole_client_mock.generate_connection_link.assert_called_once()
 
 
-@patch("main.azure_client")
-def test_get_deployment_status_when_no_deployment(azure_mock: MagicMock):
-    azure_mock.get_deployment_status.side_effect = DeploymentNotFound()
+def test_get_deployment_status_when_no_deployment(client: TestClient):
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+        get_deployment_status=MagicMock(side_effect=DeploymentNotFound())
+    )
     response = client.get("/deployments/project_01")
     assert response.status_code == 404
 
 
-@patch("main.azure_client")
-def test_get_deployment_status_ok(azure_mock: MagicMock):
-    azure_mock.get_deployment_status.return_value = "Succeeded"
+def test_get_deployment_status_ok(client: TestClient):
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+        get_deployment_status=MagicMock(return_value="Succeeded")
+    )
     response = client.get("/deployments/project_01")
     assert response.status_code == 200
     assert response.json()["status"] == "Succeeded"
 
 
-@patch("main.azure_client")
-def test_deploy_vm_ok(azure_mock: MagicMock):
+def test_deploy_vm_ok(client: TestClient):
     deploy_return_value = AzureVMDeploymentProperties(
         deployment_process=MagicMock(),
         password="password",
         username="username",
         project_name="project_name",
     )
-    azure_mock.deploy_vm.return_value = deploy_return_value
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+        deploy_vm=MagicMock(return_value=deploy_return_value)
+    )
     with patch("fastapi.BackgroundTasks.add_task") as mock:
         response = client.post("/deployments/project_01")
         assert response.status_code == 202
-        mock.assert_called_once_with(wait_for_deploy, deploy_return_value)
+        assert mock.call_count == 1
+        assert mock.call_args_list[0][0][:2] == (wait_for_deploy, deploy_return_value)
 
 
-@patch("main.azure_client")
-def test_deploy_vm_when_already_deployed(azure_mock: MagicMock):
-    azure_mock.deploy_vm.return_value = None
+def test_deploy_vm_when_already_deployed(client: TestClient):
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+        deploy_vm=MagicMock(return_value=None)
+    )
     with patch("fastapi.BackgroundTasks.add_task") as mock:
         response = client.post("/deployments/project_01")
         assert response.status_code == 202
         mock.assert_not_called()
 
 
-@patch("main.azure_client")
-@patch("main.guacamole_client")
-def test_delete_vm(guacamole_mock: MagicMock, azure_mock: MagicMock):
+def test_delete_vm(client: TestClient):
+    azure_mock = MagicMock(spec=AzureClient)
+    app.dependency_overrides[get_azure_client] = lambda: azure_mock
+    guacamole_mock = MagicMock(spec=GuacamoleClient)
+    app.dependency_overrides[get_guacamole_client] = lambda: guacamole_mock
     app.dependency_overrides[get_current_user] = get_admin_user_override
 
     response = client.delete("/vms/project_01")
@@ -120,18 +137,18 @@ def test_delete_vm(guacamole_mock: MagicMock, azure_mock: MagicMock):
     app.dependency_overrides[get_current_user] = get_current_user_override
 
 
-def test_delete_vm_restriced_when_not_admin():
+def test_delete_vm_restriced_when_not_admin(client: TestClient):
     response = client.delete("/vms/project_01")
 
     assert response.status_code == 403
 
 
-@patch("main.azure_client")
-@patch("main.guacamole_client")
-def test_delete_vm_when_no_connection(guacamole_mock: MagicMock, _: MagicMock):
+def test_delete_vm_when_no_connection(client: TestClient):
     app.dependency_overrides[get_current_user] = get_admin_user_override
+    app.dependency_overrides[get_guacamole_client] = lambda: MagicMock(
+        delete_connection=MagicMock(side_effect=GuacamoleConnectionNotFound())
+    )
 
-    guacamole_mock.delete_connection.side_effect = GuacamoleConnectionNotFound()
     response = client.delete("/vms/project_01")
     assert response.status_code == 202
 
@@ -142,8 +159,7 @@ def test_delete_vm_when_no_connection(guacamole_mock: MagicMock, _: MagicMock):
     ("data_type"),
     (("raw_data"), ("processed_data")),
 )
-@patch("azure_client.AzureClient.get_run_files")
-def test_list_run_data(get_run_files_mock: MagicMock, data_type: tuple[str]):
+def test_list_run_data(client: TestClient, data_type: tuple[str]):
     def yield_project_files():
         for i in range(4):
             yield ProjectFile(
@@ -153,7 +169,10 @@ def test_list_run_data(get_run_files_mock: MagicMock, data_type: tuple[str]):
                 path=f"somepath/file-{i}.txt",
             )
 
-    get_run_files_mock.return_value = yield_project_files()
+    get_run_files_mock = MagicMock(
+        get_run_files=MagicMock(return_value=yield_project_files())
+    )
+    app.dependency_overrides[get_azure_client] = lambda: get_run_files_mock
 
     response = client.get(f"/data/project_01/runs/run_01/{data_type}")
     files = response.json()
@@ -171,11 +190,14 @@ def test_list_run_data(get_run_files_mock: MagicMock, data_type: tuple[str]):
     assert "path" in files[0]
 
 
-@patch("azure_client.AzureClient.generate_project_documents_sas_url")
 def test_generate_project_documents_sas_url_success(
-    generate_shared_access_signature_url_mock: MagicMock,
+    client: TestClient,
 ):
-    generate_shared_access_signature_url_mock.return_value = "url"
+    generate_shared_access_signature_url_mock = MagicMock(return_value="url")
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+        generate_project_documents_sas_url=generate_shared_access_signature_url_mock
+    )
+
     response = client.get("/data/project_01/documents/shared_access_signature/file.txt")
 
     assert response.status_code == 200
@@ -186,11 +208,13 @@ def test_generate_project_documents_sas_url_success(
     )
 
 
-@patch("azure_client.AzureClient.generate_run_data_sas_url")
 def test_generate_run_data_sas_url_success(
-    generate_shared_access_signature_url_mock: MagicMock,
+    client: TestClient,
 ):
-    generate_shared_access_signature_url_mock.return_value = "url"
+    generate_shared_access_signature_url_mock = MagicMock(return_value="url")
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+        generate_run_data_sas_url=generate_shared_access_signature_url_mock
+    )
     response = client.get(
         "/data/project_01/runs/myrun/raw_data/shared_access_signature/file.txt"
     )
@@ -205,11 +229,7 @@ def test_generate_run_data_sas_url_success(
     )
 
 
-@patch("azure_client.AzureClient.generate_run_data_sas_url")
-def test_generate_run_data_sas_fails_when_wrong_datatype(
-    generate_shared_access_signature_url_mock: MagicMock,
-):
-    generate_shared_access_signature_url_mock.return_value = "url"
+def test_generate_run_data_sas_fails_when_wrong_datatype(client: TestClient):
     response = client.get(
         "/data/project_01/runs/myrun/wrongdatatype/shared_access_signature/file.txt"
     )
@@ -217,8 +237,7 @@ def test_generate_run_data_sas_fails_when_wrong_datatype(
     assert response.json()["detail"][0]["loc"] == ["path", "data_type"]
 
 
-@patch("azure_client.AzureClient.delete_deployment")
-def test_wait_for_deploy_when_success(delete_deployment_mock: MagicMock):
+def test_wait_for_deploy_when_success():
     deployment_properties = AzureVMDeploymentProperties(
         deployment_process=MagicMock(),
         password="password",
@@ -230,17 +249,22 @@ def test_wait_for_deploy_when_success(delete_deployment_mock: MagicMock):
     )
     with patch("main.wait_for_deployment_completeness") as wait_deployment_mock:
         wait_deployment_mock.return_value = deployment_information
-        with patch(
-            "guacamole_client.GuacamoleClient.create_connection"
-        ) as create_connection_mock:
-            wait_for_deploy(deployment_properties)
-            create_connection_mock.assert_called_once_with(
-                name=deployment_properties.project_name,
-                ip_address="1.1.1.1",
-                password=deployment_properties.password,
-                username=deployment_properties.username,
-            )
-            delete_deployment_mock.assert_called_once_with(deployment_information.name)
+        guacamole_client_mock = MagicMock(spec=GuacamoleClient)
+        azure_client_mock = MagicMock(spec=AzureClient)
+        wait_for_deploy(
+            deployment_properties,
+            guacamole_client=guacamole_client_mock,
+            azure_client=azure_client_mock,
+        )
+        guacamole_client_mock.create_connection.assert_called_once_with(
+            name=deployment_properties.project_name,
+            ip_address="1.1.1.1",
+            password=deployment_properties.password,
+            username=deployment_properties.username,
+        )
+        azure_client_mock.delete_deployment.assert_called_once_with(
+            deployment_information.name
+        )
 
 
 def test_wait_for_deploy_when_failed():
@@ -252,8 +276,10 @@ def test_wait_for_deploy_when_failed():
     )
     with patch("main.wait_for_deployment_completeness") as wait_deployment_mock:
         wait_deployment_mock.return_value = None
-        with patch(
-            "guacamole_client.GuacamoleClient.create_connection"
-        ) as create_connection_mock:
-            wait_for_deploy(deployment_properties)
-            create_connection_mock.assert_not_called()
+        guacamole_client_mock = MagicMock(spec=GuacamoleClient)
+        wait_for_deploy(
+            deployment_properties,
+            guacamole_client=guacamole_client_mock,
+            azure_client=MagicMock(spec=AzureClient),
+        )
+        guacamole_client_mock.create_connection.assert_not_called()

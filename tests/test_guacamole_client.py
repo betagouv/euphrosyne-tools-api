@@ -18,6 +18,7 @@ from .mocks import GUACAMOLE_CONNECTION_LIST_RESPONSE
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GUACAMOLE_SECRET_KEY", "secret")
+    monkeypatch.setenv("GUACAMOLE_ROOT_URL", "https://local.guacamole")
     return GuacamoleClient()
 
 
