@@ -408,7 +408,7 @@ def _get_storage_key(
 
 
 def _get_projects_path():
-    return os.getenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX")
+    return os.getenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "")
 
 
 def _get_run_data_directory_name(
