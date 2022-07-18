@@ -1,4 +1,4 @@
-anyio[trio]==3.5.0
+anyio[trio]==3.6.1
 azure-identity==1.10.0 
 azure-mgmt-compute==27.2.0
 azure-mgmt-resource==21.0.0
