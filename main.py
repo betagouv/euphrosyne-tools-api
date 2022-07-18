@@ -37,15 +37,19 @@ app.add_middleware(
 
 
 def get_azure_client():
-    if not app.state["_azure_client"]:
-        app.state["_azure_client"] = AzureClient()
-    return app.state["_azure_client"]
+    try:
+        return app.state.AZURE_CLIENT
+    except AttributeError:
+        app.state.AZURE_CLIENT = AzureClient()
+        return app.state.AZURE_CLIENT
 
 
 def get_guacamole_client():
-    if not app.state["_guacamole_client"]:
-        app.state["_guacamole_client"] = AzureClient()
-    return app.state["_guacamole_client"]
+    try:
+        return app.state.GUACAMOLE_CLIENT
+    except AttributeError:
+        app.state.GUACAMOLE_CLIENT = GuacamoleClient()
+        return app.state.GUACAMOLE_CLIENT
 
 
 @app.get("/connect/{project_name}", dependencies=[Depends(verify_project_membership)])
