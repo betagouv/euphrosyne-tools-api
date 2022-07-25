@@ -177,8 +177,8 @@ class AzureClient:
         )
         return AzureVMDeploymentProperties(
             project_name=project_name,
-            username=project_name,
-            password=parameters["adminPassword"],
+            username=os.environ["VM_LOGIN"],
+            password=os.environ["VM_PASSWORD"],
             deployment_process=poller,
         )
 
