@@ -25,6 +25,8 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
     monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
+    monkeypatch.setenv("VM_LOGIN", "username")
+    monkeypatch.setenv("VM_PASSWORD", "password")
     with patch.multiple(
         "azure_client",
         ResourceManagementClient=DEFAULT,
