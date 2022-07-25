@@ -60,10 +60,6 @@ def test_deploys_with_proper_parameters(client: AzureClient):
     assert "template" in call_args["parameters"]["properties"]
     assert "parameters" in call_args["parameters"]["properties"]
     assert (
-        call_args["parameters"]["properties"]["parameters"]["value"]
-        == "vm-test"
-    )
-    assert (
         call_args["parameters"]["properties"]["parameters"]["vmName"]["value"]
         == "vm-test"
     )
@@ -73,7 +69,7 @@ def test_deploys_with_proper_parameters(client: AzureClient):
     )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
-    assert result.username == "vm-test"
+    assert result.username == "username"
     assert isinstance(result.password, str)
     assert (
         result.deployment_process
