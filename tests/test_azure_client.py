@@ -25,6 +25,8 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
     monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
+    monkeypatch.setenv("VM_LOGIN", "username")
+    monkeypatch.setenv("VM_PASSWORD", "password")
     with patch.multiple(
         "azure_client",
         ResourceManagementClient=DEFAULT,
@@ -58,10 +60,6 @@ def test_deploys_with_proper_parameters(client: AzureClient):
     assert "template" in call_args["parameters"]["properties"]
     assert "parameters" in call_args["parameters"]["properties"]
     assert (
-        call_args["parameters"]["properties"]["parameters"]["adminUsername"]["value"]
-        == "vm-test"
-    )
-    assert (
         call_args["parameters"]["properties"]["parameters"]["vmName"]["value"]
         == "vm-test"
     )
@@ -71,7 +69,7 @@ def test_deploys_with_proper_parameters(client: AzureClient):
     )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
-    assert result.username == "vm-test"
+    assert result.username == "username"
     assert isinstance(result.password, str)
     assert (
         result.deployment_process

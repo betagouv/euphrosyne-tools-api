@@ -1,5 +1,4 @@
 import os
-import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Generator, Literal, Optional
@@ -159,8 +158,6 @@ class AzureClient:
             return None
         template = self._get_latest_template_specs()
         parameters = {
-            "adminUsername": project_name,
-            "adminPassword": secrets.token_urlsafe(),
             "vmName": slugify(project_name),
         }
         if vm_size:
@@ -179,8 +176,8 @@ class AzureClient:
         )
         return AzureVMDeploymentProperties(
             project_name=project_name,
-            username=project_name,
-            password=parameters["adminPassword"],
+            username=os.environ["VM_LOGIN"],
+            password=os.environ["VM_PASSWORD"],
             deployment_process=poller,
         )
 
