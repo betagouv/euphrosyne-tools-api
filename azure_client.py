@@ -159,8 +159,6 @@ class AzureClient:
             return None
         template = self._get_latest_template_specs()
         parameters = {
-            "adminUsername": project_name,
-            "adminPassword": secrets.token_urlsafe(),
             "vmName": slugify(project_name),
         }
         if vm_size:
