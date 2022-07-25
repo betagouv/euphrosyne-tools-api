@@ -60,7 +60,7 @@ def test_deploys_with_proper_parameters(client: AzureClient):
     assert "template" in call_args["parameters"]["properties"]
     assert "parameters" in call_args["parameters"]["properties"]
     assert (
-        call_args["parameters"]["properties"]["parameters"]["adminUsername"]["value"]
+        call_args["parameters"]["properties"]["parameters"]["value"]
         == "vm-test"
     )
     assert (
