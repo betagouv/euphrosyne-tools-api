@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 def delete_vm():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "project_name", help="Project name related to the VM to create."
+        "project_name", help="Project name related to the VM to delete."
     )
     args = parser.parse_args()
 
