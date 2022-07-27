@@ -9,6 +9,7 @@ from azure_client import (
     AzureClient,
     AzureVMDeploymentProperties,
     DeploymentNotFound,
+    IncorrectDataFilePath,
     ProjectFile,
     VMNotFound,
 )
@@ -190,24 +191,60 @@ def test_list_run_data(client: TestClient, data_type: tuple[str]):
     assert "path" in files[0]
 
 
+def test_generate_project_documents_upload_sas_url_success(
+    client: TestClient,
+):
+    generate_project_documents_upload_sas_url_mock = MagicMock(return_value="url")
+    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+        generate_project_documents_upload_sas_url=generate_project_documents_upload_sas_url_mock
+    )
+
+    response = client.get(
+        "/data/project_01/documents/upload/shared_access_signature?file_name=file.txt"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "url"
+    assert generate_project_documents_upload_sas_url_mock.call_args[1] == {
+        "project_name": "project_01",
+        "file_name": "file.txt",
+    }
+
+
+@patch("main.validate_project_document_file_path", MagicMock())
 def test_generate_project_documents_sas_url_success(
     client: TestClient,
 ):
     generate_shared_access_signature_url_mock = MagicMock(return_value="url")
     app.dependency_overrides[get_azure_client] = lambda: MagicMock(
-        generate_project_documents_sas_url=generate_shared_access_signature_url_mock
+        generate_project_documents_sas_url=generate_shared_access_signature_url_mock,
     )
-
-    response = client.get("/data/project_01/documents/shared_access_signature/file.txt")
+    file_path = "file/path/to/document"
+    response = client.get(f"/data/documents/shared_access_signature?path={file_path}")
 
     assert response.status_code == 200
     assert response.json()["url"] == "url"
-    assert generate_shared_access_signature_url_mock.call_args[0] == (
-        "project_01",
-        "file.txt",
-    )
+    assert generate_shared_access_signature_url_mock.call_args[1] == {
+        "dir_path": "file/path/to",
+        "file_name": "document",
+    }
 
 
+@patch(
+    "main.validate_project_document_file_path",
+    MagicMock(side_effect=IncorrectDataFilePath("wrong file path")),
+)
+def test_generate_project_documents_sas_url_wrong_path(
+    client: TestClient,
+):
+    response = client.get("/data/documents/shared_access_signature?path=file_path")
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["query", "path"]
+    assert response.json()["detail"][0]["msg"] == "wrong file path"
+
+
+@patch("main.validate_run_data_file_path", MagicMock())
 def test_generate_run_data_sas_url_success(
     client: TestClient,
 ):
@@ -215,26 +252,30 @@ def test_generate_run_data_sas_url_success(
     app.dependency_overrides[get_azure_client] = lambda: MagicMock(
         generate_run_data_sas_url=generate_shared_access_signature_url_mock
     )
-    response = client.get(
-        "/data/project_01/runs/myrun/raw_data/shared_access_signature/file.txt"
-    )
+    file_path = "file/path/to/run"
+    response = client.get(f"/data/runs/shared_access_signature?path={file_path}")
 
     assert response.status_code == 200
     assert response.json()["url"] == "url"
-    assert generate_shared_access_signature_url_mock.call_args[0] == (
-        "project_01",
-        "myrun",
-        "raw_data",
-        "file.txt",
-    )
+    assert generate_shared_access_signature_url_mock.call_args[1] == {
+        "dir_path": "file/path/to",
+        "file_name": "run",
+        "is_admin": False,
+    }
 
 
-def test_generate_run_data_sas_fails_when_wrong_datatype(client: TestClient):
-    response = client.get(
-        "/data/project_01/runs/myrun/wrongdatatype/shared_access_signature/file.txt"
-    )
+@patch(
+    "main.validate_run_data_file_path",
+    MagicMock(side_effect=IncorrectDataFilePath("wrong file path")),
+)
+def test_generate_run_data_sas_url_wrong_path(
+    client: TestClient,
+):
+    response = client.get("/data/runs/shared_access_signature?path=file_path")
+
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == ["path", "data_type"]
+    assert response.json()["detail"][0]["loc"] == ["query", "path"]
+    assert response.json()["detail"][0]["msg"] == "wrong file path"
 
 
 def test_wait_for_deploy_when_success():
