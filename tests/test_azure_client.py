@@ -86,7 +86,7 @@ def test_get_latest_template_specs(client: AzureClient):
         "1.0.0": {},
         "1.1.1": {},
     }
-    client._get_latest_template_specs()
+    client._get_latest_template_specs(template_name="template_specs")
 
     client._template_specs_client.template_spec_versions.get.assert_called_with(
         resource_group_name="resource_group_name",

@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from tabnanny import verbose
 from typing import Any, Generator, Literal, Optional
 
 from azure.core.credentials import TokenCredential
@@ -10,6 +11,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.core.polling import LROPoller
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
+from azure.mgmt.compute.models import Gallery
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentExtended
 from azure.mgmt.resource.templatespecs import TemplateSpecsClient
@@ -62,6 +64,11 @@ class AzureVMDeploymentProperties:
     password: str
     deployment_process: LROPoller[DeploymentExtended]
 
+@dataclass
+class AzureCaptureDeploymentProperties:
+    vm_name: str
+    version: str
+    deployment_process: LROPoller[DeploymentExtended]
 
 class ProjectFile(BaseModel):
     name: str
@@ -166,7 +173,7 @@ class AzureClient:
             deployment_name=slugify(project_name),
         ):
             return None
-        template = self._get_latest_template_specs()
+        template = self._get_latest_template_specs(template_name=self.template_specs_name)
         parameters = {
             "vmName": slugify(project_name),
         }
@@ -313,6 +320,35 @@ class AzureClient:
                 )
             ]
         )
+    
+    def create_new_image_version(self, vm_name: str, version: int):
+        """
+        Will use the given vm to create a new specialized image of this image and save it 
+        to the image gallery with the given version
+        """
+        template = self._get_latest_template_specs(template_name="captureVMSpec")
+        parameters = {
+            "vmName": vm_name,
+            "version": version
+        }
+
+        poller = self._resource_mgmt_client.deployments.begin_create_or_update(
+            resource_group_name=self.resource_group_name,
+            deployment_name=f"update_vm_image/{vm_name}/{version}",
+            parameters={
+                "properties": {
+                    "template": template,
+                    "parameters": parameters,
+                    "mode": "Incremental",
+                },
+            },
+        )
+
+        return AzureCaptureDeploymentProperties(
+            vm_name=vm_name,
+            version=version,
+            deployment_process=poller,
+        )
 
     def _list_files_recursive(
         self, dir_path: str, fetch_detailed_information: bool = False
@@ -377,20 +413,19 @@ class AzureClient:
                 else:
                     yield ProjectFile.parse_obj({**file, "path": path})
 
-    def _get_latest_template_specs(self) -> dict[str, Any]:
+    def _get_latest_template_specs(self, template_name: str) -> dict[str, Any]:
         """Get latest template specs in a python dict format."""
         template_spec = self._template_specs_client.template_specs.get(
             resource_group_name=self.resource_group_name,
-            template_spec_name=self.template_specs_name,
+            template_spec_name=template_name,
             expand="versions",
         )
         latest_version = sorted(template_spec.versions.keys())[-1]
         return self._template_specs_client.template_spec_versions.get(
             resource_group_name=self.resource_group_name,
-            template_spec_name=self.template_specs_name,
+            template_spec_name=template_name,
             template_spec_version=latest_version,
         ).main_template
-
 
 def _project_name_to_vm_name(project_name: str):
     """Returns a correct vm name (prefix added, slugified) based on a project name"""
