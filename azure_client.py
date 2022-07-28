@@ -1,6 +1,8 @@
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Generator, Literal, Optional
 
 from azure.core.credentials import TokenCredential
@@ -24,6 +26,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from slugify import slugify
 
+from auth import User
+
 load_dotenv()
 
 RunDataTypeType = Literal["processed_data", "raw_data"]
@@ -45,6 +49,12 @@ class ProjectDocumentsNotFound(Exception):
     pass
 
 
+class IncorrectDataFilePath(Exception):
+    def __init__(self, message: str, *args: object):
+        self.message = message
+        super().__init__(*args)
+
+
 @dataclass
 class AzureVMDeploymentProperties:
     project_name: str
@@ -55,9 +65,9 @@ class AzureVMDeploymentProperties:
 
 class ProjectFile(BaseModel):
     name: str
-    last_modified: datetime
+    last_modified: Optional[datetime]
     size: int
-    path: str
+    path: Optional[str]
 
 
 class AzureClient:
@@ -197,7 +207,7 @@ class AzureClient:
         project_name: str,
     ) -> list[ProjectFile]:
         dir_path = os.path.join(_get_projects_path(), project_name, "documents")
-        files = self._list_files_recursive(dir_path)
+        files = self._list_files_recursive(dir_path, fetch_detailed_information=True)
         try:
             return list(files)
         except ResourceNotFoundError as error:
@@ -212,33 +222,44 @@ class AzureClient:
         """Fetches run data files from Fileshare.
         Specify `data_type` to get either 'raw_data' or 'processed_data'.
         """
-        dir_path = _get_run_data_directory_name(project_name, run_name, data_type)
+        projects_path_prefix = _get_projects_path()
+        dir_path = os.path.join(
+            projects_path_prefix, project_name, "runs", run_name, data_type
+        )
         files = self._list_files_recursive(dir_path)
         try:
             return list(files)
         except ResourceNotFoundError as error:
             raise RunDataNotFound from error
 
-    def generate_project_documents_sas_url(self, project_name: str, file_name: str):
+    def generate_project_documents_upload_sas_url(
+        self, project_name: str, file_name: str
+    ):
         """Generate URL with Shared Access Signature to manage project documents in
-        an Azure Fileshare. Permission are read, write, create & delete.
+        an Azure Fileshare. Permission are write & create. To download and delete use
+        generate_project_documents_sas_url.
         """
         dir_path = os.path.join(_get_projects_path(), project_name, "documents")
-        permission = FilePermissions(read=True, create=True, write=True, delete=True)
+        permission = FilePermissions(read=False, create=True, write=True, delete=False)
+        return self._generate_sas_url(dir_path, file_name, permission)
+
+    def generate_project_documents_sas_url(self, dir_path: str, file_name: str):
+        """Generate URL with Shared Access Signature to manage project documents in
+        an Azure Fileshare. Permission are read & delete. To upload a document use
+        generate_project_documents_upload_sas_url.
+        """
+        permission = FilePermissions(read=True, create=False, write=False, delete=True)
         return self._generate_sas_url(dir_path, file_name, permission)
 
     def generate_run_data_sas_url(
         self,
-        project_name: str,
-        run_name: str,
-        data_type: RunDataTypeType,
+        dir_path: str,
         file_name: str,
         is_admin: bool,
     ):
         """Generate URL with Shared Access Signature to manage run data in an
         Azure Fileshare. Regular users can read. Admins can also write, create & delete.
         """
-        dir_path = _get_run_data_directory_name(project_name, run_name, data_type)
         permission = FilePermissions(
             read=True, create=is_admin, write=is_admin, delete=is_admin
         )
@@ -294,7 +315,7 @@ class AzureClient:
         )
 
     def _list_files_recursive(
-        self, dir_path: str
+        self, dir_path: str, fetch_detailed_information: bool = False
     ) -> Generator[ProjectFile, None, None]:
         """
         List files from FileShare on Azure Storage Account.
@@ -305,6 +326,9 @@ class AzureClient:
             Directory path to list files from.
         recursive: bool
             Specifies whether to list files recursively.
+        fetch_detailed_information: bool
+            If True will make a request for each file to get more metadata
+            about it.
 
         Returns
         -------
@@ -343,13 +367,15 @@ class AzureClient:
                 for child in childrens:
                     yield child
             else:
-                file_client = ShareFileClient.from_connection_string(
-                    conn_str=self._storage_connection_string,
-                    share_name=share_name,
-                    file_path=path,
-                )
-
-                yield ProjectFile.parse_obj(file_client.get_file_properties())
+                if fetch_detailed_information:
+                    file_client = ShareFileClient.from_connection_string(
+                        conn_str=self._storage_connection_string,
+                        share_name=share_name,
+                        file_path=path,
+                    )
+                    yield ProjectFile.parse_obj(file_client.get_file_properties())
+                else:
+                    yield ProjectFile.parse_obj({**file, "path": path})
 
     def _get_latest_template_specs(self) -> dict[str, Any]:
         """Get latest template specs in a python dict format."""
@@ -408,8 +434,32 @@ def _get_projects_path():
     return os.getenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "")
 
 
-def _get_run_data_directory_name(
-    project_name: str, run_name: str, data_type: RunDataTypeType
-):
+def _validate_project_file_path(path: Path, current_user: User):
+    """Given a path, validate the path is valid for project data and the user has
+    permission to access it.
+    """
     projects_path_prefix = _get_projects_path()
-    return os.path.join(projects_path_prefix, project_name, "runs", run_name, data_type)
+    path_without_prefix = Path(str(path).replace(projects_path_prefix + "/", "", 1))
+    project_name = path_without_prefix.parts[0]
+    if not current_user.has_project(project_name) and not current_user.is_admin:
+        raise IncorrectDataFilePath(f"user is not part of project {project_name}")
+
+
+def validate_run_data_file_path(path: Path, current_user: User):
+    if not re.match(
+        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data)\/",
+        str(path),
+    ):
+        # pylint: disable=line-too-long
+        raise IncorrectDataFilePath(
+            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data)/"
+        )
+    _validate_project_file_path(path, current_user)
+
+
+def validate_project_document_file_path(path: Path, current_user: User):
+    if not re.match(rf"^{_get_projects_path()}\/[\w\- ]+\/documents", str(path)):
+        raise IncorrectDataFilePath(
+            "path must start with {projects_path_prefix}/<project_name>/documents/"
+        )
+    _validate_project_file_path(path, current_user)

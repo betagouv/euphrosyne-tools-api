@@ -1,6 +1,7 @@
 import os
+import pathlib
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Path
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -9,10 +10,13 @@ from azure_client import (
     AzureClient,
     AzureVMDeploymentProperties,
     DeploymentNotFound,
+    IncorrectDataFilePath,
     ProjectDocumentsNotFound,
     ProjectFile,
     RunDataNotFound,
     VMNotFound,
+    validate_project_document_file_path,
+    validate_run_data_file_path,
     wait_for_deployment_completeness,
 )
 from exceptions import (
@@ -154,79 +158,92 @@ def list_project_documents(
 
 
 @app.get(
-    "/data/{project_name}/runs/{run_name}/raw_data",
+    "/data/{project_name}/runs/{run_name}/{data_type}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=list[ProjectFile],
 )
-def list_run_raw_data(
+def list_run_data(
     project_name: str,
     run_name: str,
+    data_type: str = Path(default=None, regex="^(raw_data|processed_data)$"),
     azure_client: AzureClient = Depends(get_azure_client),
 ):
     try:
-        return azure_client.get_run_files(project_name, run_name, "raw_data")
+        return azure_client.get_run_files(project_name, run_name, data_type)  # type: ignore
     except RunDataNotFound:
         return JSONResponse({"detail": "Run data not found"}, status_code=404)
 
 
 @app.get(
-    "/data/{project_name}/runs/{run_name}/processed_data",
+    "/data/runs/shared_access_signature",
     status_code=200,
-    dependencies=[Depends(verify_project_membership)],
-    response_model=list[ProjectFile],
 )
-def list_run_processed_data(
-    project_name: str,
-    run_name: str,
+def generate_run_data_shared_access_signature(
+    path: pathlib.Path,
+    current_user: User = Depends(get_current_user),
     azure_client: AzureClient = Depends(get_azure_client),
 ):
-    try:
-        return azure_client.get_run_files(project_name, run_name, "processed_data")
-    except RunDataNotFound:
-        return JSONResponse({"detail": "Run data not found"}, status_code=404)
-
-
-@app.get(
-    "/data/{project_name}/documents/shared_access_signature/{file_name}",
-    status_code=200,
-    dependencies=[Depends(verify_project_membership)],
-)
-def generate_project_documents_shared_access_signature(
-    project_name: str,
-    file_name: str,
-    azure_client: AzureClient = Depends(get_azure_client),
-):
-    """Return a token used to directly download/upload/delete project documents
-    from the place it is stored.
+    """Return a token used to directly download run data
+    from run file storage.
     """
-    url = azure_client.generate_project_documents_sas_url(project_name, file_name)
+    try:
+        validate_run_data_file_path(path, current_user)
+    except IncorrectDataFilePath as error:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"loc": ["query", "path"], "msg": error.message}],
+        ) from error
+    url = azure_client.generate_run_data_sas_url(
+        dir_path=str(path.parents[0]),
+        file_name=path.name,
+        is_admin=current_user.is_admin,
+    )
     return {"url": url}
 
 
 @app.get(
-    "/data/{project_name}/runs/{run_name}/{data_type}/shared_access_signature/{file_name}",
+    "/data/documents/shared_access_signature/",
     status_code=200,
-    dependencies=[Depends(verify_project_membership)],
 )
-def generate_run_data_shared_access_signature(
-    project_name: str,
-    run_name: str,
-    file_name: str,
-    data_type: str = Path(default=None, regex="^(raw_data|procesed_data)$"),
+def generate_project_documents_shared_access_signature(
+    path: pathlib.Path,
     current_user: User = Depends(get_current_user),
     azure_client: AzureClient = Depends(get_azure_client),
 ):
-    """Return a token used to directly download/upload/delete run data
-    from the place it is stored.
+    """Return a token used to directly download project documents
+    from document file storage.
     """
+    try:
+        validate_project_document_file_path(path, current_user)
+    except IncorrectDataFilePath as error:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"loc": ["query", "path"], "msg": error.message}],
+        ) from error
+    url = azure_client.generate_project_documents_sas_url(
+        dir_path=str(path.parents[0]),
+        file_name=path.name,
+    )
+    return {"url": url}
 
-    url = azure_client.generate_run_data_sas_url(
-        project_name,
-        run_name,
-        data_type,  # type: ignore
-        file_name,
-        is_admin=current_user.is_admin,
+
+@app.get(
+    "/data/{project_name}/documents/upload/shared_access_signature",
+    dependencies=[Depends(verify_project_membership)],
+    status_code=200,
+)
+def generate_project_documents_upload_shared_access_signature(
+    project_name: str,
+    file_name: str,
+    azure_client: AzureClient = Depends(get_azure_client),
+):
+    """Return a token used to upload project documents
+    to document file storage.
+    """
+    url = azure_client.generate_project_documents_upload_sas_url(
+        project_name=project_name,
+        file_name=file_name,
     )
     return {"url": url}
 
