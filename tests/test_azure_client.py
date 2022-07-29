@@ -9,6 +9,7 @@ from pytest import MonkeyPatch
 
 from auth import Project, User
 from azure_client import (
+    AzureCaptureDeploymentProperties,
     AzureClient,
     AzureVMDeploymentProperties,
     DeploymentNotFound,
@@ -80,6 +81,31 @@ def test_deploys_with_proper_parameters(client: AzureClient):
         is client._resource_mgmt_client.deployments.begin_create_or_update.return_value
     )
 
+@patch("azure_client.AzureClient._get_latest_template_specs", dict)
+def test_create_image(client: AzureClient):
+    client._resource_mgmt_client.deployments.check_existence.return_value = False
+    result = client.create_new_image_version("vm-test", version="1.1.1")
+
+    call_args = (
+        client._resource_mgmt_client.deployments.begin_create_or_update.call_args[1]
+    )
+
+    assert "parameters" in call_args
+    assert "properties" in call_args["parameters"]
+    assert "template" in call_args["parameters"]["properties"]
+    assert "parameters" in call_args["parameters"]["properties"]
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["vmName"]["value"] == "vm-test"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["version"]["value"] == "1.1.1"
+    )
+    assert isinstance(result, AzureCaptureDeploymentProperties)
+    assert result.vm_name == "vm-test"
+    assert result.version == "1.1.1"
+    assert (
+        result.deployment_process is client._resource_mgmt_client.deployments.begin_create_or_update.return_value
+    )
 
 def test_get_latest_template_specs(client: AzureClient):
     client._template_specs_client.template_specs.get.return_value.versions = {
