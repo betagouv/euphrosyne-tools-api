@@ -64,11 +64,13 @@ class AzureVMDeploymentProperties:
     password: str
     deployment_process: LROPoller[DeploymentExtended]
 
+
 @dataclass
 class AzureCaptureDeploymentProperties:
     vm_name: str
     version: str
     deployment_process: LROPoller[DeploymentExtended]
+
 
 class ProjectFile(BaseModel):
     name: str
@@ -173,7 +175,9 @@ class AzureClient:
             deployment_name=slugify(project_name),
         ):
             return None
-        template = self._get_latest_template_specs(template_name=self.template_specs_name)
+        template = self._get_latest_template_specs(
+            template_name=self.template_specs_name
+        )
         parameters = {
             "vmName": slugify(project_name),
         }
@@ -320,19 +324,16 @@ class AzureClient:
                 )
             ]
         )
-    
+
     def create_new_image_version(self, vm_name: str, version: str):
         """
-        Will use the given vm to create a new specialized image of this image and save it 
+        Will use the given vm to create a new specialized image of this image and save it
         to the image gallery with the given version
         """
         template = self._get_latest_template_specs(template_name="captureVMSpec")
-        parameters = {
-            "vmName": vm_name,
-            "version": version
-        }
+        parameters = {"vmName": vm_name, "version": version}
 
-        formatted_parameters = {k: {"value":v} for k, v in parameters.items()}
+        formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
 
         poller = self._resource_mgmt_client.deployments.begin_create_or_update(
             resource_group_name=self.resource_group_name,
@@ -428,6 +429,7 @@ class AzureClient:
             template_spec_name=template_name,
             template_spec_version=latest_version,
         ).main_template
+
 
 def _project_name_to_vm_name(project_name: str):
     """Returns a correct vm name (prefix added, slugified) based on a project name"""
