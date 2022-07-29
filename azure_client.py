@@ -321,7 +321,7 @@ class AzureClient:
             ]
         )
     
-    def create_new_image_version(self, vm_name: str, version: int):
+    def create_new_image_version(self, vm_name: str, version: str):
         """
         Will use the given vm to create a new specialized image of this image and save it 
         to the image gallery with the given version
@@ -332,13 +332,15 @@ class AzureClient:
             "version": version
         }
 
+        formatted_parameters = {k: {"value":v} for k, v in parameters.items()}
+
         poller = self._resource_mgmt_client.deployments.begin_create_or_update(
             resource_group_name=self.resource_group_name,
-            deployment_name=f"update_vm_image/{vm_name}/{version}",
+            deployment_name=f"updatevmimage_{vm_name}_{version}",
             parameters={
                 "properties": {
                     "template": template,
-                    "parameters": parameters,
+                    "parameters": formatted_parameters,
                     "mode": "Incremental",
                 },
             },
