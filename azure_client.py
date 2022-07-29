@@ -3,7 +3,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from tabnanny import verbose
 from typing import Any, Generator, Literal, Optional
 
 from azure.core.credentials import TokenCredential
@@ -11,7 +10,6 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.core.polling import LROPoller
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
-from azure.mgmt.compute.models import Gallery
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentExtended
 from azure.mgmt.resource.templatespecs import TemplateSpecsClient
