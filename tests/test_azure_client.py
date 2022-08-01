@@ -104,7 +104,7 @@ def test_create_image(client: AzureClient):
         == "1.1.1"
     )
     assert isinstance(result, AzureCaptureDeploymentProperties)
-    assert result.vm_name == "vm-test"
+    assert result.project_name == "vm-test"
     assert result.version == "1.1.1"
     assert (
         result.deployment_process

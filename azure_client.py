@@ -65,7 +65,7 @@ class AzureVMDeploymentProperties:
 
 @dataclass
 class AzureCaptureDeploymentProperties:
-    vm_name: str
+    project_name: str
     version: str
     deployment_process: LROPoller[DeploymentExtended]
 
@@ -323,11 +323,12 @@ class AzureClient:
             ]
         )
 
-    def create_new_image_version(self, vm_name: str, version: str):
+    def create_new_image_version(self, project_name: str, version: str):
         """
         Will use the given vm to create a new specialized image of this image and save it
         to the image gallery with the given version
         """
+        vm_name = _project_name_to_vm_name(project_name)
         template = self._get_latest_template_specs(template_name="captureVMSpec")
         parameters = {"vmName": vm_name, "version": version}
 
@@ -346,7 +347,7 @@ class AzureClient:
         )
 
         return AzureCaptureDeploymentProperties(
-            vm_name=vm_name,
+            project_name=vm_name,
             version=version,
             deployment_process=poller,
         )
