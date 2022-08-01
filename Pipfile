@@ -1,0 +1,32 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+anyio = {version = "==3.6.1", extras = ["trio"]}
+azure-identity = "==1.10.0"
+azure-mgmt-compute = "==27.2.0"
+azure-mgmt-resource = "==21.0.0"
+azure-mgmt-storage = "==20.0.0"
+azure-storage-file-share = "==12.9.0"
+azure-storage-file = "==2.1.0"
+black = "==22.6.0"
+fastapi = "==0.75.2"
+isort = "==5.10.1"
+mypy = "==0.950"
+python-dotenv = "==0.20.0"
+python-jose = {version = "==3.3.0", extras = ["cryptography"]}
+python-slugify = "==6.1.2"
+pylint = "==2.13.8"
+pytest = "==7.1.2"
+requests = "==2.27.1"
+types-python-jose = "==3.3.4"
+types-python-slugify = "==5.0.4"
+types-requests = "==2.28.1"
+uvicorn = {version = "==0.18.2", extras = ["standard"]}
+
+[dev-packages]
+
+[requires]
+python_version = "3.9"
