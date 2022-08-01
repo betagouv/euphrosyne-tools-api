@@ -83,6 +83,7 @@ def test_deploys_with_proper_parameters(client: AzureClient):
 
 
 @patch("azure_client.AzureClient._get_latest_template_specs", dict)
+@patch("azure_client._project_name_to_vm_name", lambda x: x)
 def test_create_image(client: AzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
     result = client.create_new_image_version("vm-test", version="1.1.1")
