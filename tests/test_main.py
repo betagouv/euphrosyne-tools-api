@@ -13,8 +13,10 @@ from azure_client import (
     ProjectFile,
     VMNotFound,
 )
+from backgrounds import wait_for_deploy
+from dependencies import get_azure_client, get_guacamole_client
 from guacamole_client import GuacamoleClient, GuacamoleConnectionNotFound
-from main import app, get_azure_client, get_guacamole_client, wait_for_deploy
+from main import app
 
 
 async def get_current_user_override():
@@ -211,7 +213,7 @@ def test_generate_project_documents_upload_sas_url_success(
     }
 
 
-@patch("main.validate_project_document_file_path", MagicMock())
+@patch("api.data.validate_project_document_file_path", MagicMock())
 def test_generate_project_documents_sas_url_success(
     client: TestClient,
 ):
@@ -231,7 +233,7 @@ def test_generate_project_documents_sas_url_success(
 
 
 @patch(
-    "main.validate_project_document_file_path",
+    "api.data.validate_project_document_file_path",
     MagicMock(side_effect=IncorrectDataFilePath("wrong file path")),
 )
 def test_generate_project_documents_sas_url_wrong_path(
@@ -244,7 +246,7 @@ def test_generate_project_documents_sas_url_wrong_path(
     assert response.json()["detail"][0]["msg"] == "wrong file path"
 
 
-@patch("main.validate_run_data_file_path", MagicMock())
+@patch("api.data.validate_run_data_file_path", MagicMock())
 def test_generate_run_data_sas_url_success(
     client: TestClient,
 ):
@@ -265,7 +267,7 @@ def test_generate_run_data_sas_url_success(
 
 
 @patch(
-    "main.validate_run_data_file_path",
+    "api.data.validate_run_data_file_path",
     MagicMock(side_effect=IncorrectDataFilePath("wrong file path")),
 )
 def test_generate_run_data_sas_url_wrong_path(
@@ -288,7 +290,7 @@ def test_wait_for_deploy_when_success():
     deployment_information = MagicMock(
         properties=MagicMock(outputs={"privateIPVM": {"value": "1.1.1.1"}})
     )
-    with patch("main.wait_for_deployment_completeness") as wait_deployment_mock:
+    with patch("backgrounds.wait_for_deployment_completeness") as wait_deployment_mock:
         wait_deployment_mock.return_value = deployment_information
         guacamole_client_mock = MagicMock(spec=GuacamoleClient)
         azure_client_mock = MagicMock(spec=AzureClient)
@@ -315,7 +317,7 @@ def test_wait_for_deploy_when_failed():
         username="username",
         project_name="project_name",
     )
-    with patch("main.wait_for_deployment_completeness") as wait_deployment_mock:
+    with patch("backgrounds.wait_for_deployment_completeness") as wait_deployment_mock:
         wait_deployment_mock.return_value = None
         guacamole_client_mock = MagicMock(spec=GuacamoleClient)
         wait_for_deploy(
