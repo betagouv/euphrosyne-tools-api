@@ -63,6 +63,13 @@ class AzureVMDeploymentProperties:
     deployment_process: LROPoller[DeploymentExtended]
 
 
+@dataclass
+class AzureCaptureDeploymentProperties:
+    project_name: str
+    version: str
+    deployment_process: LROPoller[DeploymentExtended]
+
+
 class ProjectFile(BaseModel):
     name: str
     last_modified: Optional[datetime]
@@ -166,7 +173,9 @@ class AzureClient:
             deployment_name=slugify(project_name),
         ):
             return None
-        template = self._get_latest_template_specs()
+        template = self._get_latest_template_specs(
+            template_name=self.template_specs_name
+        )
         parameters = {
             "vmName": slugify(project_name),
         }
@@ -314,6 +323,35 @@ class AzureClient:
             ]
         )
 
+    def create_new_image_version(self, project_name: str, version: str):
+        """
+        Will use the given vm to create a new specialized image of this image and save it
+        to the image gallery with the given version
+        """
+        vm_name = _project_name_to_vm_name(project_name)
+        template = self._get_latest_template_specs(template_name="captureVMSpec")
+        parameters = {"vmName": vm_name, "version": version}
+
+        formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
+
+        poller = self._resource_mgmt_client.deployments.begin_create_or_update(
+            resource_group_name=self.resource_group_name,
+            deployment_name=f"updatevmimage_{vm_name}_{version}",
+            parameters={
+                "properties": {
+                    "template": template,
+                    "parameters": formatted_parameters,
+                    "mode": "Incremental",
+                },
+            },
+        )
+
+        return AzureCaptureDeploymentProperties(
+            project_name=vm_name,
+            version=version,
+            deployment_process=poller,
+        )
+
     def _list_files_recursive(
         self, dir_path: str, fetch_detailed_information: bool = False
     ) -> Generator[ProjectFile, None, None]:
@@ -377,17 +415,17 @@ class AzureClient:
                 else:
                     yield ProjectFile.parse_obj({**file, "path": path})
 
-    def _get_latest_template_specs(self) -> dict[str, Any]:
+    def _get_latest_template_specs(self, template_name: str) -> dict[str, Any]:
         """Get latest template specs in a python dict format."""
         template_spec = self._template_specs_client.template_specs.get(
             resource_group_name=self.resource_group_name,
-            template_spec_name=self.template_specs_name,
+            template_spec_name=template_name,
             expand="versions",
         )
         latest_version = sorted(template_spec.versions.keys())[-1]
         return self._template_specs_client.template_spec_versions.get(
             resource_group_name=self.resource_group_name,
-            template_spec_name=self.template_specs_name,
+            template_spec_name=template_name,
             template_spec_version=latest_version,
         ).main_template
 
