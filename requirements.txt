@@ -6,7 +6,7 @@ azure-mgmt-storage==20.0.0
 azure-storage-file-share==12.9.0
 azure-storage-file==2.1.0
 black==22.6.0
-fastapi==0.75.2 
+fastapi==0.79.0 
 isort==5.10.1 
 mypy==0.971
 python-dotenv==0.20.0 

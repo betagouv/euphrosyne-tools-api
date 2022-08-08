@@ -22,7 +22,7 @@ def get_deployment_status(
     try:
         status = azure_client.get_deployment_status(project_name)
     except DeploymentNotFound:
-        return JSONResponse(status_code=404)
+        return JSONResponse(status_code=404, content={})
     return {"status": status}
 
 
