@@ -19,7 +19,7 @@ def delete_vm(
 ):
     """Delete a VM and its connection information on Guacamole."""
     if not current_user.is_admin:
-        return JSONResponse(status_code=403)
+        return JSONResponse(status_code=403, content={})
     azure_client.delete_vm(project_name)
     azure_client.delete_deployment(
         project_name
