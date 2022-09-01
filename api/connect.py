@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from auth import User, get_current_user, verify_project_membership
-from azure_client import AzureClient, VMNotFound
-from dependencies import get_azure_client, get_guacamole_client
-from guacamole_client import GuacamoleClient, GuacamoleConnectionNotFound
+from clients.azure import VMAzureClient
+from clients.azure.vm import VMNotFound
+from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
+from dependencies import get_guacamole_client, get_vm_azure_client
 
 router = APIRouter(prefix="/connect", tags=["connect"])
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/connect", tags=["connect"])
 def get_connection_link(
     project_name: str,
     current_user: User = Depends(get_current_user),
-    azure_client: AzureClient = Depends(get_azure_client),
+    azure_client: VMAzureClient = Depends(get_vm_azure_client),
     guacamole_client: GuacamoleClient = Depends(get_guacamole_client),
 ):
     """Shows connection URL for a deployed VM for a specific project.

@@ -4,8 +4,8 @@ Capture VM into a new image
 
 import argparse
 
-from azure_client import AzureClient
-from guacamole_client import GuacamoleClient
+from clients.azure import VMAzureClient
+from clients.guacamole import GuacamoleClient
 
 from . import get_logger
 
@@ -30,7 +30,7 @@ def capture_vm():
 
     args = parser.parse_args()
 
-    azure_client = AzureClient()
+    azure_client = VMAzureClient()
 
     logger.info("Capturing VM...")
     deployment = azure_client.create_new_image_version(args.project, args.version)
@@ -49,7 +49,7 @@ def capture_vm():
         logger.error("Capture failed")
 
 
-def kill_vm(azure_client: AzureClient, project_name: str):
+def kill_vm(azure_client: VMAzureClient, project_name: str):
     guacamole_client = GuacamoleClient()
     deletion_resp = azure_client.delete_vm(project_name)
     if deletion_resp == "Succeed":

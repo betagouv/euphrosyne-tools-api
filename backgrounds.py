@@ -1,15 +1,15 @@
-from azure_client import (
-    AzureClient,
+from clients.azure import VMAzureClient
+from clients.azure.vm import (
     AzureVMDeploymentProperties,
     wait_for_deployment_completeness,
 )
-from guacamole_client import GuacamoleClient
+from clients.guacamole import GuacamoleClient
 
 
 def wait_for_deploy(
     vm_deployment_properties: AzureVMDeploymentProperties,
     guacamole_client: GuacamoleClient,
-    azure_client: AzureClient,
+    azure_client: VMAzureClient,
 ):
     deployment_information = wait_for_deployment_completeness(
         vm_deployment_properties.deployment_process
