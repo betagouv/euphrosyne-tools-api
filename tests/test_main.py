@@ -5,17 +5,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from auth import Project, User, get_current_user
-from azure_client import (
-    AzureClient,
-    AzureVMDeploymentProperties,
-    DeploymentNotFound,
-    IncorrectDataFilePath,
-    ProjectFile,
-    VMNotFound,
-)
 from backgrounds import wait_for_deploy
-from dependencies import get_azure_client, get_guacamole_client
-from guacamole_client import GuacamoleClient, GuacamoleConnectionNotFound
+from clients.azure import StorageAzureClient, VMAzureClient
+from clients.azure.data import IncorrectDataFilePath, ProjectFile
+from clients.azure.vm import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
+from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
+from dependencies import (
+    get_guacamole_client,
+    get_storage_azure_client,
+    get_vm_azure_client,
+)
 from main import app
 
 
@@ -32,7 +31,12 @@ _client = TestClient(app)
 
 @pytest.fixture(name="client")
 def fixture_client():
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(spec=AzureClient)
+    app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
+        spec=VMAzureClient
+    )
+    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+        spec=StorageAzureClient
+    )
     app.dependency_overrides[get_guacamole_client] = lambda: MagicMock(
         spec=GuacamoleClient
     )
@@ -51,7 +55,7 @@ def test_no_project_membership_exception_handler(client: TestClient):
 
 
 def test_get_connection_link_when_no_vm(client: TestClient):
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         get_vm=MagicMock(side_effect=VMNotFound())
     )
     response = client.get("/connect/project_01")
@@ -82,7 +86,7 @@ def test_get_connection_link_ok(client: TestClient):
 
 
 def test_get_deployment_status_when_no_deployment(client: TestClient):
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         get_deployment_status=MagicMock(side_effect=DeploymentNotFound())
     )
     response = client.get("/deployments/project_01")
@@ -90,7 +94,7 @@ def test_get_deployment_status_when_no_deployment(client: TestClient):
 
 
 def test_get_deployment_status_ok(client: TestClient):
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         get_deployment_status=MagicMock(return_value="Succeeded")
     )
     response = client.get("/deployments/project_01")
@@ -105,7 +109,7 @@ def test_deploy_vm_ok(client: TestClient):
         username="username",
         project_name="project_name",
     )
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         deploy_vm=MagicMock(return_value=deploy_return_value)
     )
     with patch("fastapi.BackgroundTasks.add_task") as mock:
@@ -116,7 +120,7 @@ def test_deploy_vm_ok(client: TestClient):
 
 
 def test_deploy_vm_when_already_deployed(client: TestClient):
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         deploy_vm=MagicMock(return_value=None)
     )
     with patch("fastapi.BackgroundTasks.add_task") as mock:
@@ -126,8 +130,8 @@ def test_deploy_vm_when_already_deployed(client: TestClient):
 
 
 def test_delete_vm(client: TestClient):
-    azure_mock = MagicMock(spec=AzureClient)
-    app.dependency_overrides[get_azure_client] = lambda: azure_mock
+    azure_mock = MagicMock(spec=VMAzureClient)
+    app.dependency_overrides[get_vm_azure_client] = lambda: azure_mock
     guacamole_mock = MagicMock(spec=GuacamoleClient)
     app.dependency_overrides[get_guacamole_client] = lambda: guacamole_mock
     app.dependency_overrides[get_current_user] = get_admin_user_override
@@ -175,7 +179,7 @@ def test_list_run_data(client: TestClient, data_type: tuple[str]):
     get_run_files_mock = MagicMock(
         get_run_files=MagicMock(return_value=yield_project_files())
     )
-    app.dependency_overrides[get_azure_client] = lambda: get_run_files_mock
+    app.dependency_overrides[get_storage_azure_client] = lambda: get_run_files_mock
 
     response = client.get(f"/data/project_01/runs/run_01/{data_type}")
     files = response.json()
@@ -197,7 +201,7 @@ def test_generate_project_documents_upload_sas_url_success(
     client: TestClient,
 ):
     generate_project_documents_upload_sas_url_mock = MagicMock(return_value="url")
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
         generate_project_documents_upload_sas_url=generate_project_documents_upload_sas_url_mock
     )
 
@@ -218,7 +222,7 @@ def test_generate_project_documents_sas_url_success(
     client: TestClient,
 ):
     generate_shared_access_signature_url_mock = MagicMock(return_value="url")
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
         generate_project_documents_sas_url=generate_shared_access_signature_url_mock,
     )
     file_path = "file/path/to/document"
@@ -251,7 +255,7 @@ def test_generate_run_data_sas_url_success(
     client: TestClient,
 ):
     generate_shared_access_signature_url_mock = MagicMock(return_value="url")
-    app.dependency_overrides[get_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
         generate_run_data_sas_url=generate_shared_access_signature_url_mock
     )
     file_path = "file/path/to/run"
@@ -293,7 +297,7 @@ def test_wait_for_deploy_when_success():
     with patch("backgrounds.wait_for_deployment_completeness") as wait_deployment_mock:
         wait_deployment_mock.return_value = deployment_information
         guacamole_client_mock = MagicMock(spec=GuacamoleClient)
-        azure_client_mock = MagicMock(spec=AzureClient)
+        azure_client_mock = MagicMock(spec=VMAzureClient)
         wait_for_deploy(
             deployment_properties,
             guacamole_client=guacamole_client_mock,
@@ -323,6 +327,6 @@ def test_wait_for_deploy_when_failed():
         wait_for_deploy(
             deployment_properties,
             guacamole_client=guacamole_client_mock,
-            azure_client=MagicMock(spec=AzureClient),
+            azure_client=MagicMock(spec=VMAzureClient),
         )
         guacamole_client_mock.create_connection.assert_not_called()

@@ -4,8 +4,8 @@ Create a Azure VM and a Guacamole connection
 """
 import argparse
 
-from azure_client import AzureClient
-from guacamole_client import GuacamoleClient
+from clients.azure import VMAzureClient
+from clients.guacamole import GuacamoleClient
 
 from . import get_logger
 
@@ -19,7 +19,7 @@ def create_vm():
     )
     args = parser.parse_args()
 
-    azure_client = AzureClient()
+    azure_client = VMAzureClient()
 
     logger.info("Deploying VM... This can take a while.")
     deployment = azure_client.deploy_vm(project_name=args.project_name)
