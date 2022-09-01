@@ -30,6 +30,7 @@ class GuacamoleClient:
         response = requests.post(
             f"{self._guamacole_root_url}/api/tokens",
             data={"username": username, "password": password},
+            timeout=5,
         )
         return response.json()["authToken"]
 
@@ -42,7 +43,8 @@ class GuacamoleClient:
     def get_connection_by_name(self, name: str) -> str:
         token = self._get_admin_token()
         response = requests.get(
-            f"{self._guamacole_root_url}/api/session/data/mysql/connections?token={token}"
+            f"{self._guamacole_root_url}/api/session/data/mysql/connections?token={token}",
+            timeout=5,
         )
         try:
             return next(
@@ -154,6 +156,7 @@ class GuacamoleClient:
                     "guacd-hostname": "",
                 },
             },
+            timeout=5,
         )
 
     def delete_connection(self, name: str):
@@ -163,7 +166,8 @@ class GuacamoleClient:
         response = requests.delete(
             "{}/api/session/data/mysql/connections/{}?token={}".format(
                 self._guamacole_root_url, connection_id, token
-            )
+            ),
+            timeout=5,
         )
         if response.ok:
             return None
@@ -181,13 +185,15 @@ class GuacamoleClient:
                     "value": "READ",
                 }
             ],
+            timeout=5,
         )
 
     def create_user_if_absent(self, username: str):
         token = self._get_admin_token()
 
         user_detail_resp = requests.get(
-            f"{self._guamacole_root_url}/api/session/data/mysql/users/{username}?token={token}"
+            f"{self._guamacole_root_url}/api/session/data/mysql/users/{username}?token={token}",
+            timeout=5,
         )
         if not user_detail_resp.ok:
             password = get_password_for_username(
@@ -211,6 +217,7 @@ class GuacamoleClient:
                         "guac-organizational-role": "",
                     },
                 },
+                timeout=5,
             )
 
     def generate_connection_link(self, connection_id: str, user_id: str):
