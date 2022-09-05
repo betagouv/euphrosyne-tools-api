@@ -231,6 +231,23 @@ class GuacamoleClient:
         client_identifier = base64.b64encode(bytes_to_encode).decode("utf-8")
         return f"{os.environ['GUACAMOLE_ROOT_URL']}/#/client/{client_identifier}?token={token}"
 
+    def get_connections_and_groups(self):
+        token = self._get_admin_token()
+
+        resp = requests.get(
+            f"{self._guamacole_root_url}/api/session/data/mysql/connectionGroups/ROOT/tree?token={token}", # pylint: disable=line-too-long
+            timeout=5,
+        )
+
+        if not resp.ok:
+            raise Exception(f"Error getting response ({resp.status_code}): {resp.json()['message']}")
+
+        data = resp.json()
+        if "childConnectionGroups" not in data:
+            raise Exception("Missing 'childConnectionGroups' from response")
+
+        return data
+
 
 def get_password_for_username(username: str, key: str) -> str:
     """Encrypt username with a key to use as a password."""
