@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from auth import Project, User, get_current_user
 from backgrounds import wait_for_deploy
-from clients.azure import StorageAzureClient, VMAzureClient
+from clients.azure import DataAzureClient, VMAzureClient
 from clients.azure.data import IncorrectDataFilePath, ProjectFile
 from clients.azure.vm import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
 from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
@@ -35,7 +35,7 @@ def fixture_client():
         spec=VMAzureClient
     )
     app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
-        spec=StorageAzureClient
+        spec=DataAzureClient
     )
     app.dependency_overrides[get_guacamole_client] = lambda: MagicMock(
         spec=GuacamoleClient

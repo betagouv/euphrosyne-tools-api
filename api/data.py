@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
 from auth import User, get_current_user, verify_project_membership
-from clients.azure import StorageAzureClient
+from clients.azure import DataAzureClient
 from clients.azure.data import (
     IncorrectDataFilePath,
     ProjectDocumentsNotFound,
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 )
 def list_project_documents(
     project_name: str,
-    azure_client: StorageAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     try:
         return azure_client.get_project_documents(project_name)
@@ -46,7 +46,7 @@ def list_run_data(
     project_name: str,
     run_name: str,
     data_type: str = Path(default=None, regex="^(raw_data|processed_data)$"),
-    azure_client: StorageAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     try:
         return azure_client.get_run_files(project_name, run_name, data_type)  # type: ignore
@@ -61,7 +61,7 @@ def list_run_data(
 def generate_run_data_shared_access_signature(
     path: pathlib.Path,
     current_user: User = Depends(get_current_user),
-    azure_client: StorageAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     """Return a token used to directly download run data
     from run file storage.
@@ -88,7 +88,7 @@ def generate_run_data_shared_access_signature(
 def generate_project_documents_shared_access_signature(
     path: pathlib.Path,
     current_user: User = Depends(get_current_user),
-    azure_client: StorageAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     """Return a token used to directly download project documents
     from document file storage.
@@ -115,7 +115,7 @@ def generate_project_documents_shared_access_signature(
 def generate_project_documents_upload_shared_access_signature(
     project_name: str,
     file_name: str,
-    azure_client: StorageAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     """Return a token used to upload project documents
     to document file storage.

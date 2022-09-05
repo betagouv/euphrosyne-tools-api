@@ -1,13 +1,13 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
 from datetime import datetime
-from unittest.mock import DEFAULT, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest import MonkeyPatch
 
 from auth import Project, User
-from clients.azure import StorageAzureClient
+from clients.azure import DataAzureClient
 from clients.azure.data import (
     IncorrectDataFilePath,
     ProjectFile,
@@ -21,16 +21,13 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_GROUP_NAME", "resource_group_name")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
-    with patch.multiple(
-        "clients.azure.data",
-        StorageManagementClient=DEFAULT,
-        FileSharedAccessSignature=DEFAULT,
-    ):
-        return StorageAzureClient()
+    with patch("clients.azure._storage.StorageManagementClient"):
+        with patch("clients.azure.data.FileSharedAccessSignature"):
+            return DataAzureClient()
 
 
 def test_get_project_documents_with_prefix(
-    client: StorageAzureClient, monkeypatch: MonkeyPatch
+    client: DataAzureClient, monkeypatch: MonkeyPatch
 ):
     monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "/prefix")
     _list_files_recursive_mock = MagicMock(
@@ -53,9 +50,7 @@ def test_get_project_documents_with_prefix(
         assert len(list(files)) == 1
 
 
-def test_get_run_files_with_prefix(
-    client: StorageAzureClient, monkeypatch: MonkeyPatch
-):
+def test_get_run_files_with_prefix(client: DataAzureClient, monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "/prefix")
     _list_files_recursive_mock = MagicMock(
         return_value=(
@@ -80,7 +75,7 @@ def test_get_run_files_with_prefix(
 
 
 def test_generate_project_documents_sas_url(
-    client: StorageAzureClient,
+    client: DataAzureClient,
     monkeypatch: MonkeyPatch,
 ):
     with patch.object(
@@ -113,7 +108,7 @@ def test_generate_project_documents_sas_url(
 @patch("clients.azure.data._get_projects_path")
 def test_generate_project_documents_upload_sas_url(
     _get_projects_path_mock: MagicMock,
-    client: StorageAzureClient,
+    client: DataAzureClient,
     monkeypatch: MonkeyPatch,
 ):
     with patch.object(
@@ -149,7 +144,7 @@ def test_generate_project_documents_upload_sas_url(
     (True, False),
 )
 def test_generate_run_data_sas_url(
-    client: StorageAzureClient,
+    client: DataAzureClient,
     monkeypatch: MonkeyPatch,
     is_admin: bool,
 ):
@@ -185,7 +180,7 @@ def test_generate_run_data_sas_url(
 def test_list_files_recursive_without_detailed_info(
     share_file_client: MagicMock,
     share_directory_client: MagicMock,
-    client: StorageAzureClient,
+    client: DataAzureClient,
     monkeypatch: MonkeyPatch,
 ):
     monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
@@ -231,7 +226,7 @@ def test_list_files_recursive_without_detailed_info(
 def test_list_files_recursive_with_detailed_info(
     share_file_client: MagicMock,
     share_directory_client: MagicMock,
-    client: StorageAzureClient,
+    client: DataAzureClient,
     monkeypatch: MonkeyPatch,
 ):
     monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
