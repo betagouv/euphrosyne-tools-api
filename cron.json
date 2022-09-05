@@ -1,0 +1,8 @@
+{
+    "jobs": [
+        {
+            "command": "*/30 * * * * python -m scripts.kill_unused_vm",
+            "size": "S"
+        }
+    ]
+}
