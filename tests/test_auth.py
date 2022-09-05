@@ -4,7 +4,14 @@ import pytest
 from fastapi import HTTPException, status
 from jose import jwt
 
-from auth import ALGORITHM, Project, User, get_current_user, verify_project_membership
+from auth import (
+    ALGORITHM,
+    Project,
+    User,
+    get_current_user,
+    verify_admin_permission,
+    verify_project_membership,
+)
 from exceptions import NoProjectMembershipException
 
 
@@ -73,6 +80,17 @@ def test_verify_project_membership_fails_for_regular_user():
     with pytest.raises(NoProjectMembershipException):
         verify_project_membership(
             "hello-world",
+            User(
+                id=1,
+                is_admin=False,
+                projects=[],
+            ),
+        )
+
+
+def test_verify_admin_permission():
+    with pytest.raises(HTTPException):
+        verify_admin_permission(
             User(
                 id=1,
                 is_admin=False,
