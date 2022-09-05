@@ -4,7 +4,7 @@ Create a Azure VM and a Guacamole connection
 """
 import argparse
 
-from clients.azure import StorageAzureClient
+from clients.azure import DataAzureClient
 
 
 def generate_file_sas_url():
@@ -13,7 +13,7 @@ def generate_file_sas_url():
     parser.add_argument("file_name", help="File name.")
     args = parser.parse_args()
 
-    azure_client = StorageAzureClient()
+    azure_client = DataAzureClient()
 
     url = azure_client.generate_run_data_sas_url(
         dir_path=args.dir_path,

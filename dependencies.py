@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from clients.azure import StorageAzureClient, VMAzureClient
+from clients.azure import DataAzureClient, VMAzureClient
 from clients.guacamole import GuacamoleClient
 
 
@@ -11,7 +11,7 @@ def get_vm_azure_client():
 
 @lru_cache()
 def get_storage_azure_client():
-    return StorageAzureClient()
+    return DataAzureClient()
 
 
 @lru_cache()

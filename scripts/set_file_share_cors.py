@@ -4,7 +4,7 @@ Create a Azure VM and a Guacamole connection
 """
 import argparse
 
-from clients.azure import StorageAzureClient
+from clients.azure import DataAzureClient
 
 from . import get_logger
 
@@ -16,7 +16,7 @@ def set_file_share_cors():
     parser.add_argument("allowed_origins", help="Allowed origins.")
     args = parser.parse_args()
 
-    azure_client = StorageAzureClient()
+    azure_client = DataAzureClient()
 
     logger.info("Settings CORS allowed origins...")
     azure_client.set_fileshare_cors_policy(args.allowed_origins)
