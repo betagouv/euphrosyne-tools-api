@@ -55,3 +55,8 @@ def verify_project_membership(
 ):
     if not current_user.is_admin and not current_user.has_project(project_name):
         raise NoProjectMembershipException()
+
+
+def verify_admin_permission(current_user: User = Depends(get_current_user)):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Only admins are allowed")
