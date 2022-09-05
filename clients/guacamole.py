@@ -235,12 +235,14 @@ class GuacamoleClient:
         token = self._get_admin_token()
 
         resp = requests.get(
-            f"{self._guamacole_root_url}/api/session/data/mysql/connectionGroups/ROOT/tree?token={token}", # pylint: disable=line-too-long
+            f"{self._guamacole_root_url}/api/session/data/mysql/connectionGroups/ROOT/tree?token={token}",  # pylint: disable=line-too-long
             timeout=5,
         )
 
         if not resp.ok:
-            raise Exception(f"Error getting response ({resp.status_code}): {resp.json()['message']}")
+            raise Exception(
+                f"Error getting response ({resp.status_code}): {resp.json()['message']}"
+            )
 
         data = resp.json()
         if "childConnectionGroups" not in data:
