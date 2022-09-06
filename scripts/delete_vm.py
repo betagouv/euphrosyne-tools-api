@@ -13,29 +13,38 @@ from . import get_logger
 logger = get_logger(__name__)
 
 
-def delete_vm():
+def delete_vm_script():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "project_name", help="Project name related to the VM to delete."
     )
     args = parser.parse_args()
+    delete_vm(args.project_name)
 
-    azure_client = VMAzureClient()
 
-    logger.info("Deleting Azure VM...")
-    status = azure_client.delete_vm(args.project_name)
-    logger.info("Azure VM deletion operation finished with satus : %s", status)
+def delete_vm(
+    project_name: str, azure_client=VMAzureClient(), guacamole_client=GuacamoleClient()
+):
+    logger.info("%s - Deleting Azure VM...", project_name)
+    status = azure_client.delete_vm(project_name)
+    logger.info(
+        "%s - Azure VM deletion operation finished with satus : %s",
+        project_name,
+        status,
+    )
     if status == "Failed":
-        logger.error("Couldn't delete Azure VM.")
-    logger.info("Deleting Azure deployment...")
-    azure_client.delete_deployment(args.project_name)
-    logger.info("Deleting Guacamole connection...")
+        logger.error("%s - Couldn't delete Azure VM.", project_name)
+    logger.info("%s - Deleting Azure deployment...", project_name)
+    azure_client.delete_deployment(project_name)
+    logger.info("%s - Deleting Guacamole connection...", project_name)
     try:
-        GuacamoleClient().delete_connection(args.project_name)
+        guacamole_client.delete_connection(project_name)
     except GuacamoleConnectionNotFound:
-        logger.warning("Did not find a Guacamole connection related to this VM.")
-    logger.info("Done")
+        logger.warning(
+            "%s - Did not find a Guacamole connection related to this VM.", project_name
+        )
+    logger.info("%s - Done deleting vm", project_name)
 
 
 if __name__ == "__main__":
-    delete_vm()
+    delete_vm_script()
