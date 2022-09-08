@@ -1,4 +1,5 @@
 import enum
+import functools
 import json
 from typing import Optional
 
@@ -33,8 +34,7 @@ class ConfigAzureClient(BaseStorageAzureClient):
         """Fetch VM size for a specific project. Will return a value if the
         project has been added to one of the vm size categories (imagery, ...).
         None will be returned has a default value."""
-        blob_client = self._get_or_create_project_vm_sizes_blob()
-        project_vm_sizes: dict = json.loads(blob_client.download_blob().readall())
+        project_vm_sizes = self._get_project_vm_sizes_conf()
         for vm_size, project_names in project_vm_sizes.items():
             if project_name in project_names:
                 return VMSizes[vm_size]
@@ -49,8 +49,7 @@ class ConfigAzureClient(BaseStorageAzureClient):
         several category."""
         if project_vm_size is not None and not isinstance(project_vm_size, VMSizes):
             raise TypeError("project_vm_size must be an enum of VMSizes type.")
-        blob_client = self._get_or_create_project_vm_sizes_blob()
-        project_vm_sizes: dict = json.loads(blob_client.download_blob().readall())
+        project_vm_sizes = self._get_project_vm_sizes_conf()
         for _, project_names in project_vm_sizes.items():
             if project_name in project_names:
                 project_names.remove(project_name)
@@ -62,13 +61,24 @@ class ConfigAzureClient(BaseStorageAzureClient):
                     project_name,
                 ],
             }
+        blob_client = self._get_or_create_project_vm_sizes_blob()
         blob_client.upload_blob(json.dumps(project_vm_sizes), overwrite=True)
+
+        # Clear cache when changing conf
+        # pylint: disable=no-member
+        self._get_project_vm_sizes_conf.cache_clear()
+
+    @functools.lru_cache
+    def _get_project_vm_sizes_conf(self) -> dict:
+        blob_client = self._get_or_create_project_vm_sizes_blob()
+        return json.loads(blob_client.download_blob().readall())
 
     def _get_or_create_project_vm_sizes_blob(self):
         return self._get_or_create_blob(
             self.project_settings_container_client, "project-vm-sizes.json", "{}"
         )
 
+    @functools.lru_cache
     def _get_or_create_blob(
         self, container_client: ContainerClient, blob_name: str, initial_data: str
     ) -> BlobClient:
