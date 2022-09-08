@@ -4,9 +4,14 @@ from fastapi.responses import JSONResponse
 from auth import verify_project_membership
 from backgrounds import wait_for_deploy
 from clients.azure import VMAzureClient
+from clients.azure.config import ConfigAzureClient
 from clients.azure.vm import DeploymentNotFound
 from clients.guacamole import GuacamoleClient
-from dependencies import get_guacamole_client, get_vm_azure_client
+from dependencies import (
+    get_config_azure_client,
+    get_guacamole_client,
+    get_vm_azure_client,
+)
 
 router = APIRouter(prefix="/deployments", tags=["deployments"])
 
@@ -35,12 +40,14 @@ def get_deployment_status(
 def deploy_vm(
     project_name: str,
     background_tasks: BackgroundTasks,
-    azure_client: VMAzureClient = Depends(get_vm_azure_client),
+    vm_client: VMAzureClient = Depends(get_vm_azure_client),
+    config_client: ConfigAzureClient = Depends(get_config_azure_client),
     guacamole_client: GuacamoleClient = Depends(get_guacamole_client),
 ):
     """Deploys a VM for a specific project."""
-    vm_information = azure_client.deploy_vm(project_name, vm_size="Standard_DS1_v2")
+    vm_size = config_client.get_project_vm_size(project_name)
+    vm_information = vm_client.deploy_vm(project_name, vm_size=vm_size)
     if vm_information:
         background_tasks.add_task(
-            wait_for_deploy, vm_information, guacamole_client, azure_client
+            wait_for_deploy, vm_information, guacamole_client, vm_client
         )

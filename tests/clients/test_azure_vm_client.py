@@ -7,7 +7,9 @@ from azure.core.exceptions import ResourceNotFoundError
 from pytest import MonkeyPatch
 
 from clients.azure import VMAzureClient
+from clients.azure.config import VMSizes
 from clients.azure.vm import (
+    PROJECT_TYPE_VM_SIZE,
     AzureCaptureDeploymentProperties,
     AzureVMDeploymentProperties,
     DeploymentNotFound,
@@ -46,7 +48,7 @@ def test_deploy_exits_when_vm_exists(client: VMAzureClient):
 @patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
 def test_deploys_with_proper_parameters(client: VMAzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
-    result = client.deploy_vm("vm-test", vm_size="Standard_B8ms")
+    result = client.deploy_vm("vm-test", vm_size=None)
 
     call_args = (
         client._resource_mgmt_client.deployments.begin_create_or_update.call_args[1]
@@ -70,6 +72,21 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
     assert (
         result.deployment_process
         is client._resource_mgmt_client.deployments.begin_create_or_update.return_value
+    )
+
+
+@patch("clients.azure.vm.VMAzureClient._get_latest_template_specs", dict)
+@patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
+def test_deploys_with_proper_parameters_when_imagery_project(client: VMAzureClient):
+    client._resource_mgmt_client.deployments.check_existence.return_value = False
+    client.deploy_vm("vm-test", vm_size=VMSizes.IMAGERY)
+
+    call_args = (
+        client._resource_mgmt_client.deployments.begin_create_or_update.call_args[1]
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["vmSize"]["value"]
+        == PROJECT_TYPE_VM_SIZE[VMSizes.IMAGERY]
     )
 
 
