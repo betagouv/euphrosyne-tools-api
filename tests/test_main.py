@@ -11,6 +11,7 @@ from clients.azure.data import IncorrectDataFilePath, ProjectFile
 from clients.azure.vm import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
 from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
 from dependencies import (
+    get_config_azure_client,
     get_guacamole_client,
     get_storage_azure_client,
     get_vm_azure_client,
@@ -112,6 +113,9 @@ def test_deploy_vm_ok(client: TestClient):
     app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         deploy_vm=MagicMock(return_value=deploy_return_value)
     )
+    app.dependency_overrides[get_config_azure_client] = lambda: MagicMock(
+        get_project_vm_size=MagicMock(return_value=None)
+    )
     with patch("fastapi.BackgroundTasks.add_task") as mock:
         response = client.post("/deployments/project_01")
         assert response.status_code == 202
@@ -122,6 +126,9 @@ def test_deploy_vm_ok(client: TestClient):
 def test_deploy_vm_when_already_deployed(client: TestClient):
     app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         deploy_vm=MagicMock(return_value=None)
+    )
+    app.dependency_overrides[get_config_azure_client] = lambda: MagicMock(
+        get_project_vm_size=MagicMock(return_value=None)
     )
     with patch("fastapi.BackgroundTasks.add_task") as mock:
         response = client.post("/deployments/project_01")

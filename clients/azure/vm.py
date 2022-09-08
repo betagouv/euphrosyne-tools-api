@@ -12,7 +12,14 @@ from azure.mgmt.resource.templatespecs import TemplateSpecsClient
 from dotenv import load_dotenv
 from slugify import slugify
 
+from clients.azure.config import VMSizes
+
 load_dotenv()
+
+PROJECT_TYPE_VM_SIZE: dict[VMSizes | None, str] = {
+    None: "Standard_B8ms",  # default
+    VMSizes.IMAGERY: "Standard_B20ms",
+}
 
 
 class DeploymentNotFound(Exception):
@@ -98,11 +105,7 @@ class VMAzureClient:
     def deploy_vm(
         self,
         project_name: str,
-        vm_size: Literal[
-            "Standard_B8ms",
-            "Standard_B20ms",
-            "Standard_DS1_v2",
-        ] = None,
+        vm_size: Optional[VMSizes] = None,
     ) -> Optional[AzureVMDeploymentProperties]:
         """Deploys a VM based on Template Specs specified
         with AZURE_TEMPLATE_SPECS_NAME env variable.
@@ -120,8 +123,7 @@ class VMAzureClient:
         parameters = {
             "vmName": slugify(project_name),
         }
-        if vm_size:
-            parameters["vmSize"] = vm_size
+        parameters["vmSize"] = PROJECT_TYPE_VM_SIZE[vm_size]
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
         poller = self._resource_mgmt_client.deployments.begin_create_or_update(
             resource_group_name=self.resource_group_name,
