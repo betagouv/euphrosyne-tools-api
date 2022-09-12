@@ -8,8 +8,12 @@ from dotenv import load_dotenv
 
 from .models import (
     GuacamoleAuthGenerateTokenResponse,
+    GuacamoleConnectionCreateInput,
+    GuacamoleConnectionCreateParametersData,
     GuacamoleConnectionsAndGroupsResponse,
     GuacamoleConnectionsListResponse,
+    GuacamoleCreateUserInput,
+    GuacamoleUserPermissionInput,
 )
 
 load_dotenv()
@@ -38,7 +42,7 @@ class GuacamoleClient:
             data={"username": username, "password": password},
             timeout=5,
         )
-        parsed_response = GuacamoleAuthGenerateTokenResponse(**response.json())
+        parsed_response = GuacamoleAuthGenerateTokenResponse.parse_obj(response.json())
         return parsed_response.auth_token
 
     def _get_admin_token(self):
@@ -53,7 +57,7 @@ class GuacamoleClient:
             f"{self._guamacole_root_url}/api/session/data/mysql/connections?token={token}",
             timeout=5,
         )
-        parsed_response = GuacamoleConnectionsListResponse(**response.json())
+        parsed_response = GuacamoleConnectionsListResponse.parse_obj(response.json())
 
         for conn_id in parsed_response:
             conn = parsed_response[conn_id]
@@ -72,108 +76,33 @@ class GuacamoleClient:
     ):
         """Creates a connection and returns its ID."""
         token = self._get_admin_token()
+        parameters = GuacamoleConnectionCreateParametersData(
+            port=port,
+            hostname=ip_address,
+            username=username,
+            password=password,
+            drive_name="Project data",
+            drive_path=f"/filetransfer/projects/{name}",
+        )
+        input_data = GuacamoleConnectionCreateInput(
+            parent_identifier="ROOT",
+            name=name,
+            protocol="rdp",
+            parameters=parameters,
+        )
+
         requests.post(
             f"{self._guamacole_root_url}/api/session/data/mysql/connections?token={token}",
-            json={
-                "parentIdentifier": "ROOT",
-                "name": name,
-                "protocol": "rdp",
-                "parameters": {
-                    "port": port,
-                    "hostname": ip_address,
-                    "username": username,
-                    "password": password,
-                    "drive-name": "Project data",
-                    "drive-path": f"/filetransfer/projects/{name}",
-                    "security": "nla",
-                    "ignore-cert": "true",
-                    "resize-method": "display-update",
-                    "enable-font-smoothing": "true",
-                    "enable-drive": "true",
-                    "create-drive-path": "true",
-                    "color-depth": "24",
-                    "read-only": "",
-                    "swap-red-blue": "",
-                    "cursor": "",
-                    "clipboard-encoding": "",
-                    "disable-copy": "",
-                    "disable-paste": "",
-                    "dest-port": "",
-                    "recording-exclude-output": "",
-                    "recording-exclude-mouse": "",
-                    "recording-include-keys": "",
-                    "create-recording-path": "",
-                    "enable-sftp": "",
-                    "sftp-port": "",
-                    "sftp-server-alive-interval": "",
-                    "enable-audio": "",
-                    "disable-auth": "",
-                    "gateway-port": "",
-                    "server-layout": "",
-                    "timezone": "",
-                    "console": "",
-                    "width": "",
-                    "height": "",
-                    "dpi": "",
-                    "console-audio": "",
-                    "disable-audio": "",
-                    "enable-audio-input": "",
-                    "enable-printing": "",
-                    "enable-wallpaper": "",
-                    "enable-theming": "",
-                    "enable-full-window-drag": "",
-                    "enable-desktop-composition": "",
-                    "enable-menu-animations": "",
-                    "disable-bitmap-caching": "",
-                    "disable-offscreen-caching": "",
-                    "disable-glyph-caching": "",
-                    "preconnection-id": "",
-                    "domain": "",
-                    "gateway-hostname": "",
-                    "gateway-username": "",
-                    "gateway-password": "",
-                    "gateway-domain": "",
-                    "initial-program": "",
-                    "client-name": "",
-                    "printer-name": "",
-                    "static-channels": "",
-                    "remote-app": "",
-                    "remote-app-dir": "",
-                    "remote-app-args": "",
-                    "preconnection-blob": "",
-                    "load-balance-info": "",
-                    "recording-path": "",
-                    "recording-name": "",
-                    "sftp-hostname": "",
-                    "sftp-host-key": "",
-                    "sftp-username": "",
-                    "sftp-password": "",
-                    "sftp-private-key": "",
-                    "sftp-passphrase": "",
-                    "sftp-root-directory": "",
-                    "sftp-directory": "",
-                },
-                "attributes": {
-                    "max-connections": "",
-                    "max-connections-per-user": "",
-                    "weight": "",
-                    "failover-only": "",
-                    "guacd-port": "",
-                    "guacd-encryption": "",
-                    "guacd-hostname": "",
-                },
-            },
+            json=input_data.dict(by_alias=True),
             timeout=5,
         )
 
     def delete_connection(self, name: str):
         token = self._get_admin_token()
         connection_id = self.get_connection_by_name(name)
-        # pylint: disable=consider-using-f-string
         response = requests.delete(
-            "{}/api/session/data/mysql/connections/{}?token={}".format(
-                self._guamacole_root_url, connection_id, token
-            ),
+            # pylint: disable=line-too-long
+            f"{self._guamacole_root_url}/api/session/data/mysql/connections/{connection_id}?token={token}",
             timeout=5,
         )
         if response.ok:
@@ -186,11 +115,11 @@ class GuacamoleClient:
         return requests.patch(
             f"{self._guamacole_root_url}/api/session/data/mysql/users/{username}/permissions?token={token}",
             json=[
-                {
-                    "op": "add",
-                    "path": f"/connectionPermissions/{connection_id}",
-                    "value": "READ",
-                }
+                GuacamoleUserPermissionInput(
+                    op="add",
+                    path=f"/connectionPermissions/{connection_id}",
+                    value="READ",
+                ).dict(by_alias=True),
             ],
             timeout=5,
         )
@@ -206,28 +135,15 @@ class GuacamoleClient:
             password = get_password_for_username(
                 username, os.environ["GUACAMOLE_SECRET_KEY"]
             )
+
+            input_data = GuacamoleCreateUserInput(username=username, password=password)
             requests.post(
                 f"{self._guamacole_root_url}/api/session/data/mysql/users?token={token}",
-                json={
-                    "username": username,
-                    "password": password,
-                    "attributes": {
-                        "disabled": "",
-                        "expired": "",
-                        "access-window-start": "",
-                        "access-window-end": "",
-                        "valid-from": "",
-                        "valid-until": "",
-                        "timezone": None,
-                        "guac-full-name": "",
-                        "guac-organization": "",
-                        "guac-organizational-role": "",
-                    },
-                },
+                json=input_data.dict(by_alias=True),
                 timeout=5,
             )
 
-    def generate_connection_link(self, connection_id: str, user_id: str):
+    def generate_connection_link(self, connection_id: str, user_id: str) -> str:
         token = self._get_token(
             username=user_id,
             password=get_password_for_username(
@@ -238,7 +154,7 @@ class GuacamoleClient:
         client_identifier = base64.b64encode(bytes_to_encode).decode("utf-8")
         return f"{os.environ['GUACAMOLE_ROOT_URL']}/#/client/{client_identifier}?token={token}"
 
-    def get_connections_and_groups(self) -> GuacamoleConnectionsAndGroupsResponse :
+    def get_connections_and_groups(self) -> GuacamoleConnectionsAndGroupsResponse:
         token = self._get_admin_token()
 
         resp = requests.get(

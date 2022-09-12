@@ -23,7 +23,9 @@ def client(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_get_token(client: GuacamoleClient):
-    token_response = MagicMock(json=MagicMock(return_value={"authToken": "token", "username": "admin" }))
+    token_response = MagicMock(
+        json=MagicMock(return_value={"authToken": "token", "username": "admin"})
+    )
     with patch("clients.guacamole.client.requests") as requests_mock:
         requests_mock.post.return_value = token_response
         assert client._get_token(username="1", password="abc") == "token"
@@ -41,7 +43,9 @@ def test_get_admin_token(client: GuacamoleClient):
 
 
 def test_get_connection_by_name_retrieves_connection(client: GuacamoleClient):
-    response = MagicMock(json=MagicMock(return_value=GUACAMOLE_CONNECTION_LIST_RESPONSE))
+    response = MagicMock(
+        json=MagicMock(return_value=GUACAMOLE_CONNECTION_LIST_RESPONSE)
+    )
     with patch.object(client, "_get_admin_token"):
         with patch("clients.guacamole.client.requests") as requests_mock:
             requests_mock.get.return_value = response
@@ -49,11 +53,12 @@ def test_get_connection_by_name_retrieves_connection(client: GuacamoleClient):
 
 
 def test_get_connection_by_name_raises_when_no_connection(client: GuacamoleClient):
+    response = MagicMock(
+        json=MagicMock(return_value=GUACAMOLE_CONNECTION_LIST_RESPONSE)
+    )
     with patch.object(client, "_get_admin_token"):
         with patch("clients.guacamole.client.requests") as requests_mock:
-            requests_get_mock = MagicMock()
-            requests_get_mock.json.return_value = GUACAMOLE_CONNECTION_LIST_RESPONSE
-            requests_mock.get.return_value = requests_get_mock
+            requests_mock.get.return_value = response
             with pytest.raises(GuacamoleConnectionNotFound):
                 client.get_connection_by_name("unknown connection")
 
@@ -65,6 +70,7 @@ def test_create_connection_with_proper_parameters(client: GuacamoleClient):
                 "name", "ip_address", "username", "password", "port"
             )
             post_data = requests_mock.post.call_args[1]["json"]
+            print(post_data)
             assert post_data["name"] == "name"
             assert post_data["protocol"] == "rdp"
             assert post_data["parameters"]["port"] == "port"
