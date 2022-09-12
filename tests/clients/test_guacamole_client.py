@@ -23,8 +23,8 @@ def client(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_get_token(client: GuacamoleClient):
-    token_response = MagicMock(json=MagicMock(return_value={"authToken": "token"}))
-    with patch("clients.guacamole.requests") as requests_mock:
+    token_response = MagicMock(json=MagicMock(return_value={"authToken": "token", "username": "admin" }))
+    with patch("clients.guacamole.client.requests") as requests_mock:
         requests_mock.post.return_value = token_response
         assert client._get_token(username="1", password="abc") == "token"
 
@@ -33,7 +33,7 @@ def test_get_token(client: GuacamoleClient):
     os.environ,
     {"GUACAMOLE_ADMIN_USERNAME": "username", "GUACAMOLE_ADMIN_PASSWORD": "password"},
 )
-@patch("clients.guacamole.requests", MagicMock)
+@patch("clients.guacamole.client.requests", MagicMock)
 def test_get_admin_token(client: GuacamoleClient):
     with patch.object(client, "_get_token") as get_token_mock:
         client._get_admin_token()
@@ -41,17 +41,16 @@ def test_get_admin_token(client: GuacamoleClient):
 
 
 def test_get_connection_by_name_retrieves_connection(client: GuacamoleClient):
+    response = MagicMock(json=MagicMock(return_value=GUACAMOLE_CONNECTION_LIST_RESPONSE))
     with patch.object(client, "_get_admin_token"):
-        with patch("clients.guacamole.requests") as requests_mock:
-            requests_get_mock = MagicMock()
-            requests_get_mock.json.return_value = GUACAMOLE_CONNECTION_LIST_RESPONSE
-            requests_mock.get.return_value = requests_get_mock
+        with patch("clients.guacamole.client.requests") as requests_mock:
+            requests_mock.get.return_value = response
             assert client.get_connection_by_name("test-02") == "2"
 
 
 def test_get_connection_by_name_raises_when_no_connection(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
-        with patch("clients.guacamole.requests") as requests_mock:
+        with patch("clients.guacamole.client.requests") as requests_mock:
             requests_get_mock = MagicMock()
             requests_get_mock.json.return_value = GUACAMOLE_CONNECTION_LIST_RESPONSE
             requests_mock.get.return_value = requests_get_mock
@@ -61,7 +60,7 @@ def test_get_connection_by_name_raises_when_no_connection(client: GuacamoleClien
 
 def test_create_connection_with_proper_parameters(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
-        with patch("clients.guacamole.requests") as requests_mock:
+        with patch("clients.guacamole.client.requests") as requests_mock:
             client.create_connection(
                 "name", "ip_address", "username", "password", "port"
             )
@@ -80,7 +79,7 @@ def test_create_connection_with_proper_parameters(client: GuacamoleClient):
 
 def test_assign_user_to_connection_with_proper_parameters(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
-        with patch("clients.guacamole.requests") as requests_mock:
+        with patch("clients.guacamole.client.requests") as requests_mock:
             client.assign_user_to_connection("connection_id", "username")
 
             url, data = requests_mock.patch.call_args
@@ -92,7 +91,7 @@ def test_assign_user_to_connection_with_proper_parameters(client: GuacamoleClien
 
 def test_create_user_if_absent_when_user_absent(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
-        with patch("clients.guacamole.requests") as requests_mock:
+        with patch("clients.guacamole.client.requests") as requests_mock:
             requests_mock.get.return_value = MagicMock(ok=False)
             client.create_user_if_absent("username")
 
@@ -104,7 +103,7 @@ def test_create_user_if_absent_when_user_absent(client: GuacamoleClient):
 
 def test_create_user_if_absent_when_user_exists(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
-        with patch("clients.guacamole.requests") as requests_mock:
+        with patch("clients.guacamole.client.requests") as requests_mock:
             requests_mock.get.return_value = MagicMock(ok=True)
             client.create_user_if_absent("username")
 
@@ -114,7 +113,7 @@ def test_create_user_if_absent_when_user_exists(client: GuacamoleClient):
 def test_delete_connection_with_proper_parameters(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
         with patch.object(client, "get_connection_by_name") as get_conn_by_name_mock:
-            with patch("clients.guacamole.requests") as requests_mock:
+            with patch("clients.guacamole.client.requests") as requests_mock:
                 get_conn_by_name_mock.return_value = 1
                 client.delete_connection("connection")
                 url, _ = requests_mock.delete.call_args
@@ -123,7 +122,7 @@ def test_delete_connection_with_proper_parameters(client: GuacamoleClient):
 
 def test_delete_connection_raises_proper_error_on_404(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
-        with patch("clients.guacamole.requests") as requests_mock:
+        with patch("clients.guacamole.client.requests") as requests_mock:
             requests_mock.delete.return_value = MagicMock(ok=False, status_code=404)
             with pytest.raises(GuacamoleConnectionNotFound):
                 client.delete_connection("connection")
@@ -132,7 +131,7 @@ def test_delete_connection_raises_proper_error_on_404(client: GuacamoleClient):
 def test_delete_connection_raises_proper_error_on_http_error(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
         with patch.object(client, "get_connection_by_name"):
-            with patch("clients.guacamole.requests") as requests_mock:
+            with patch("clients.guacamole.client.requests") as requests_mock:
                 requests_mock.delete.return_value = MagicMock(ok=False, status_code=500)
                 with pytest.raises(GuacamoleHttpError):
                     client.delete_connection("connection")
