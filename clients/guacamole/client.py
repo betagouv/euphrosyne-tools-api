@@ -6,7 +6,11 @@ import os
 import requests
 from dotenv import load_dotenv
 
-from .models import GuacamoleAuthGenerateTokenResponse, GuacamoleConnectionsListResponse
+from .models import (
+    GuacamoleAuthGenerateTokenResponse,
+    GuacamoleConnectionsAndGroupsResponse,
+    GuacamoleConnectionsListResponse,
+)
 
 load_dotenv()
 
@@ -234,7 +238,7 @@ class GuacamoleClient:
         client_identifier = base64.b64encode(bytes_to_encode).decode("utf-8")
         return f"{os.environ['GUACAMOLE_ROOT_URL']}/#/client/{client_identifier}?token={token}"
 
-    def get_connections_and_groups(self):
+    def get_connections_and_groups(self) -> GuacamoleConnectionsAndGroupsResponse :
         token = self._get_admin_token()
 
         resp = requests.get(
@@ -247,10 +251,7 @@ class GuacamoleClient:
                 f"Error getting response ({resp.status_code}): {resp.json()['message']}"
             )
 
-        data = resp.json()
-        if "childConnectionGroups" not in data:
-            raise Exception("Missing 'childConnectionGroups' from response")
-
+        data = GuacamoleConnectionsAndGroupsResponse(**resp.json())
         return data
 
 
