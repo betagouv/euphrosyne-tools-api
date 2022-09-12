@@ -22,36 +22,35 @@ async def kill_unused_vm():
     guacamole_client = GuacamoleClient()
 
     data = guacamole_client.get_connections_and_groups()
-    child_connection_groups = data["childConnectionGroups"]
 
-    if len(child_connection_groups) <= 0:
+    if len(data.child_connection_groups) <= 0:
         logger.info("No groups found")
         return
 
     project_to_kill: list[Coroutine[Any, Any, None]] = []
 
-    for connection_group in child_connection_groups:
-        if connection_group["name"] != "imagery":
-            if "childConnections" not in connection_group:
+    for connection_group in data.child_connection_groups:
+        if connection_group.name != "imagery":
+            if len(connection_group.child_connections) <= 0:
                 # No connections in the group
                 continue
-            # Check that we are not in the imagery group
-            for connection in connection_group["childConnections"]:
-                if connection["activeConnections"] > 0:
-                    continue
-                # There is nobody connected
 
-                if "lastActive" not in connection:
+            # Check that we are not in the imagery group
+            for connection in connection_group.child_connections:
+                if str(connection.active_connections) > 0:
+                    # There is somebody connected
+                    continue
+
+                if connection.last_active is None:
                     # No lastActive, which mean nobody has connected to this vm
                     continue
 
-                last_active = connection["lastActive"]
                 now_in_millsecond = round(time.time() * 1000)
                 delay = 30 * 60 * 1000  # 30min in ms
 
-                if now_in_millsecond - last_active >= delay:
+                if now_in_millsecond - connection.last_active >= delay:
                     # VM hasn't seen activity for the last 30min, we can delete it
-                    project_name = connection["name"]
+                    project_name = connection.name
                     logger.info("%s is unused, will be disconnected", project_name)
                     project_to_kill.append(
                         async_delete_vm(project_name, guacamole_client=guacamole_client)
