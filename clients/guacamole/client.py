@@ -6,6 +6,8 @@ import os
 import requests
 from dotenv import load_dotenv
 
+from .models import GuacamoleAuthGenerateTokenResponse, GuacamoleConnectionsListResponse
+
 load_dotenv()
 
 
@@ -32,7 +34,8 @@ class GuacamoleClient:
             data={"username": username, "password": password},
             timeout=5,
         )
-        return response.json()["authToken"]
+        parsed_response = GuacamoleAuthGenerateTokenResponse(**response.json())
+        return parsed_response.auth_token
 
     def _get_admin_token(self):
         return self._get_token(
@@ -46,14 +49,14 @@ class GuacamoleClient:
             f"{self._guamacole_root_url}/api/session/data/mysql/connections?token={token}",
             timeout=5,
         )
-        try:
-            return next(
-                conn["identifier"]
-                for conn in response.json().values()
-                if conn["name"] == name
-            )
-        except StopIteration as error:
-            raise GuacamoleConnectionNotFound(f"Connection {name} not found") from error
+        parsed_response = GuacamoleConnectionsListResponse(**response.json())
+
+        for conn_id in parsed_response:
+            conn = parsed_response[conn_id]
+            if conn.name == name:
+                return conn.identifier
+
+        raise GuacamoleConnectionNotFound(f"Connection {name} not found")
 
     def create_connection(
         self,
