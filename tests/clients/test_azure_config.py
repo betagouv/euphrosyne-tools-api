@@ -7,7 +7,8 @@ import pytest
 from azure.storage.blob import BlobClient, ContainerClient
 from pytest import MonkeyPatch
 
-from clients.azure.config import ConfigAzureClient, VMSizes
+from clients import VMSizes
+from clients.azure.config import ConfigAzureClient
 
 
 @pytest.fixture

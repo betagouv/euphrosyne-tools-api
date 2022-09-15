@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 
+from clients import VMSizes
 from clients.azure import ConfigAzureClient
-from clients.azure.config import VMSizes
 
 from . import get_logger
 
