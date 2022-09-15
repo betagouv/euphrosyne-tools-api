@@ -15,6 +15,7 @@ def wait_for_deploy(
         vm_deployment_properties.deployment_process
     )
     if deployment_information:
+        azure_client.delete_deployment(deployment_information.name)
         guacamole_client.create_connection(
             name=vm_deployment_properties.project_name,
             ip_address=deployment_information.properties.outputs["privateIPVM"][
@@ -22,5 +23,5 @@ def wait_for_deploy(
             ],
             password=vm_deployment_properties.password,
             username=vm_deployment_properties.username,
+            vm_size=vm_deployment_properties.vm_size,
         )
-        azure_client.delete_deployment(deployment_information.name)

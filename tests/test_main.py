@@ -315,6 +315,7 @@ def test_wait_for_deploy_when_success():
             ip_address="1.1.1.1",
             password=deployment_properties.password,
             username=deployment_properties.username,
+            vm_size=None,
         )
         azure_client_mock.delete_deployment.assert_called_once_with(
             deployment_information.name
