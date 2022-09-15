@@ -1,8 +1,9 @@
 import os
+from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
@@ -13,7 +14,8 @@ load_dotenv()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 5
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+api_key_header_auth = APIKeyHeader(name="X-API-KEY", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
 class Project(BaseModel):
@@ -30,15 +32,24 @@ class User(BaseModel):
         return project_name in (project.name for project in self.projects)
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    secret_key = os.environ["JWT_SECRET_KEY"]
+async def get_current_user(
+    jwt_token: Optional[str] = Depends(oauth2_scheme),
+    api_token: Optional[str] = Depends(api_key_header_auth),
+):
+    """Defines two way to authenticate. Default is JWT token. API token can be used -
+    for example for development or endpoint test via OpenAPI - by setting API_TOKEN env variable."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not jwt_token:
+        if os.getenv("API_TOKEN") and api_token == os.getenv("API_TOKEN"):
+            return User(id=0, projects=[], is_admin=True)
+        raise credentials_exception
+    secret_key = os.environ["JWT_SECRET_KEY"]
     try:
-        payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+        payload = jwt.decode(jwt_token, secret_key, algorithms=[ALGORITHM])
     except JWTError as error:
         raise credentials_exception from error
     if not payload.get("user_id"):

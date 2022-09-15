@@ -49,6 +49,47 @@ async def test_returns_user_with_projects(monkeypatch):
     assert user.projects[0].id == 444
 
 
+@pytest.mark.anyio
+async def test_login_with_api_key_when_env_set(monkeypatch):
+    monkeypatch.setenv("API_TOKEN", "token")
+    user = await get_current_user(None, "token")
+
+    assert isinstance(user, User)
+    assert user.is_admin
+    assert user.id == 0
+
+
+@pytest.mark.anyio
+async def test_cannot_login_with_api_key_when_env_not_set(monkeypatch):
+    monkeypatch.setenv("API_TOKEN", None)
+    with pytest.raises(HTTPException):
+        await get_current_user(None, "token")
+
+
+@pytest.mark.anyio
+async def test_cannot_login_with_api_key_when_wrong_token(monkeypatch):
+    monkeypatch.setenv("API_TOKEN", "token")
+    with pytest.raises(HTTPException):
+        await get_current_user(None, "wrongtoken")
+
+
+@pytest.mark.anyio
+async def test_jwt_takes_precedence_over_api_key(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+    monkeypatch.setenv("API_TOKEN", "api_token")
+    jwt_token = _generate_token(
+        {
+            "user_id": 1,
+            "is_admin": False,
+            "projects": [],
+        }
+    )
+    user = await get_current_user(jwt_token, "api_token")
+    assert isinstance(user, User)
+    assert user.id == 1
+    assert not user.is_admin
+
+
 def test_verify_project_membership_passes_for_ownership():
     # pylint: disable=expression-not-assigned
     verify_project_membership(
