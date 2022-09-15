@@ -26,17 +26,17 @@ def test_parse_list_connections_response():
     json = GUACAMOLE_CONNECTION_LIST_RESPONSE
 
     parsed_data = models.GuacamoleConnectionsListResponse.parse_obj(json)
-    assert isinstance(parsed_data["30"], models.GuacamoleConnectionsListData)
-    assert isinstance(parsed_data["39"], models.GuacamoleConnectionsListData)
+    assert isinstance(parsed_data["1"], models.GuacamoleConnectionsListData)
+    assert isinstance(parsed_data["2"], models.GuacamoleConnectionsListData)
 
     # Assert 30
-    update_setup_json = json["30"]
-    update_setup_data = parsed_data["30"]
+    update_setup_json = json["1"]
+    update_setup_data = parsed_data["1"]
     assert_connections(update_setup_data, update_setup_json)
 
     # Assert 39
-    update_setup_clone_json = json["39"]
-    update_setup_clone_data = parsed_data["39"]
+    update_setup_clone_json = json["2"]
+    update_setup_clone_data = parsed_data["2"]
     assert_connections(update_setup_clone_data, update_setup_clone_json)
 
 
