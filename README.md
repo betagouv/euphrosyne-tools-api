@@ -28,6 +28,8 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 | GUACAMOLE_ADMIN_PASSWORD               | Mot de passe de l'utilisateur Guacamole.                                                                                                                                                           |
 | GUACAMOLE_SECRET_KEY                   | Clé secrète utilisée pour encrypter les mots de passe des utilisateurs créés à la volée.                                                                                                           |
 | JWT_SECRET_KEY                         | Clé secrète utilisée pour lire les tokens JWT reçus depuis le backend `euphrosyne`. Doit être la même que l'application Django `Euphrosyne`.                                                       |
+| VM_LOGIN                               | Nom d'utilisateur utilisé pour se connecter aux machines virtuelles.                                                                                                                               |
+| VM_PASSWORD                            | Mot de passe utilisé pour se connecter aux machines virtuelles.                                                                                                                                    |
 
 ## Générer les clés pour s'authentifier auprès d'Azure
 
