@@ -1,4 +1,3 @@
-import enum
 import functools
 import json
 from typing import Optional
@@ -6,14 +5,10 @@ from typing import Optional
 from azure.storage.blob import BlobClient, BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 
+from ..common import VMSizes
 from ._storage import BaseStorageAzureClient
 
 load_dotenv()
-
-
-@enum.unique
-class VMSizes(str, enum.Enum):
-    IMAGERY = "IMAGERY"
 
 
 class ConfigAzureClient(BaseStorageAzureClient):

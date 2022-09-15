@@ -4,7 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from auth import User, get_current_user
-from clients.azure.config import ConfigAzureClient, VMSizes
+from clients import VMSizes
+from clients.azure.config import ConfigAzureClient
 from dependencies import get_config_azure_client
 from main import app
 

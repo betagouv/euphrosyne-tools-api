@@ -3,7 +3,8 @@ from typing import Literal
 from fastapi import APIRouter, Body, Depends
 
 from auth import verify_admin_permission
-from clients.azure.config import ConfigAzureClient, VMSizes
+from clients import VMSizes
+from clients.azure.config import ConfigAzureClient
 from dependencies import get_config_azure_client
 
 router = APIRouter(prefix="/config", tags=["config"])
