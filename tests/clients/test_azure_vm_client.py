@@ -6,8 +6,8 @@ import pytest
 from azure.core.exceptions import ResourceNotFoundError
 from pytest import MonkeyPatch
 
+from clients import VMSizes
 from clients.azure import VMAzureClient
-from clients.azure.config import VMSizes
 from clients.azure.vm import (
     PROJECT_TYPE_VM_SIZE,
     AzureCaptureDeploymentProperties,

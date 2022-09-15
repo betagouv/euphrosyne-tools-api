@@ -12,7 +12,7 @@ from azure.mgmt.resource.templatespecs import TemplateSpecsClient
 from dotenv import load_dotenv
 from slugify import slugify
 
-from clients.azure.config import VMSizes
+from clients import VMSizes
 
 load_dotenv()
 
