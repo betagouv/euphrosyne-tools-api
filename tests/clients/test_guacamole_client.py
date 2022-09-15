@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from clients import VMSizes
 from clients.guacamole import (
     GuacamoleClient,
     GuacamoleConnectionNotFound,
@@ -70,7 +71,7 @@ def test_create_connection_with_proper_parameters(client: GuacamoleClient):
                 "name", "ip_address", "username", "password", "port"
             )
             post_data = requests_mock.post.call_args[1]["json"]
-            print(post_data)
+            assert post_data["parentIdentifier"] == "1"
             assert post_data["name"] == "name"
             assert post_data["protocol"] == "rdp"
             assert post_data["parameters"]["port"] == "port"
@@ -81,6 +82,21 @@ def test_create_connection_with_proper_parameters(client: GuacamoleClient):
             assert (
                 post_data["parameters"]["drive-path"] == "/filetransfer/projects/name"
             )
+
+
+def test_create_connection_for_imagery(client: GuacamoleClient):
+    with patch.object(client, "_get_admin_token"):
+        with patch("clients.guacamole.client.requests") as requests_mock:
+            client.create_connection(
+                "name",
+                "ip_address",
+                "username",
+                "password",
+                "port",
+                vm_size=VMSizes.IMAGERY,
+            )
+            post_data = requests_mock.post.call_args[1]["json"]
+            assert post_data["parentIdentifier"] == "2"
 
 
 def test_assign_user_to_connection_with_proper_parameters(client: GuacamoleClient):

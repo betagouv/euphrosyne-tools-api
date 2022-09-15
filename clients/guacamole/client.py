@@ -2,10 +2,12 @@ import base64
 import hashlib
 import hmac
 import os
+from typing import Optional
 
 import requests
 from dotenv import load_dotenv
 
+from ..common import VMSizes
 from .models import (
     GuacamoleAuthGenerateTokenResponse,
     GuacamoleConnectionCreateInput,
@@ -17,6 +19,11 @@ from .models import (
 )
 
 load_dotenv()
+
+PARENT_IDENTIFIER_VM_SIZE: dict[VMSizes | None, str] = {
+    None: "1",  # default
+    VMSizes.IMAGERY: "2",
+}
 
 
 class GuacamoleConnectionNotFound(Exception):
@@ -73,7 +80,8 @@ class GuacamoleClient:
         username: str,
         password: str,
         port: str = "3389",
-    ):
+        vm_size: Optional[VMSizes] = None,
+    ):  # pylint: disable=too-many-arguments
         """Creates a connection and returns its ID."""
         token = self._get_admin_token()
         parameters = GuacamoleConnectionCreateParametersData(
@@ -85,17 +93,19 @@ class GuacamoleClient:
             drive_path=f"/filetransfer/projects/{name}",
         )
         input_data = GuacamoleConnectionCreateInput(
-            parent_identifier="ROOT",
+            parent_identifier=PARENT_IDENTIFIER_VM_SIZE[vm_size],
             name=name,
             protocol="rdp",
             parameters=parameters,
         )
 
-        requests.post(
+        response = requests.post(
             f"{self._guamacole_root_url}/api/session/data/mysql/connections?token={token}",
             json=input_data.dict(by_alias=True),
             timeout=5,
         )
+        if not response.ok:
+            raise GuacamoleHttpError(f"{response.text} [{response.status_code}]")
 
     def delete_connection(self, name: str):
         token = self._get_admin_token()
