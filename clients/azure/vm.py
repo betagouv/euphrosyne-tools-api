@@ -36,6 +36,7 @@ class AzureVMDeploymentProperties:
     username: str
     password: str
     deployment_process: LROPoller[DeploymentExtended]
+    vm_size: Optional[VMSizes] = None
 
 
 @dataclass
@@ -140,6 +141,7 @@ class VMAzureClient:
             project_name=project_name,
             username=os.environ["VM_LOGIN"],
             password=os.environ["VM_PASSWORD"],
+            vm_size=vm_size,
             deployment_process=poller,
         )
 

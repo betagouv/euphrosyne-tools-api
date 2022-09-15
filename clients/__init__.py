@@ -1,1 +1,1 @@
-from common import VMSizes  # noqa: F401
+from .common import VMSizes  # noqa: F401
