@@ -37,7 +37,7 @@ async def kill_unused_vm():
 
             # Check that we are not in the imagery group
             for connection in connection_group.child_connections:
-                if str(connection.active_connections) > 0:
+                if connection.active_connections > 0:
                     # There is somebody connected
                     continue
 
