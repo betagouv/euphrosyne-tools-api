@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Generator, Literal, Optional
 
-from azure.core.exceptions import ResourceNotFoundError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.file.models import FilePermissions
 from azure.storage.file.sharedaccesssignature import FileSharedAccessSignature
 from azure.storage.fileshare import (
@@ -32,6 +32,12 @@ class RunDataNotFound(Exception):
 
 class ProjectDocumentsNotFound(Exception):
     pass
+
+
+class FolderCreationError(Exception):
+    def __init__(self, message, *args) -> None:
+        self.message = str(message)
+        super().__init__(*args)
 
 
 class IncorrectDataFilePath(Exception):
@@ -137,6 +143,39 @@ class DataAzureClient(BaseStorageAzureClient):
         )
         # pylint: disable=line-too-long
         return f"https://{self.storage_account_name}.file.core.windows.net/{share_name}/{dir_path}/{file_name}?{sas_params}"
+
+    def init_project_directory(self, project_name: str):
+        """Create project folder on Fileshare with empty children folders (documents, runs)."""
+        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=share_name,
+            directory_path=os.path.join(_get_projects_path(), project_name),
+        )
+        try:
+            dir_client.create_directory()
+            dir_client.create_subdirectory("documents")
+            dir_client.create_subdirectory("runs")
+        except (ResourceNotFoundError, ResourceExistsError) as error:
+            raise FolderCreationError(error.message) from error
+
+    def init_run_directory(self, run_name: str, project_name: str):
+        """Create run folder in project folder on Fileshare
+        with empty children folders (processed_data, raw_data)."""
+        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=share_name,
+            directory_path=os.path.join(
+                _get_projects_path(), project_name, "runs", run_name
+            ),
+        )
+        try:
+            dir_client.create_directory()
+            dir_client.create_subdirectory("processed_data")
+            dir_client.create_subdirectory("raw_data")
+        except (ResourceNotFoundError, ResourceExistsError) as error:
+            raise FolderCreationError(error.message) from error
 
     def set_fileshare_cors_policy(self, allowed_origins: str):
         """Set Cross-Origin Resource Sharing (CORS) for Azure Fileshare.

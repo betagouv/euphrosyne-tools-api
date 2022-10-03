@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, status
@@ -6,10 +7,12 @@ from jose import jwt
 
 from auth import (
     ALGORITHM,
+    EUPHROSYNE_TOKEN_USER_ID_VALUE,
     Project,
     User,
     get_current_user,
     verify_admin_permission,
+    verify_is_euphrosyne_backend,
     verify_project_membership,
 )
 from exceptions import NoProjectMembershipException
@@ -138,3 +141,17 @@ def test_verify_admin_permission():
                 projects=[],
             ),
         )
+
+
+@pytest.mark.parametrize(
+    "decoded_user_id", [EUPHROSYNE_TOKEN_USER_ID_VALUE, "wrongtoken"]
+)
+@patch("auth.jwt.decode")
+def test_verify_is_euphrosyne_backend(decode_mock: MagicMock, decoded_user_id: str):
+    has_error = False
+    decode_mock.return_value = {"user_id": decoded_user_id}
+    try:
+        verify_is_euphrosyne_backend("atoken")
+    except HTTPException:
+        has_error = True
+    assert has_error is not (EUPHROSYNE_TOKEN_USER_ID_VALUE == decoded_user_id)

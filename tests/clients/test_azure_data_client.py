@@ -1,14 +1,17 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from azure.storage.fileshare import ShareDirectoryClient
 from pytest import MonkeyPatch
 
 from auth import Project, User
 from clients.azure import DataAzureClient
 from clients.azure.data import (
+    FolderCreationError,
     IncorrectDataFilePath,
     ProjectFile,
     validate_project_document_file_path,
@@ -332,3 +335,81 @@ def test_validate_document_file_path(path, is_valid):
     except IncorrectDataFilePath:
         is_invalid = True
     assert is_valid is not is_invalid
+
+
+def test_init_project_directory(
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        client.init_project_directory("myproject")
+    share_directory_client_mock.create_directory.assert_called_once()
+    share_directory_client_mock.create_subdirectory.assert_has_calls(
+        [call("documents"), call("runs")]
+    )
+
+
+@pytest.mark.parametrize("error_type", (ResourceNotFoundError, ResourceExistsError))
+def test_init_project_directory_raise_error(
+    error_type: Exception,
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(
+        spec=ShareDirectoryClient, **{"create_directory.side_effect": error_type}
+    )
+    has_errored = False
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        try:
+            client.init_project_directory("myproject")
+        except FolderCreationError:
+            has_errored = True
+    assert has_errored
+
+
+def test_init_run_directory(
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        client.init_run_directory("myproject", "myrun")
+    share_directory_client_mock.create_directory.assert_called_once()
+    share_directory_client_mock.create_subdirectory.assert_has_calls(
+        [call("raw_data"), call("processed_data")], any_order=True
+    )
+
+
+@pytest.mark.parametrize("error_type", (ResourceNotFoundError, ResourceExistsError))
+def test_init_run_directory_raise_error(
+    error_type: Exception,
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(
+        spec=ShareDirectoryClient, **{"create_directory.side_effect": error_type}
+    )
+    has_errored = False
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        try:
+            client.init_run_directory("myproject", "myrun")
+        except FolderCreationError:
+            has_errored = True
+    assert has_errored
