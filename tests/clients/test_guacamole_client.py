@@ -2,7 +2,6 @@
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,7 +14,6 @@ from clients.guacamole import (
     get_password_for_username,
 )
 from clients.guacamole.models import GuacamoleConnectionsAndGroupsResponse
-from tests.clients.test_guacamole_models import assert_connection_group
 
 from ..mocks import (
     GUACAMOLE_CONNECTION_LIST_RESPONSE,
