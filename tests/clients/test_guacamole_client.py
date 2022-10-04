@@ -2,6 +2,7 @@
 
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -188,10 +189,6 @@ def test_get_connections_and_groups(client: GuacamoleClient):
             data = client.get_connections_and_groups()
 
             assert isinstance(data, GuacamoleConnectionsAndGroupsResponse)
-            assert_connection_group(
-                data.child_connection_groups[0],
-                GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE["childConnectionGroups"][0],
-            )
 
 
 def test_vm_to_shutdown(client: GuacamoleClient):
