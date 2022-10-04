@@ -1,6 +1,7 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
 import os
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,8 +13,13 @@ from clients.guacamole import (
     GuacamoleHttpError,
     get_password_for_username,
 )
+from clients.guacamole.models import GuacamoleConnectionsAndGroupsResponse
+from tests.clients.test_guacamole_models import assert_connection_group
 
-from ..mocks import GUACAMOLE_CONNECTION_LIST_RESPONSE
+from ..mocks import (
+    GUACAMOLE_CONNECTION_LIST_RESPONSE,
+    GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE,
+)
 
 
 @pytest.fixture
@@ -170,3 +176,49 @@ def test_get_password_for_username():
     assert (
         password == "29fb5cb8efb57c7e696d27cd759b66c290b1246e44a32ddfb970ba0fea9245c5"
     )
+
+
+def test_get_connections_and_groups(client: GuacamoleClient):
+    response = MagicMock(
+        json=MagicMock(return_value=GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE)
+    )
+    with patch.object(client, "_get_admin_token"):
+        with patch("clients.guacamole.client.requests") as requests_mock:
+            requests_mock.get.return_value = response
+            data = client.get_connections_and_groups()
+
+            assert isinstance(data, GuacamoleConnectionsAndGroupsResponse)
+            assert_connection_group(
+                data.child_connection_groups[0],
+                GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE["childConnectionGroups"][0],
+            )
+
+
+def test_vm_to_shutdown(client: GuacamoleClient):
+    with patch.object(client, "_get_admin_token"):
+        with patch.object(
+            client,
+            "get_connections_and_groups",
+            return_value=GuacamoleConnectionsAndGroupsResponse.parse_obj(
+                GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE
+            ),
+        ):
+            fake_now = datetime.fromtimestamp(
+                1662369688000 / 1000, tz=timezone.utc
+            ) + timedelta(minutes=35)
+
+            projects_to_shutdown = client.get_vm_to_shutdown(from_date=fake_now)
+            assert projects_to_shutdown == []
+
+            projects_to_shutdown = client.get_vm_to_shutdown(
+                skip_groups=["default"], from_date=fake_now
+            )
+            assert projects_to_shutdown == ["update-setup"]
+
+            fake_now_before_shutdown = datetime.fromtimestamp(
+                1662369688000 / 1000, tz=timezone.utc
+            ) + timedelta(minutes=20)
+            projects_to_shutdown = client.get_vm_to_shutdown(
+                skip_groups=["default"], from_date=fake_now_before_shutdown
+            )
+            assert projects_to_shutdown == []
