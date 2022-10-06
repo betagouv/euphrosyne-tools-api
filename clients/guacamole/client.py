@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import os
+from datetime import datetime, timedelta
 from typing import Optional
 
 import requests
@@ -177,8 +178,72 @@ class GuacamoleClient:
                 f"Error getting response ({resp.status_code}): {resp.json()['message']}"
             )
 
-        data = GuacamoleConnectionsAndGroupsResponse(**resp.json())
+        data = GuacamoleConnectionsAndGroupsResponse.parse_obj(resp.json())
         return data
+
+    def get_vm_to_shutdown(
+        self,
+        time_unused: timedelta = timedelta(minutes=30),
+        skip_groups: list[str] = None,
+        from_date: datetime = None,
+    ) -> list[str]:
+        """
+        Check all existing VM connections to see
+        if some have been unused for more than `time_unused`
+
+        Parameters
+        ----------
+        time_unused: timedelta
+            timedelta representing the time a VM has been to be unused to be shutdown
+        skip_groups: list[str]
+            Group name to ignore. Default to "imagery"
+        from_date: datetime
+            Datetime from when to compare if VM have been unused
+
+        Returns
+        --------
+        list[str]
+            List of project names to shutdown
+        """
+
+        if skip_groups is None:
+            skip_groups = ["imagery"]
+
+        groups_and_connections = self.get_connections_and_groups()
+
+        if len(groups_and_connections.child_connection_groups) <= 0:
+            return []
+
+        projects_to_shutdown: list[str] = []
+
+        for group in groups_and_connections.child_connection_groups:
+            if group.name in skip_groups:
+                # Group should be skipped
+                continue
+
+            if len(group.child_connections) <= 0:
+                # No connections in this group
+                continue
+
+            for connection in group.child_connections:
+                if connection.active_connections > 0:
+                    # There is currently someone connected
+                    continue
+
+                if connection.last_active is None:
+                    # Nobody has been connected to this VM
+                    continue
+
+                # Make sure the `now` and `connection.last_active` are on the same timezone
+                if from_date is None:
+                    from_date = datetime.now(connection.last_active.tzinfo)
+
+                last_active_delta = connection.last_active + time_unused
+
+                if from_date > last_active_delta:
+                    projects_to_shutdown.append(connection.name)
+
+        return projects_to_shutdown
 
 
 def get_password_for_username(username: str, key: str) -> str:

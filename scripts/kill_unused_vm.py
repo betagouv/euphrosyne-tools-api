@@ -5,7 +5,6 @@ If those VM are not in a group to indicate that it should be kept awake,
 shut it down and destroy the connection in Guacamole
 """
 import asyncio
-import time
 from typing import Any, Coroutine
 
 from clients.guacamole import GuacamoleClient
@@ -21,46 +20,20 @@ async def kill_unused_vm():
 
     guacamole_client = GuacamoleClient()
 
-    data = guacamole_client.get_connections_and_groups()
+    projects_to_shutdown = guacamole_client.get_vm_to_shutdown()
 
-    if len(data.child_connection_groups) <= 0:
-        logger.info("No groups found")
-        return
-
-    project_to_kill: list[Coroutine[Any, Any, None]] = []
-
-    for connection_group in data.child_connection_groups:
-        if connection_group.name != "imagery":
-            if len(connection_group.child_connections) <= 0:
-                # No connections in the group
-                continue
-
-            # Check that we are not in the imagery group
-            for connection in connection_group.child_connections:
-                if str(connection.active_connections) > 0:
-                    # There is somebody connected
-                    continue
-
-                if connection.last_active is None:
-                    # No lastActive, which mean nobody has connected to this vm
-                    continue
-
-                now_in_millsecond = round(time.time() * 1000)
-                delay = 30 * 60 * 1000  # 30min in ms
-
-                if now_in_millsecond - connection.last_active >= delay:
-                    # VM hasn't seen activity for the last 30min, we can delete it
-                    project_name = connection.name
-                    logger.info("%s is unused, will be disconnected", project_name)
-                    project_to_kill.append(
-                        async_delete_vm(project_name, guacamole_client=guacamole_client)
-                    )
-
-    if len(project_to_kill) <= 0:
+    if len(projects_to_shutdown) <= 0:
         logger.info("No VM to shutdown")
         return
 
-    await asyncio.gather(*project_to_kill)
+    tasks_to_shutdown: list[Coroutine[Any, Any, None]] = map(
+        lambda project_name: async_delete_vm(
+            project_name, guacamole_client=guacamole_client
+        ),
+        projects_to_shutdown,
+    )
+
+    await asyncio.gather(*tasks_to_shutdown)
     logger.info("Done shutting down vm")
 
 
