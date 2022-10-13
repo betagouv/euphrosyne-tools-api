@@ -37,5 +37,10 @@ def fixture_client(app: FastAPI):
     return _client
 
 
+@pytest.fixture(autouse=True)
+def setenv(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+
+
 async def get_current_user_override():
     return User(id=1, projects=[Project(id=1, name="project_01")], is_admin=False)

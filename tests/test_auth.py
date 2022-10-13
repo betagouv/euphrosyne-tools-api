@@ -27,8 +27,7 @@ def _generate_token(data: dict):
 
 
 @pytest.mark.anyio
-async def test_get_current_user_raises_if_no_user_id(monkeypatch):
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+async def test_get_current_user_raises_if_no_user_id():
     token = _generate_token({"user_id": None})
     with pytest.raises(HTTPException) as exception:
         await get_current_user(token)
@@ -36,8 +35,7 @@ async def test_get_current_user_raises_if_no_user_id(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_returns_user_with_projects(monkeypatch):
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+async def test_returns_user_with_projects():
     token = _generate_token(
         {
             "user_id": 1,
@@ -78,7 +76,6 @@ async def test_cannot_login_with_api_key_when_wrong_token(monkeypatch):
 
 @pytest.mark.anyio
 async def test_jwt_takes_precedence_over_api_key(monkeypatch):
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     monkeypatch.setenv("API_TOKEN", "api_token")
     jwt_token = _generate_token(
         {

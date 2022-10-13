@@ -29,6 +29,11 @@ def client(monkeypatch: MonkeyPatch):
             return DataAzureClient()
 
 
+@pytest.fixture(autouse=True)
+def setenv(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
+
+
 def test_get_project_documents_with_prefix(
     client: DataAzureClient, monkeypatch: MonkeyPatch
 ):
@@ -85,7 +90,6 @@ def test_generate_project_documents_sas_url(
         client, "_file_shared_access_signature"
     ) as file_shared_access_signature_mock:
         file_shared_access_signature_mock.generate_file.return_value = "params=params"
-        monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
 
         url = client.generate_project_documents_sas_url(
@@ -118,7 +122,6 @@ def test_generate_project_documents_upload_sas_url(
         client, "_file_shared_access_signature"
     ) as file_shared_access_signature_mock:
         file_shared_access_signature_mock.generate_file.return_value = "params=params"
-        monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
         _get_projects_path_mock.return_value = "projects"
 
@@ -155,7 +158,6 @@ def test_generate_run_data_sas_url(
         client, "_file_shared_access_signature"
     ) as file_shared_access_signature_mock:
         file_shared_access_signature_mock.generate_file.return_value = "params=params"
-        monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
 
         url = client.generate_run_data_sas_url(
@@ -184,9 +186,7 @@ def test_list_files_recursive_without_detailed_info(
     share_file_client: MagicMock,
     share_directory_client: MagicMock,
     client: DataAzureClient,
-    monkeypatch: MonkeyPatch,
 ):
-    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
     files_and_folders__root = [
         {"name": "file-1.txt", "is_directory": False, "size": 123},
         {"name": "directory-1", "is_directory": True},
@@ -230,9 +230,7 @@ def test_list_files_recursive_with_detailed_info(
     share_file_client: MagicMock,
     share_directory_client: MagicMock,
     client: DataAzureClient,
-    monkeypatch: MonkeyPatch,
 ):
-    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
     files_and_folders__root = [
         {"name": "file-1.txt", "is_directory": False, "size": 123},
         {"name": "directory-1", "is_directory": True},
