@@ -13,6 +13,12 @@ load_dotenv()
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 5
+JWT_CREDENTIALS_EXCEPTION = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Could not validate credentials",
+    headers={"WWW-Authenticate": "Bearer"},
+)
+EUPHROSYNE_TOKEN_USER_ID_VALUE = "euphrosyne"  # user id value when decoding jwt token
 
 api_key_header_auth = APIKeyHeader(name="X-API-KEY", auto_error=False)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
@@ -38,22 +44,11 @@ async def get_current_user(
 ):
     """Defines two way to authenticate. Default is JWT token. API token can be used -
     for example for development or endpoint test via OpenAPI - by setting API_TOKEN env variable."""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     if not jwt_token:
         if os.getenv("API_TOKEN") and api_token == os.getenv("API_TOKEN"):
             return User(id=0, projects=[], is_admin=True)
-        raise credentials_exception
-    secret_key = os.environ["JWT_SECRET_KEY"]
-    try:
-        payload = jwt.decode(jwt_token, secret_key, algorithms=[ALGORITHM])
-    except JWTError as error:
-        raise credentials_exception from error
-    if not payload.get("user_id"):
-        raise credentials_exception
+        raise JWT_CREDENTIALS_EXCEPTION
+    payload = _decode_jwt(jwt_token)
     return User(
         id=payload.get("user_id"),
         projects=payload.get("projects"),
@@ -71,3 +66,23 @@ def verify_project_membership(
 def verify_admin_permission(current_user: User = Depends(get_current_user)):
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Only admins are allowed")
+
+
+def verify_is_euphrosyne_backend(jwt_token: Optional[str] = Depends(oauth2_scheme)):
+    """For euphrosyne - euphro tools communication, verify JWT token."""
+    if not jwt_token:
+        raise JWT_CREDENTIALS_EXCEPTION
+    payload = _decode_jwt(jwt_token)
+    if payload.get("user_id") != EUPHROSYNE_TOKEN_USER_ID_VALUE:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+
+def _decode_jwt(jwt_token: str):
+    try:
+        secret_key = os.environ["JWT_SECRET_KEY"]
+        payload = jwt.decode(jwt_token, secret_key, algorithms=[ALGORITHM])
+    except JWTError as error:
+        raise JWT_CREDENTIALS_EXCEPTION from error
+    if not payload.get("user_id"):
+        raise JWT_CREDENTIALS_EXCEPTION
+    return payload

@@ -3,9 +3,15 @@ import pathlib
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
-from auth import User, get_current_user, verify_project_membership
+from auth import (
+    User,
+    get_current_user,
+    verify_is_euphrosyne_backend,
+    verify_project_membership,
+)
 from clients.azure import DataAzureClient
 from clients.azure.data import (
+    FolderCreationError,
     IncorrectDataFilePath,
     ProjectDocumentsNotFound,
     ProjectFile,
@@ -125,3 +131,34 @@ def generate_project_documents_upload_shared_access_signature(
         file_name=file_name,
     )
     return {"url": url}
+
+
+@router.post(
+    "/{project_name}/init",
+    status_code=204,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+)
+def init_project_data(
+    project_name: str,
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+):
+    try:
+        return azure_client.init_project_directory(project_name)
+    except FolderCreationError as error:
+        return JSONResponse({"detail": error.message}, status_code=400)
+
+
+@router.post(
+    "/{project_name}/runs/{run_name}/init",
+    status_code=204,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+)
+def init_run_data(
+    project_name: str,
+    run_name: str,
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+):
+    try:
+        return azure_client.init_run_directory(project_name, run_name)
+    except FolderCreationError as error:
+        return JSONResponse({"detail": error.message}, status_code=400)

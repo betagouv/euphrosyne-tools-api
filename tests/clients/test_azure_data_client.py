@@ -1,14 +1,17 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from azure.storage.fileshare import ShareDirectoryClient
 from pytest import MonkeyPatch
 
 from auth import Project, User
 from clients.azure import DataAzureClient
 from clients.azure.data import (
+    FolderCreationError,
     IncorrectDataFilePath,
     ProjectFile,
     validate_project_document_file_path,
@@ -24,6 +27,11 @@ def client(monkeypatch: MonkeyPatch):
     with patch("clients.azure._storage.StorageManagementClient"):
         with patch("clients.azure.data.FileSharedAccessSignature"):
             return DataAzureClient()
+
+
+@pytest.fixture(autouse=True)
+def setenv(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
 
 
 def test_get_project_documents_with_prefix(
@@ -82,7 +90,6 @@ def test_generate_project_documents_sas_url(
         client, "_file_shared_access_signature"
     ) as file_shared_access_signature_mock:
         file_shared_access_signature_mock.generate_file.return_value = "params=params"
-        monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
 
         url = client.generate_project_documents_sas_url(
@@ -115,7 +122,6 @@ def test_generate_project_documents_upload_sas_url(
         client, "_file_shared_access_signature"
     ) as file_shared_access_signature_mock:
         file_shared_access_signature_mock.generate_file.return_value = "params=params"
-        monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
         _get_projects_path_mock.return_value = "projects"
 
@@ -152,7 +158,6 @@ def test_generate_run_data_sas_url(
         client, "_file_shared_access_signature"
     ) as file_shared_access_signature_mock:
         file_shared_access_signature_mock.generate_file.return_value = "params=params"
-        monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
 
         url = client.generate_run_data_sas_url(
@@ -181,9 +186,7 @@ def test_list_files_recursive_without_detailed_info(
     share_file_client: MagicMock,
     share_directory_client: MagicMock,
     client: DataAzureClient,
-    monkeypatch: MonkeyPatch,
 ):
-    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
     files_and_folders__root = [
         {"name": "file-1.txt", "is_directory": False, "size": 123},
         {"name": "directory-1", "is_directory": True},
@@ -227,9 +230,7 @@ def test_list_files_recursive_with_detailed_info(
     share_file_client: MagicMock,
     share_directory_client: MagicMock,
     client: DataAzureClient,
-    monkeypatch: MonkeyPatch,
 ):
-    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
     files_and_folders__root = [
         {"name": "file-1.txt", "is_directory": False, "size": 123},
         {"name": "directory-1", "is_directory": True},
@@ -332,3 +333,81 @@ def test_validate_document_file_path(path, is_valid):
     except IncorrectDataFilePath:
         is_invalid = True
     assert is_valid is not is_invalid
+
+
+def test_init_project_directory(
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        client.init_project_directory("myproject")
+    share_directory_client_mock.create_directory.assert_called_once()
+    share_directory_client_mock.create_subdirectory.assert_has_calls(
+        [call("documents"), call("runs")]
+    )
+
+
+@pytest.mark.parametrize("error_type", (ResourceNotFoundError, ResourceExistsError))
+def test_init_project_directory_raise_error(
+    error_type: Exception,
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(
+        spec=ShareDirectoryClient, **{"create_directory.side_effect": error_type}
+    )
+    has_errored = False
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        try:
+            client.init_project_directory("myproject")
+        except FolderCreationError:
+            has_errored = True
+    assert has_errored
+
+
+def test_init_run_directory(
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        client.init_run_directory("myproject", "myrun")
+    share_directory_client_mock.create_directory.assert_called_once()
+    share_directory_client_mock.create_subdirectory.assert_has_calls(
+        [call("raw_data"), call("processed_data")], any_order=True
+    )
+
+
+@pytest.mark.parametrize("error_type", (ResourceNotFoundError, ResourceExistsError))
+def test_init_run_directory_raise_error(
+    error_type: Exception,
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(
+        spec=ShareDirectoryClient, **{"create_directory.side_effect": error_type}
+    )
+    has_errored = False
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        try:
+            client.init_run_directory("myproject", "myrun")
+        except FolderCreationError:
+            has_errored = True
+    assert has_errored
