@@ -23,6 +23,8 @@ from clients.azure.vm import (
 def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_GROUP_NAME", "resource_group_name")
     monkeypatch.setenv("AZURE_TEMPLATE_SPECS_NAME", "template_specs")
+    monkeypatch.setenv("AZURE_IMAGE_GALLERY", "image_gallery")
+    monkeypatch.setenv("AZURE_IMAGE_DEFINITION", "image_definition")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
     monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
     monkeypatch.setenv("VM_LOGIN", "username")
@@ -64,6 +66,12 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
     assert (
         call_args["parameters"]["properties"]["parameters"]["vmSize"]["value"]
         == "Standard_B8ms"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["imageGallery"]["value"] == "image_gallery"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["imageDefinition"]["value"] == "image_definition"
     )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
