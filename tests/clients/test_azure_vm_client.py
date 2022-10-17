@@ -68,10 +68,12 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
         == "Standard_B8ms"
     )
     assert (
-        call_args["parameters"]["properties"]["parameters"]["imageGallery"]["value"] == "image_gallery"
+        call_args["parameters"]["properties"]["parameters"]["imageGallery"]["value"]
+        == "image_gallery"
     )
     assert (
-        call_args["parameters"]["properties"]["parameters"]["imageDefinition"]["value"] == "image_definition"
+        call_args["parameters"]["properties"]["parameters"]["imageDefinition"]["value"]
+        == "image_definition"
     )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
