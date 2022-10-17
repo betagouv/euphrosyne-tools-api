@@ -75,6 +75,10 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
         call_args["parameters"]["properties"]["parameters"]["imageDefinition"]["value"]
         == "image_definition"
     )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["resourcePrefix"]["value"]
+        == "test-"
+    )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
     assert result.username == "username"
