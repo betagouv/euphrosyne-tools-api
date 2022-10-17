@@ -200,7 +200,7 @@ def test_wait_for_deployment_completeness(status, is_ok):
 
 def test_delete_vm(client: VMAzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
-    client.delete_vm("vm-test")
+    client.delete_vm("test")
 
     client._compute_mgmt_client.virtual_machines.begin_delete.assert_called_with(
         resource_group_name="resource_group_name",
@@ -218,4 +218,4 @@ def test_delete_vm_raises_if_vm_absent(client: VMAzureClient):
 
 def test_project_name_to_vm_name(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
-    assert _project_name_to_vm_name("BLABLA") == "test-blabla"
+    assert _project_name_to_vm_name("BLABLA") == "test-vm-blabla"
