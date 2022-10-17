@@ -26,7 +26,7 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_IMAGE_GALLERY", "image_gallery")
     monkeypatch.setenv("AZURE_IMAGE_DEFINITION", "image_definition")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
-    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
+    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test")
     monkeypatch.setenv("VM_LOGIN", "username")
     monkeypatch.setenv("VM_PASSWORD", "password")
     with patch.multiple(
@@ -77,7 +77,7 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
     )
     assert (
         call_args["parameters"]["properties"]["parameters"]["resourcePrefix"]["value"]
-        == "test-"
+        == "test"
     )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
@@ -221,5 +221,5 @@ def test_delete_vm_raises_if_vm_absent(client: VMAzureClient):
 
 
 def test_project_name_to_vm_name(monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
+    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test")
     assert _project_name_to_vm_name("BLABLA") == "test-vm-blabla"

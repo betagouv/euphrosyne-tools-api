@@ -223,5 +223,5 @@ def _project_name_to_vm_name(project_name: str):
     """Returns a correct vm name (prefix added, slugified) based on a project name"""
     # pylint: disable=consider-using-f-string
     return "{}{}{}".format(
-        os.getenv("AZURE_RESOURCE_PREFIX"), "vm-", slugify(project_name)
+        os.getenv("AZURE_RESOURCE_PREFIX"), "-vm-", slugify(project_name)
     )
