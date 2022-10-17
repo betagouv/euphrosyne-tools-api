@@ -52,6 +52,8 @@ class VMAzureClient:
         credentials = DefaultAzureCredential()
 
         self.template_specs_name = os.environ["AZURE_TEMPLATE_SPECS_NAME"]
+        self.template_specs_image_gallery = os.environ["AZURE_IMAGE_GALLERY"]
+        self.template_specs_image_definition = os.environ["AZURE_IMAGE_DEFINITION"]
 
         self._resource_mgmt_client = ResourceManagementClient(
             credentials, os.environ["AZURE_SUBSCRIPTION_ID"]
@@ -123,6 +125,8 @@ class VMAzureClient:
         )
         parameters = {
             "vmName": slugify(project_name),
+            "imageGallery": self.template_specs_image_gallery,
+            "imageDefinition": self.template_specs_image_definition,
         }
         parameters["vmSize"] = PROJECT_TYPE_VM_SIZE[vm_size]
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
