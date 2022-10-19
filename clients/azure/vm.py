@@ -52,6 +52,9 @@ class VMAzureClient:
         credentials = DefaultAzureCredential()
 
         self.template_specs_name = os.environ["AZURE_TEMPLATE_SPECS_NAME"]
+        self.template_specs_image_gallery = os.environ["AZURE_IMAGE_GALLERY"]
+        self.template_specs_image_definition = os.environ["AZURE_IMAGE_DEFINITION"]
+        self.resource_prefix = os.environ["AZURE_RESOURCE_PREFIX"]
 
         self._resource_mgmt_client = ResourceManagementClient(
             credentials, os.environ["AZURE_SUBSCRIPTION_ID"]
@@ -123,6 +126,9 @@ class VMAzureClient:
         )
         parameters = {
             "vmName": slugify(project_name),
+            "imageGallery": self.template_specs_image_gallery,
+            "imageDefinition": self.template_specs_image_definition,
+            "resourcePrefix": self.resource_prefix,
         }
         parameters["vmSize"] = PROJECT_TYPE_VM_SIZE[vm_size]
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
@@ -163,7 +169,12 @@ class VMAzureClient:
         """
         vm_name = _project_name_to_vm_name(project_name)
         template = self._get_latest_template_specs(template_name="captureVMSpec")
-        parameters = {"vmName": vm_name, "version": version}
+        parameters = {
+            "vmName": vm_name,
+            "version": version,
+            "galleryName": self.template_specs_image_gallery,
+            "imageDefinitionName": self.template_specs_image_definition,
+        }
 
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
 
@@ -216,4 +227,4 @@ def wait_for_deployment_completeness(
 def _project_name_to_vm_name(project_name: str):
     """Returns a correct vm name (prefix added, slugified) based on a project name"""
     # pylint: disable=consider-using-f-string
-    return "{}{}".format(os.getenv("AZURE_RESOURCE_PREFIX"), slugify(project_name))
+    return "{}-vm-{}".format(os.getenv("AZURE_RESOURCE_PREFIX"), slugify(project_name))

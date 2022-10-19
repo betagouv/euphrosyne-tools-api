@@ -23,8 +23,10 @@ from clients.azure.vm import (
 def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_GROUP_NAME", "resource_group_name")
     monkeypatch.setenv("AZURE_TEMPLATE_SPECS_NAME", "template_specs")
+    monkeypatch.setenv("AZURE_IMAGE_GALLERY", "image_gallery")
+    monkeypatch.setenv("AZURE_IMAGE_DEFINITION", "image_definition")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
-    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
+    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test")
     monkeypatch.setenv("VM_LOGIN", "username")
     monkeypatch.setenv("VM_PASSWORD", "password")
     with patch.multiple(
@@ -64,6 +66,18 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
     assert (
         call_args["parameters"]["properties"]["parameters"]["vmSize"]["value"]
         == "Standard_B8ms"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["imageGallery"]["value"]
+        == "image_gallery"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["imageDefinition"]["value"]
+        == "image_definition"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["resourcePrefix"]["value"]
+        == "test"
     )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
@@ -190,7 +204,7 @@ def test_wait_for_deployment_completeness(status, is_ok):
 
 def test_delete_vm(client: VMAzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
-    client.delete_vm("vm-test")
+    client.delete_vm("test")
 
     client._compute_mgmt_client.virtual_machines.begin_delete.assert_called_with(
         resource_group_name="resource_group_name",
@@ -207,5 +221,5 @@ def test_delete_vm_raises_if_vm_absent(client: VMAzureClient):
 
 
 def test_project_name_to_vm_name(monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test-")
-    assert _project_name_to_vm_name("BLABLA") == "test-blabla"
+    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test")
+    assert _project_name_to_vm_name("BLABLA") == "test-vm-blabla"
