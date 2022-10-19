@@ -222,6 +222,6 @@ def wait_for_deployment_completeness(
 def _project_name_to_vm_name(project_name: str):
     """Returns a correct vm name (prefix added, slugified) based on a project name"""
     # pylint: disable=consider-using-f-string
-    return "{}{}{}".format(
-        os.getenv("AZURE_RESOURCE_PREFIX"), "-vm-", slugify(project_name)
+    return "{}-vm-{}".format(
+        os.getenv("AZURE_RESOURCE_PREFIX"), slugify(project_name)
     )
