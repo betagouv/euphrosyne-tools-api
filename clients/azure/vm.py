@@ -169,7 +169,12 @@ class VMAzureClient:
         """
         vm_name = _project_name_to_vm_name(project_name)
         template = self._get_latest_template_specs(template_name="captureVMSpec")
-        parameters = {"vmName": vm_name, "version": version}
+        parameters = {
+            "vmName": vm_name,
+            "version": version,
+            "galleryName": self.template_specs_image_gallery,
+            "imageDefinitionName": self.template_specs_image_definition,
+        }
 
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
 
