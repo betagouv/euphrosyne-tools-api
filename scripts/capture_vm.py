@@ -16,7 +16,7 @@ def capture_vm():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-p",
-        "--project",
+        "--project", # pylint: disable=duplicate-code
         help="Name of the project vm you want to capture",
         required=True,
     )

@@ -15,14 +15,29 @@ logger = get_logger(__name__)
 def create_vm():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "project_name", help="Project name related to the VM to create."
+        "-p",
+        "--project",
+        dest="project_name",
+        help="Project name related to the VM to create.",
+        required=True,
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        help="Version of the Azure Template Spec to use",
     )
     args = parser.parse_args()
 
     azure_client = VMAzureClient()
 
+    version: str | None = None
+    if args.version is not None:
+        version = args.version
+
     logger.info("Deploying VM... This can take a while.")
-    deployment = azure_client.deploy_vm(project_name=args.project_name)
+    deployment = azure_client.deploy_vm(
+        project_name=args.project_name, spec_version=version
+    )
     if not deployment:
         logger.info("VM is already deployed.")
         return
