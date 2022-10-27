@@ -38,7 +38,7 @@ def client(monkeypatch: MonkeyPatch):
         return VMAzureClient()
 
 
-@patch("clients.azure.vm.VMAzureClient._get_latest_template_specs", dict)
+@patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
 def test_deploy_exits_when_vm_exists(client: VMAzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = True
     client.deploy_vm("vm-test")
@@ -46,7 +46,7 @@ def test_deploy_exits_when_vm_exists(client: VMAzureClient):
     client._resource_mgmt_client.deployments.begin_create_or_update.assert_not_called()
 
 
-@patch("clients.azure.vm.VMAzureClient._get_latest_template_specs", dict)
+@patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
 @patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
 def test_deploys_with_proper_parameters(client: VMAzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
@@ -89,7 +89,7 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
     )
 
 
-@patch("clients.azure.vm.VMAzureClient._get_latest_template_specs", dict)
+@patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
 @patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
 def test_deploys_with_proper_parameters_when_imagery_project(client: VMAzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
@@ -104,7 +104,7 @@ def test_deploys_with_proper_parameters_when_imagery_project(client: VMAzureClie
     )
 
 
-@patch("clients.azure.vm.VMAzureClient._get_latest_template_specs", dict)
+@patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
 @patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
 def test_create_image(client: VMAzureClient):
     client._resource_mgmt_client.deployments.check_existence.return_value = False
@@ -135,13 +135,23 @@ def test_create_image(client: VMAzureClient):
     )
 
 
-def test_get_latest_template_specs(client: VMAzureClient):
+def test_get_template_specs(client: VMAzureClient):
     client._template_specs_client.template_specs.get.return_value.versions = {
         "1.0.0": {},
         "1.1.1": {},
+        "1.2.1": {},
     }
-    client._get_latest_template_specs(template_name="template_specs")
 
+    # Get latest
+    client._get_template_specs(template_name="template_specs")
+    client._template_specs_client.template_spec_versions.get.assert_called_with(
+        resource_group_name="resource_group_name",
+        template_spec_name="template_specs",
+        template_spec_version="1.2.1",
+    )
+
+    # Get 1.1.1
+    client._get_template_specs(template_name="template_specs", version="1.1.1")
     client._template_specs_client.template_spec_versions.get.assert_called_with(
         resource_group_name="resource_group_name",
         template_spec_name="template_specs",

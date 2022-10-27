@@ -110,6 +110,7 @@ class VMAzureClient:
         self,
         project_name: str,
         vm_size: Optional[VMSizes] = None,
+        spec_version: Optional[str] = None,
     ) -> Optional[AzureVMDeploymentProperties]:
         """Deploys a VM based on Template Specs specified
         with AZURE_TEMPLATE_SPECS_NAME env variable.
@@ -121,8 +122,8 @@ class VMAzureClient:
             deployment_name=slugify(project_name),
         ):
             return None
-        template = self._get_latest_template_specs(
-            template_name=self.template_specs_name
+        template = self._get_template_specs(
+            template_name=self.template_specs_name, version=spec_version
         )
         parameters = {
             "vmName": slugify(project_name),
@@ -168,7 +169,7 @@ class VMAzureClient:
         to the image gallery with the given version
         """
         vm_name = _project_name_to_vm_name(project_name)
-        template = self._get_latest_template_specs(template_name="captureVMSpec")
+        template = self._get_template_specs(template_name="captureVMSpec")
         parameters = {
             "vmName": vm_name,
             "version": version,
@@ -196,18 +197,38 @@ class VMAzureClient:
             deployment_process=poller,
         )
 
-    def _get_latest_template_specs(self, template_name: str) -> dict[str, Any]:
-        """Get latest template specs in a python dict format."""
+    def _get_template_specs(
+        self, template_name: str, version: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Get template specs in a python dict format.
+        If no version is passed, the latest one will be used.
+
+        Parameters:
+        -----------
+        template_name: str
+            Name of the template on Azure
+        version: str
+            Version of the Azure Template Specs
+
+        Returns:
+        --------
+        dict[str, Any]
+            Template Specs
+        """
         template_spec = self._template_specs_client.template_specs.get(
             resource_group_name=self.resource_group_name,
             template_spec_name=template_name,
             expand="versions",
         )
-        latest_version = sorted(template_spec.versions.keys())[-1]
+
+        if version is None:
+            version = sorted(template_spec.versions.keys())[-1]
+
         return self._template_specs_client.template_spec_versions.get(
             resource_group_name=self.resource_group_name,
             template_spec_name=template_name,
-            template_spec_version=latest_version,
+            template_spec_version=version,
         ).main_template
 
 
