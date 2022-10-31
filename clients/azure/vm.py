@@ -125,10 +125,13 @@ class VMAzureClient:
             template_name=self.template_specs_name
         )
         parameters = {
+            "projectName": project_name,
             "vmName": slugify(project_name),
             "imageGallery": self.template_specs_image_gallery,
             "imageDefinition": self.template_specs_image_definition,
             "resourcePrefix": self.resource_prefix,
+            "storageAccountName": os.environ["AZURE_STORAGE_ACCOUNT"],
+            "fileShareName": os.environ["AZURE_STORAGE_FILESHARE"],
         }
         parameters["vmSize"] = PROJECT_TYPE_VM_SIZE[vm_size]
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}

@@ -26,6 +26,8 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_IMAGE_GALLERY", "image_gallery")
     monkeypatch.setenv("AZURE_IMAGE_DEFINITION", "image_definition")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
+    monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
     monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test")
     monkeypatch.setenv("VM_LOGIN", "username")
     monkeypatch.setenv("VM_PASSWORD", "password")
@@ -78,6 +80,16 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
     assert (
         call_args["parameters"]["properties"]["parameters"]["resourcePrefix"]["value"]
         == "test"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["storageAccountName"][
+            "value"
+        ]
+        == "storageaccount"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["fileShareName"]["value"]
+        == "fileshare"
     )
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
