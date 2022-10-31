@@ -30,13 +30,9 @@ def create_vm():
 
     azure_client = VMAzureClient()
 
-    version: str | None = None
-    if args.version is not None:
-        version = args.version
-
     logger.info("Deploying VM... This can take a while.")
     deployment = azure_client.deploy_vm(
-        project_name=args.project_name, spec_version=version
+        project_name=args.project_name, spec_version=args.version
     )
     if not deployment:
         logger.info("VM is already deployed.")
