@@ -216,13 +216,14 @@ class VMAzureClient:
         dict[str, Any]
             Template Specs
         """
-        template_spec = self._template_specs_client.template_specs.get(
-            resource_group_name=self.resource_group_name,
-            template_spec_name=template_name,
-            expand="versions",
-        )
 
         if version is None:
+            template_spec = self._template_specs_client.template_specs.get(
+                resource_group_name=self.resource_group_name,
+                template_spec_name=template_name,
+                expand="versions",
+            )
+
             version = sorted(template_spec.versions.keys())[-1]
 
         return self._template_specs_client.template_spec_versions.get(
