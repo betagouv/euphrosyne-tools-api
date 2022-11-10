@@ -14,7 +14,7 @@ def wait_for_deploy(
     deployment_information = wait_for_deployment_completeness(
         vm_deployment_properties.deployment_process
     )
-    if deployment_information:
+    if deployment_information and deployment_information.name:
         azure_client.delete_deployment(deployment_information.name)
         guacamole_client.create_connection(
             name=vm_deployment_properties.project_name,

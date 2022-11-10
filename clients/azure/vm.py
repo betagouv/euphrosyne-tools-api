@@ -240,10 +240,15 @@ def wait_for_deployment_completeness(
     poller: LROPoller[DeploymentExtended],
 ) -> Optional[DeploymentExtended]:
     deployment = poller.result()
-    if deployment.properties.provisioning_state in (
-        "Succeeded",
-        "Running",
-        "Ready",
+    if (
+        deployment.properties
+        and deployment.properties.provisioning_state
+        and deployment.properties.provisioning_state
+        in (
+            "Succeeded",
+            "Running",
+            "Ready",
+        )
     ):
         return deployment
     return None
