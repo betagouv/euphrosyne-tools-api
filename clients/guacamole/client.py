@@ -184,8 +184,8 @@ class GuacamoleClient:
     def get_vm_to_shutdown(
         self,
         time_unused: timedelta = timedelta(minutes=30),
-        skip_groups: list[str] = None,
-        from_date: datetime = None,
+        skip_groups: list[str] | None = None,
+        from_date: datetime | None = None,
     ) -> list[str]:
         """
         Check all existing VM connections to see
