@@ -149,9 +149,9 @@ def test_create_image(client: VMAzureClient):
 
 def test_get_template_specs(client: VMAzureClient):
     client._template_specs_client.template_specs.get.return_value.versions = {
-        "1.0.0": {},
-        "1.1.1": {},
-        "1.2.1": {},
+        "1.9.0": {},
+        "1.10.1": {},
+        "1.11.1": {},
     }
 
     # Get latest
@@ -159,15 +159,15 @@ def test_get_template_specs(client: VMAzureClient):
     client._template_specs_client.template_spec_versions.get.assert_called_with(
         resource_group_name="resource_group_name",
         template_spec_name="template_specs",
-        template_spec_version="1.2.1",
+        template_spec_version="1.11.1",
     )
 
-    # Get 1.1.1
-    client._get_template_specs(template_name="template_specs", version="1.1.1")
+    # Get 1.9.0
+    client._get_template_specs(template_name="template_specs", version="1.9.0")
     client._template_specs_client.template_spec_versions.get.assert_called_with(
         resource_group_name="resource_group_name",
         template_spec_name="template_specs",
-        template_spec_version="1.1.1",
+        template_spec_version="1.9.0",
     )
 
 

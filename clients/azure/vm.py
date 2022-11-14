@@ -227,7 +227,10 @@ class VMAzureClient:
                 expand="versions",
             )
 
-            version = sorted(template_spec.versions.keys())[-1]
+            version = sorted(
+                template_spec.versions.keys(),
+                key=lambda s: [int(u) for u in s.split(".")],
+            )[-1]
 
         return self._template_specs_client.template_spec_versions.get(
             resource_group_name=self.resource_group_name,
