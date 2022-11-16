@@ -133,6 +133,8 @@ class VMAzureClient:
             "resourcePrefix": self.resource_prefix,
             "storageAccountName": os.environ["AZURE_STORAGE_ACCOUNT"],
             "fileShareName": os.environ["AZURE_STORAGE_FILESHARE"],
+            "accountName": os.environ["VM_LOGIN"],
+            "accountPassword": os.environ["VM_PASSWORD"],
         }
         parameters["vmSize"] = PROJECT_TYPE_VM_SIZE[vm_size]
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
