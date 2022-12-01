@@ -83,9 +83,9 @@ def test_create_connection_with_proper_parameters(client: GuacamoleClient):
             assert post_data["parameters"]["hostname"] == "ip_address"
             assert post_data["parameters"]["username"] == "username"
             assert post_data["parameters"]["password"] == "password"
-            assert post_data["parameters"]["drive-name"] == "Project data"
+            assert post_data["parameters"]["drive-name"] == "Downloads"
             assert (
-                post_data["parameters"]["drive-path"] == "/filetransfer/projects/name"
+                post_data["parameters"]["drive-path"] == "/filetransfer/downloads/name"
             )
 
 

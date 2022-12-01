@@ -90,8 +90,8 @@ class GuacamoleClient:
             hostname=ip_address,
             username=username,
             password=password,
-            drive_name="Project data",
-            drive_path=f"/filetransfer/projects/{name}",
+            drive_name="Downloads",
+            drive_path=f"/filetransfer/downloads/{name}",
         )
         input_data = GuacamoleConnectionCreateInput(
             parent_identifier=PARENT_IDENTIFIER_VM_SIZE[vm_size],

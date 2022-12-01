@@ -108,7 +108,7 @@ class GuacamoleConnectionCreateParametersData(BaseModel):
     ignore_cert: str = Field("true", alias="ignore-cert")
     resize_method: str = Field("display-update", alias="resize-method")
     enable_font_smoothing: str = Field("true", alias="enable-font-smoothing")
-    enable_drive: str = Field("", alias="enable-drive")
+    enable_drive: str = Field("true", alias="enable-drive")
     create_drive_path: str = Field("true", alias="create-drive-path")
     color_depth: str = Field("24", alias="color-depth")
     read_only: str = Field("", alias="read-only")
