@@ -13,6 +13,7 @@ from exceptions import (
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN"),
     traces_sample_rate=0.1,
+    environment=os.getenv("SENTRY_ENVIRONMENT"),
 )
 
 app = FastAPI()
