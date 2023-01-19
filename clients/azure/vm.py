@@ -126,8 +126,8 @@ class VMAzureClient:
             template_name=self.template_specs_name, version=spec_version
         )
         parameters = {
-            "projectName": project_name,
             "vmName": slugify(project_name),
+            "fileShareProjectFolder": slugify(project_name),
             "imageGallery": self.template_specs_image_gallery,
             "imageDefinition": self.template_specs_image_definition,
             "resourcePrefix": self.resource_prefix,

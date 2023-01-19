@@ -15,6 +15,7 @@ from azure.storage.fileshare import (
 )
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from slugify import slugify
 
 from auth import User
 
@@ -150,7 +151,7 @@ class DataAzureClient(BaseStorageAzureClient):
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=share_name,
-            directory_path=os.path.join(_get_projects_path(), project_name),
+            directory_path=os.path.join(_get_projects_path(), slugify(project_name)),
         )
         try:
             dir_client.create_directory()
