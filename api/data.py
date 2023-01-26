@@ -51,7 +51,7 @@ def list_project_documents(
 def list_run_data(
     project_name: str,
     run_name: str,
-    data_type: str = Path(regex="^(raw_data|processed_data)$"),
+    data_type: str = Path(regex="^(raw_data|processed_data|HDF5)$"),
     azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     try:

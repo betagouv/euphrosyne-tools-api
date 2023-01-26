@@ -28,7 +28,7 @@ from ._storage import BaseStorageAzureClient
 load_dotenv()
 
 
-RunDataTypeType = Literal["processed_data", "raw_data"]
+RunDataTypeType = Literal["processed_data", "raw_data", "HDF5"]
 
 
 class RunDataNotFound(Exception):
@@ -83,7 +83,7 @@ class DataAzureClient(BaseStorageAzureClient):
         data_type: RunDataTypeType,
     ) -> list[ProjectFile]:
         """Fetches run data files from Fileshare.
-        Specify `data_type` to get either 'raw_data' or 'processed_data'.
+        Specify `data_type` to get either 'raw_data', 'processed_data' or 'HDF5'.
         """
         projects_path_prefix = _get_projects_path()
         dir_path = os.path.join(
