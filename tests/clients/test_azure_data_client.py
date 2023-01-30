@@ -335,17 +335,21 @@ def test_validate_document_file_path(path, is_valid):
     assert is_valid is not is_invalid
 
 
-def test_init_project_directory(
-    client: DataAzureClient,
-):
+def test_init_project_directory(client: DataAzureClient, monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
     share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
     with patch(
         "clients.azure.data.ShareDirectoryClient",
         new=MagicMock(
             **{"from_connection_string.return_value": share_directory_client_mock}
         ),
-    ):
-        client.init_project_directory("myproject")
+    ) as mock:
+        client.init_project_directory("My Project")
+        # Test project name to slug conversion
+        assert (
+            mock.from_connection_string.call_args.kwargs["directory_path"]
+            == "projects/my-project"
+        )
     share_directory_client_mock.create_directory.assert_called_once()
     share_directory_client_mock.create_subdirectory.assert_has_calls(
         [call("documents"), call("runs")]
@@ -374,17 +378,21 @@ def test_init_project_directory_raise_error(
     assert has_errored
 
 
-def test_init_run_directory(
-    client: DataAzureClient,
-):
+def test_init_run_directory(client: DataAzureClient, monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
     share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
     with patch(
         "clients.azure.data.ShareDirectoryClient",
         new=MagicMock(
             **{"from_connection_string.return_value": share_directory_client_mock}
         ),
-    ):
-        client.init_run_directory("myproject", "myrun")
+    ) as mock:
+        client.init_run_directory("myrun", "My Project")
+        # Test project name to slug conversion
+        assert (
+            mock.from_connection_string.call_args.kwargs["directory_path"]
+            == "projects/my-project/runs/myrun"
+        )
     share_directory_client_mock.create_directory.assert_called_once()
     share_directory_client_mock.create_subdirectory.assert_has_calls(
         [call("raw_data"), call("processed_data")], any_order=True

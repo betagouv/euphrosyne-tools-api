@@ -168,7 +168,7 @@ class DataAzureClient(BaseStorageAzureClient):
             conn_str=self._storage_connection_string,
             share_name=share_name,
             directory_path=os.path.join(
-                _get_projects_path(), project_name, "runs", run_name
+                _get_projects_path(), slugify(project_name), "runs", run_name
             ),
         )
         try:
