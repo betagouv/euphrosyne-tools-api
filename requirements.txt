@@ -17,7 +17,7 @@ python-slugify==8.0.0
 pylint==2.15.10 
 pytest==7.2.1 
 requests==2.28.2
-sentry-sdk[fastapi]==1.14.0
+sentry-sdk[fastapi]==1.15.0
 types-python-jose==3.3.4.3
 types-python-slugify==8.0.0.0 
 types-requests==2.28.11.8
