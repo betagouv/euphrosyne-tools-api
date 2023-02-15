@@ -18,7 +18,8 @@ def get_connection_link(
     guacamole_client: GuacamoleClient = Depends(get_guacamole_client),
 ):
     """Shows connection URL for a deployed VM for a specific project.
-    Responds with 404 if no VM is deployed for the project or no connection exists on Guacamole."""
+    Responds with 404 if no VM is deployed for the project or no connection exists on Guacamole.
+    """
     try:
         azure_client.get_vm(project_name)
     except VMNotFound:

@@ -43,7 +43,8 @@ async def get_current_user(
     api_token: Optional[str] = Depends(api_key_header_auth),
 ):
     """Defines two way to authenticate. Default is JWT token. API token can be used -
-    for example for development or endpoint test via OpenAPI - by setting API_TOKEN env variable."""
+    for example for development or endpoint test via OpenAPI - by setting API_TOKEN env variable.
+    """
     if not jwt_token:
         if os.getenv("API_TOKEN") and api_token == os.getenv("API_TOKEN"):
             return User(id=0, projects=[], is_admin=True)
