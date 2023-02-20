@@ -174,6 +174,7 @@ class GuacamoleClient:
         )
 
         if not resp.ok:
+            # pylint: disable=broad-exception-raised
             raise Exception(
                 f"Error getting response ({resp.status_code}): {resp.json()['message']}"
             )
