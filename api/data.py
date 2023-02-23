@@ -159,7 +159,7 @@ def init_run_data(
     azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     try:
-        return azure_client.init_run_directory(project_name, run_name)
+        return azure_client.init_run_directory(run_name, project_name)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 
@@ -176,6 +176,6 @@ def rename_run_folder(
     azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     try:
-        return azure_client.rename_run_directory(project_name, run_name, new_run_name)
+        return azure_client.rename_run_directory(run_name, project_name, new_run_name)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)

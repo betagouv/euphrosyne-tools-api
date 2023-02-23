@@ -52,7 +52,7 @@ def test_init_run_data(app: FastAPI, client: TestClient):
     response = client.post("/data/project_01/runs/run1/init")
 
     assert response.status_code == 204
-    init_run_directory_mock.assert_called_with("project_01", "run1")
+    init_run_directory_mock.assert_called_with("run1", "project_01")
 
 
 def test_init_run_data_when_caught_error(app: FastAPI, client: TestClient):
@@ -64,7 +64,7 @@ def test_init_run_data_when_caught_error(app: FastAPI, client: TestClient):
     )
     response = client.post("/data/project_01/runs/run1/init")
 
-    init_run_directory_mock.assert_called_with("project_01", "run1")
+    init_run_directory_mock.assert_called_with("run1", "project_01")
     assert response.status_code == 400
     assert response.json()["detail"] == "an error"
 
@@ -77,7 +77,7 @@ def test_change_run_name(app: FastAPI, client: TestClient):
     response = client.post("/data/project_01/runs/run1/rename/run2")
 
     assert response.status_code == 204
-    rename_run_directory_mock.assert_called_with("project_01", "run1", "run2")
+    rename_run_directory_mock.assert_called_with("run1", "project_01", "run2")
 
 
 def test_change_run_name_when_caught_error(app: FastAPI, client: TestClient):
@@ -89,6 +89,6 @@ def test_change_run_name_when_caught_error(app: FastAPI, client: TestClient):
     )
     response = client.post("/data/project_01/runs/run1/rename/run2")
 
-    rename_run_directory_mock.assert_called_with("project_01", "run1", "run2")
+    rename_run_directory_mock.assert_called_with("run1", "project_01", "run2")
     assert response.status_code == 400
     assert response.json()["detail"] == "an error"
