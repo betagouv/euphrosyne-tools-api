@@ -419,3 +419,45 @@ def test_init_run_directory_raise_error(
         except FolderCreationError:
             has_errored = True
     assert has_errored
+
+
+def test_change_run_name(client: DataAzureClient, monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ) as mock:
+        client.rename_run_directory("myrun", "My Project", "myrun2")
+        # Test project name to slug conversion
+        assert (
+            mock.from_connection_string.call_args.kwargs["directory_path"]
+            == "projects/my-project/runs/myrun"
+        )
+    share_directory_client_mock.rename_directory.assert_called_once_with(
+        "myrun2", overwrite=False
+    )
+
+
+@pytest.mark.parametrize("error_type", (ResourceNotFoundError, ResourceExistsError))
+def test_change_run_name_raise_error(
+    error_type: Exception,
+    client: DataAzureClient,
+):
+    share_directory_client_mock = MagicMock(
+        spec=ShareDirectoryClient, **{"rename_directory.side_effect": error_type}
+    )
+    has_errored = False
+    with patch(
+        "clients.azure.data.ShareDirectoryClient",
+        new=MagicMock(
+            **{"from_connection_string.return_value": share_directory_client_mock}
+        ),
+    ):
+        try:
+            client.rename_run_directory("myproject", "myrun", "myrun2")
+        except FolderCreationError:
+            has_errored = True
+    assert has_errored
