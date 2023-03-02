@@ -178,6 +178,21 @@ class DataAzureClient(BaseStorageAzureClient):
         except (ResourceNotFoundError, ResourceExistsError) as error:
             raise FolderCreationError(error.message) from error
 
+    def rename_run_directory(self, run_name: str, project_name: str, new_name: str):
+        """Change run folder name in project folder on Fileshare."""
+        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=share_name,
+            directory_path=os.path.join(
+                _get_projects_path(), slugify(project_name), "runs", run_name
+            ),
+        )
+        try:
+            dir_client.rename_directory(new_name, overwrite=False)
+        except (ResourceNotFoundError, ResourceExistsError) as error:
+            raise FolderCreationError(error.message) from error
+
     def set_fileshare_cors_policy(self, allowed_origins: str):
         """Set Cross-Origin Resource Sharing (CORS) for Azure Fileshare.
 
