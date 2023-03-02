@@ -189,7 +189,12 @@ class DataAzureClient(BaseStorageAzureClient):
             ),
         )
         try:
-            dir_client.rename_directory(new_name, overwrite=False)
+            dir_client.rename_directory(
+                os.path.join(
+                    _get_projects_path(), slugify(project_name), "runs", new_name
+                ),
+                overwrite=False,
+            )
         except (ResourceNotFoundError, ResourceExistsError) as error:
             raise FolderCreationError(error.message) from error
 
