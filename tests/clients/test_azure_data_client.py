@@ -437,7 +437,7 @@ def test_change_run_name(client: DataAzureClient, monkeypatch: MonkeyPatch):
             == "projects/my-project/runs/myrun"
         )
     share_directory_client_mock.rename_directory.assert_called_once_with(
-        "myrun2", overwrite=False
+        "projects/my-project/runs/myrun2", overwrite=False
     )
 
 
