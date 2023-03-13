@@ -10,7 +10,7 @@ black==23.1.0
 fastapi==0.94.0 
 httpx==0.23.3
 isort==5.12.0 
-mypy==1.0.1
+mypy==1.1.1
 python-dotenv==1.0.0 
 python-jose[cryptography]==3.3.0
 python-slugify==8.0.1
