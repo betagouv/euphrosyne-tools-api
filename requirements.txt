@@ -4,7 +4,7 @@ azure-mgmt-compute==29.1.0
 azure-mgmt-resource==22.0.0
 azure-mgmt-storage==21.0.0
 azure-storage-blob==12.15.0
-azure-storage-file-share==12.10.1
+azure-storage-file-share==12.11.1
 azure-storage-file==2.1.0
 black==23.1.0
 fastapi==0.94.0 
