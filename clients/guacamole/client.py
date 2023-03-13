@@ -35,6 +35,10 @@ class GuacamoleHttpError(Exception):
     pass
 
 
+class GuacamoleAuthenticationError(GuacamoleHttpError):
+    pass
+
+
 class GuacamoleClient:
     """Provides functions to interact with Guacamole REST API.
     Guacamole REST API doc is available at :
@@ -50,6 +54,12 @@ class GuacamoleClient:
             data={"username": username, "password": password},
             timeout=5,
         )
+
+        if not response.ok:
+            raise GuacamoleAuthenticationError(
+                f"{response.text} [{response.status_code}]"
+            )
+
         parsed_response = GuacamoleAuthGenerateTokenResponse.parse_obj(response.json())
         return parsed_response.auth_token
 
