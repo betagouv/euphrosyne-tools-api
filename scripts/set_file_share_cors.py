@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create a Azure VM and a Guacamole connection
+Create up CORS for Azure fileshare
 """
 import argparse
 

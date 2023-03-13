@@ -1,4 +1,5 @@
 from .client import (  # noqa: F401
+    GuacamoleAuthenticationError,
     GuacamoleClient,
     GuacamoleConnectionNotFound,
     GuacamoleHttpError,

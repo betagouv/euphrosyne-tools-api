@@ -1,8 +1,12 @@
 {
-    "jobs": [
-        {
-            "command": "*/30 * * * * python -m scripts.kill_unused_vm",
-            "size": "S"
-        }
-    ]
+  "jobs": [
+    {
+      "command": "*/30 * * * * python -m scripts.kill_unused_vm",
+      "size": "S"
+    },
+    {
+      "command": "*/30 * * * * python -m scripts.check_health",
+      "size": "S"
+    }
+  ]
 }
