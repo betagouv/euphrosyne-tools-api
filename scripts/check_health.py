@@ -54,7 +54,7 @@ def check_health():
 
     # Check Azure authentication
     try:
-        DefaultAzureCredential().get_token()
+        DefaultAzureCredential().get_token("https://management.azure.com/.default")
     except ClientAuthenticationError as error:
         status.azure = False
         logger.error(error)
