@@ -6,7 +6,7 @@ azure-mgmt-storage==21.0.0
 azure-storage-blob==12.15.0
 azure-storage-file-share==12.11.1
 azure-storage-file==2.1.0
-black==23.1.0
+black==23.3.0
 fastapi==0.95.0 
 httpx==0.23.3
 isort==5.12.0 
