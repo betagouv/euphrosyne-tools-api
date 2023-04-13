@@ -27,6 +27,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 class Project(BaseModel):
     id: int
     name: str
+    slug: str
 
 
 class User(BaseModel):
@@ -35,7 +36,7 @@ class User(BaseModel):
     is_admin: bool
 
     def has_project(self, project_name: str):
-        return project_name in (project.name for project in self.projects)
+        return project_name in (project.slug for project in self.projects)
 
 
 async def get_current_user(

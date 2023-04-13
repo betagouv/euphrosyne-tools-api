@@ -306,7 +306,12 @@ def test_validate_run_data_file_path(path, is_valid):
     is_invalid = False
     try:
         validate_run_data_file_path(
-            path, User(id=1, is_admin=False, projects=[Project(id=2, name="hello")])
+            path,
+            User(
+                id=1,
+                is_admin=False,
+                projects=[Project(id=2, name="hello", slug="hello")],
+            ),
         )
     except IncorrectDataFilePath:
         is_invalid = True
@@ -328,7 +333,12 @@ def test_validate_document_file_path(path, is_valid):
     is_invalid = False
     try:
         validate_project_document_file_path(
-            path, User(id=1, is_admin=False, projects=[Project(id=2, name="hello")])
+            path,
+            User(
+                id=1,
+                is_admin=False,
+                projects=[Project(id=2, name="hello", slug="hello")],
+            ),
         )
     except IncorrectDataFilePath:
         is_invalid = True

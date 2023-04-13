@@ -40,7 +40,7 @@ async def test_returns_user_with_projects():
         {
             "user_id": 1,
             "is_admin": False,
-            "projects": [{"id": 444, "name": "Projet AD"}],
+            "projects": [{"id": 444, "name": "Projet AD", "slug": "projet-ad"}],
         }
     )
     user = await get_current_user(token)
@@ -98,8 +98,8 @@ def test_verify_project_membership_passes_for_ownership():
             id=1,
             is_admin=False,
             projects=[
-                Project(id=1, name="hello-world"),
-                Project(id=2, name="bye-world"),
+                Project(id=1, name="hello-world", slug="hello-world"),
+                Project(id=2, name="bye-world", slug="bye-world"),
             ],
         ),
     ) is None
