@@ -21,4 +21,4 @@ sentry-sdk[fastapi]==1.20.0
 types-python-jose==3.3.4.7
 types-python-slugify==8.0.0.2 
 types-requests==2.29.0.0
-uvicorn[standard]==0.21.1 
+uvicorn[standard]==0.22.0 
