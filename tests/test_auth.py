@@ -12,6 +12,7 @@ from auth import (
     User,
     get_current_user,
     verify_admin_permission,
+    verify_has_azure_permission,
     verify_is_euphrosyne_backend,
     verify_project_membership,
 )
@@ -152,3 +153,21 @@ def test_verify_is_euphrosyne_backend(decode_mock: MagicMock, decoded_user_id: s
     except HTTPException:
         has_error = True
     assert has_error is not (EUPHROSYNE_TOKEN_USER_ID_VALUE == decoded_user_id)
+
+
+@pytest.mark.parametrize("token", ["", None, "right", "wrong"])
+def test_verify_has_azure_permission(
+    token: str | None, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "prefix")
+    with patch("auth.VaultClient") as vault_client_mock:
+        vault_client_mock.return_value.get_secret_value.return_value.value = "right"
+        if token != "right":
+            with pytest.raises(HTTPException):
+                verify_has_azure_permission()
+        else:
+            verify_has_azure_permission(token)
+        vault_client_mock.assert_called_with("prefix-key-vault")
+        vault_client_mock.return_value.get_secret_value.assert_called_with(
+            "secret-api-key"
+        )

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import os
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Generator, Literal, Optional
+from typing import TYPE_CHECKING, Generator, Literal, Optional
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.file.models import FilePermissions
@@ -17,8 +19,10 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from slugify import slugify
 
-from auth import User
+if TYPE_CHECKING:
+    from auth import User
 
+# pylint: disable=wrong-import-position
 from ._storage import BaseStorageAzureClient
 
 load_dotenv()

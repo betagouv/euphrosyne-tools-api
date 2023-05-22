@@ -3,10 +3,11 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
-from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
+from fastapi.security import APIKeyHeader, APIKeyQuery, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
+from clients.azure import VaultClient
 from exceptions import NoProjectMembershipException
 
 load_dotenv()
@@ -21,6 +22,7 @@ JWT_CREDENTIALS_EXCEPTION = HTTPException(
 EUPHROSYNE_TOKEN_USER_ID_VALUE = "euphrosyne"  # user id value when decoding jwt token
 
 api_key_header_auth = APIKeyHeader(name="X-API-KEY", auto_error=False)
+api_key_query_auth = APIKeyQuery(name="api_key")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
@@ -76,6 +78,18 @@ def verify_is_euphrosyne_backend(jwt_token: Optional[str] = Depends(oauth2_schem
         raise JWT_CREDENTIALS_EXCEPTION
     payload = _decode_jwt(jwt_token)
     if payload.get("user_id") != EUPHROSYNE_TOKEN_USER_ID_VALUE:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+
+def verify_has_azure_permission(api_key: Optional[str] = Depends(api_key_query_auth)):
+    """For euphrosyne tools - Azure communication. Token is passed in the URL and checked
+    aginst an Azure key vault."""
+    if not api_key:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    secret_api_token = VaultClient(
+        f"{os.getenv('AZURE_RESOURCE_PREFIX')}-key-vault"
+    ).get_secret_value("secret-api-key")
+    if secret_api_token.value != api_key:
         raise HTTPException(status_code=403, detail="Not allowed")
 
 
