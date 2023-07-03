@@ -197,6 +197,7 @@ class GuacamoleClient:
         time_unused: timedelta = timedelta(minutes=30),
         skip_groups: list[str] | None = None,
         from_date: datetime | None = None,
+        kill_no_connection: bool = False,
     ) -> list[str]:
         """
         Check all existing VM connections to see
@@ -240,6 +241,10 @@ class GuacamoleClient:
                 if connection.active_connections > 0:
                     # There is currently someone connected
                     continue
+
+                if kill_no_connection and connection.last_active is None:
+                    # Nobody has been connected to this VM, but we want to kill it anyway
+                    projects_to_shutdown.append(connection.name)
 
                 if connection.last_active is None:
                     # Nobody has been connected to this VM
