@@ -23,6 +23,7 @@ async def kill_unused_vm():
         "--no-connection",
         dest="no_connection",
         help="Will kill VM that have not seen a connection",
+        action="store_true",
     )
     args = parser.parse_args()
 
