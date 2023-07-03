@@ -7,6 +7,10 @@
     {
       "command": "*/30 * * * * python -m scripts.check_health",
       "size": "S"
+    },
+    {
+      "command": "0 0 * * * python -m scripts.kill_unused_vm --no_connection",
+      "size": "S"
     }
   ]
 }
