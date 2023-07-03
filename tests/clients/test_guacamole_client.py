@@ -217,3 +217,10 @@ def test_vm_to_shutdown(client: GuacamoleClient):
                 skip_groups=["default"], from_date=fake_now_before_shutdown
             )
             assert projects_to_shutdown == []
+
+            projects_to_shutdown = client.get_vm_to_shutdown(
+                skip_groups=["default"],
+                from_date=fake_now_before_shutdown,
+                kill_no_connection=True,
+            )
+            assert projects_to_shutdown == ["update-setup-clone"]
