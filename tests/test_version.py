@@ -1,5 +1,6 @@
 import pytest
-from clients.version import Version, InvalidVersion
+
+from clients.version import InvalidVersion, Version
 
 
 def test_version_to_tuple():

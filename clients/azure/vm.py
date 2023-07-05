@@ -11,9 +11,9 @@ from azure.mgmt.resource.resources.models import DeploymentExtended
 from azure.mgmt.resource.templatespecs import TemplateSpecsClient
 from dotenv import load_dotenv
 from slugify import slugify
-from clients.version import Version
 
 from clients import VMSizes
+from clients.version import Version
 
 load_dotenv()
 

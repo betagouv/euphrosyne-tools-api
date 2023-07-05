@@ -1,11 +1,10 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
-from unittest.mock import DEFAULT, MagicMock, patch, Mock
+from unittest.mock import DEFAULT, MagicMock, Mock, patch
 
 import pytest
 from azure.core.exceptions import ResourceNotFoundError
 from pytest import MonkeyPatch
-from clients.version import InvalidVersion
 
 from clients import VMSizes
 from clients.azure import VMAzureClient
@@ -18,6 +17,7 @@ from clients.azure.vm import (
     _project_name_to_vm_name,
     wait_for_deployment_completeness,
 )
+from clients.version import InvalidVersion
 
 
 @pytest.fixture
