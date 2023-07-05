@@ -1,10 +1,11 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
-from unittest.mock import DEFAULT, MagicMock, patch
+from unittest.mock import DEFAULT, MagicMock, patch, Mock
 
 import pytest
 from azure.core.exceptions import ResourceNotFoundError
 from pytest import MonkeyPatch
+from clients.version import InvalidVersion
 
 from clients import VMSizes
 from clients.azure import VMAzureClient
@@ -147,6 +148,41 @@ def test_create_image(client: VMAzureClient):
     )
 
 
+@patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
+@patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
+@patch(
+    "clients.azure.vm.VMAzureClient.get_latest_image_version",
+    Mock(return_value="1.1.1"),
+)
+def test_create_image_without_version(client: VMAzureClient):
+    client._resource_mgmt_client.deployments.check_existence.return_value = False
+    result = client.create_new_image_version("vm-test")
+
+    call_args = (
+        client._resource_mgmt_client.deployments.begin_create_or_update.call_args[1]
+    )
+
+    assert "parameters" in call_args
+    assert "properties" in call_args["parameters"]
+    assert "template" in call_args["parameters"]["properties"]
+    assert "parameters" in call_args["parameters"]["properties"]
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["vmName"]["value"]
+        == "vm-test"
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["version"]["value"]
+        == "1.1.2"
+    )
+    assert isinstance(result, AzureCaptureDeploymentProperties)
+    assert result.project_name == "vm-test"
+    assert result.version == "1.1.2"
+    assert (
+        result.deployment_process
+        is client._resource_mgmt_client.deployments.begin_create_or_update.return_value
+    )
+
+
 def test_get_template_specs(client: VMAzureClient):
     client._template_specs_client.template_specs.get.return_value.versions = {
         "1.9.0": {},
@@ -245,3 +281,37 @@ def test_delete_vm_raises_if_vm_absent(client: VMAzureClient):
 def test_project_name_to_vm_name(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_PREFIX", "test")
     assert _project_name_to_vm_name("BLABLA") == "test-vm-blabla"
+
+
+def test_get_latest_next_versions(client: VMAzureClient):
+    with patch(
+        "clients.azure.vm.VMAzureClient._get_image_versions",
+        Mock(return_value=["0.1.3", "1.1.4", "1.0.12"]),
+    ):
+        latest_version = client.get_latest_image_version()
+        assert latest_version == "1.1.4"
+        next_version = client.get_next_image_version(latest_version)
+        assert next_version == "1.1.5"
+
+    with patch(
+        "clients.azure.vm.VMAzureClient._get_image_versions",
+        Mock(return_value=["0.12.90", "1.2.4", "1.0.12"]),
+    ):
+        latest_version = client.get_latest_image_version()
+        assert latest_version == "1.2.4"
+        next_version = client.get_next_image_version(latest_version)
+        assert next_version == "1.2.5"
+
+    with patch(
+        "clients.azure.vm.VMAzureClient._get_image_versions",
+        Mock(return_value=["1.5.90", "1.2.4", "1.0.12"]),
+    ):
+        latest_version = client.get_latest_image_version()
+        assert latest_version == "1.5.90"
+        next_version = client.get_next_image_version(latest_version)
+        assert next_version == "1.5.91"
+
+
+def test_get_bad_next_version(client: VMAzureClient):
+    with pytest.raises(InvalidVersion):
+        client.get_next_image_version("bad_version")

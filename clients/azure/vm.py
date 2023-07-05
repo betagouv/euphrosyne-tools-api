@@ -11,6 +11,7 @@ from azure.mgmt.resource.resources.models import DeploymentExtended
 from azure.mgmt.resource.templatespecs import TemplateSpecsClient
 from dotenv import load_dotenv
 from slugify import slugify
+from clients.version import Version
 
 from clients import VMSizes
 
@@ -168,13 +169,18 @@ class VMAzureClient:
         operation.result()
         return operation.status()
 
-    def create_new_image_version(self, project_name: str, version: str):
+    def create_new_image_version(self, project_name: str, version: str | None = None):
         """
         Will use the given vm to create a new specialized image of this image and save it
         to the image gallery with the given version
         """
         vm_name = _project_name_to_vm_name(project_name)
         template = self._get_template_specs(template_name="captureVMSpec")
+
+        if version is None:
+            version = self.get_latest_image_version()
+            version = self.get_next_image_version(version)
+
         parameters = {
             "vmName": vm_name,
             "version": version,
@@ -239,6 +245,75 @@ class VMAzureClient:
             template_spec_name=template_name,
             template_spec_version=version,
         ).main_template
+
+    def _get_image_versions(
+        self, gallery_name: str, gallery_image_name: str
+    ) -> list[str]:
+        """
+        Fetch the versions available of a given image in a given gallery
+
+        Parameters:
+        -----------
+        gallery_name: str
+            Name of the gallery
+        gallery_image_name: str
+            Name of the image
+
+        Returns:
+        --------
+        list[str]
+            List of versions available
+        """
+        image_versions = (
+            self._compute_mgmt_client.gallery_image_versions.list_by_gallery_image(
+                resource_group_name=self.resource_group_name,
+                gallery_name=gallery_name,
+                gallery_image_name=gallery_image_name,
+            )
+        )
+        return list(map(lambda img_version: str(img_version.name), image_versions))
+
+    def get_latest_image_version(self) -> str:
+        """
+        For the configured image gallery and image definition,
+        get the latest version available
+
+        Returns:
+        str
+            Latest version available
+        """
+        versions = self._get_image_versions(
+            gallery_name=self.template_specs_image_gallery,
+            gallery_image_name=self.template_specs_image_definition,
+        )
+        if len(versions) <= 0:
+            return "1.0.0"
+
+        versions = sorted(map(lambda v: Version(v), versions))
+
+        latest_version = versions[-1]
+
+        return str(latest_version)
+
+    def get_next_image_version(self, version: str) -> str:
+        """
+        For the configured image gallery and image definition,
+        get the next version available after the given version
+        Parameters:
+        -----------
+        version: str
+            Version to start from
+        Returns:
+        --------
+        str
+            Next version available
+        """
+        # Parse the version and raise error if not valid
+        Version(version)
+        version_components = version.split(".")
+        version_components[-1] = str(int(version_components[-1]) + 1)
+
+        return ".".join(version_components)
 
 
 def wait_for_deployment_completeness(
