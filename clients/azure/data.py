@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import functools
+import io
 import os
 import re
 from datetime import datetime, timedelta
+from io import SEEK_CUR, SEEK_END, SEEK_SET
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Literal, Optional
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+
+# pylint: disable=wrong-import-position
+from azure.storage.file.fileservice import FileService
 from azure.storage.file.models import FilePermissions
 from azure.storage.file.sharedaccesssignature import FileSharedAccessSignature
 from azure.storage.fileshare import (
@@ -58,12 +64,89 @@ class ProjectFile(BaseModel):
     path: Optional[str]
 
 
+class AzureFileShareFile(io.BytesIO):
+    """File-like object for Azure File Share files."""
+
+    _offset = 0
+    _content_length: int | None = None
+
+    @property
+    def content_length(self) -> int:
+        """Get the content length of the file."""
+        if not self._content_length:
+            self._content_length = self.file_service.get_file_properties(
+                self.share_name,
+                self.directory_name,
+                self.file_name,
+            ).properties.content_length
+        return self._content_length
+
+    def __init__(
+        self,
+        file_service: FileService,
+        share_name: str,
+        directory_name: str,
+        file_name: str,
+    ) -> None:
+        self.file_service = file_service
+        self.share_name = share_name
+        self.directory_name = directory_name
+        self.file_name = file_name
+        super().__init__()
+
+    @functools.lru_cache
+    def _read_chunk(self, start_range: int, end_range: int) -> bytes:
+        return self.file_service.get_file_to_bytes(
+            self.share_name,
+            self.directory_name,
+            self.file_name,
+            start_range=start_range,
+            end_range=end_range,
+        )
+
+    def read(self, size: int | None = -1) -> bytes:
+        if not size:
+            return b""
+        end_range = self._offset + size - 1 if size > -1 else None
+        file = self._read_chunk(self._offset, end_range)
+        self._offset = (
+            self._offset + size
+            if end_range is not None
+            else file.properties.content_length
+        )
+        return file.content
+
+    def readinto(self, buffer) -> int:
+        data = self.read(len(buffer))
+        buffer[: len(data)] = data
+        return len(data)
+
+    def seek(self, offset: int, whence: int = SEEK_SET) -> int:
+        if whence == SEEK_SET:
+            self._offset = offset
+        if whence == SEEK_CUR:
+            self._offset += offset
+        if whence == SEEK_END:
+            self._offset = self.content_length - offset
+        return self._offset
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self._offset
+
+    def truncate(self, size: int | None = None) -> int:
+        return super().truncate(size)
+
+
 class DataAzureClient(BaseStorageAzureClient):
     def __init__(self):
         super().__init__()
         self._file_shared_access_signature = FileSharedAccessSignature(
             account_name=self.storage_account_name, account_key=self._storage_key
         )
+        self.share_name = os.environ["AZURE_STORAGE_FILESHARE"]
 
     def get_project_documents(
         self,
@@ -94,6 +177,21 @@ class DataAzureClient(BaseStorageAzureClient):
             return list(files)
         except ResourceNotFoundError as error:
             raise RunDataNotFound from error
+
+    def download_run_file(
+        self,
+        filepath: str,
+    ):
+        """Return a downloader for a share file."""
+        directory_name = os.path.dirname(filepath)
+        file_name = os.path.basename(filepath)
+
+        return AzureFileShareFile(
+            FileService(connection_string=self._storage_connection_string),
+            self.share_name,
+            directory_name,
+            file_name,
+        )
 
     def generate_run_data_sas_url(
         self,
@@ -137,9 +235,8 @@ class DataAzureClient(BaseStorageAzureClient):
         """Generate a signed URL (Shared Access Signature) that can be used
         to perform authenticated operations on a file in an Azure Fileshare.
         """
-        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
         sas_params = self._file_shared_access_signature.generate_file(
-            share_name=share_name,
+            share_name=self.share_name,
             directory_name=dir_path,
             file_name=file_name,
             permission=permission,
@@ -151,10 +248,9 @@ class DataAzureClient(BaseStorageAzureClient):
 
     def init_project_directory(self, project_name: str):
         """Create project folder on Fileshare with empty children folders (documents, runs)."""  # noqa: E501
-        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
-            share_name=share_name,
+            share_name=self.share_name,
             directory_path=os.path.join(_get_projects_path(), slugify(project_name)),
         )
         try:
@@ -167,10 +263,9 @@ class DataAzureClient(BaseStorageAzureClient):
     def init_run_directory(self, run_name: str, project_name: str):
         """Create run folder in project folder on Fileshare
         with empty children folders (processed_data, raw_data)."""
-        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
-            share_name=share_name,
+            share_name=self.share_name,
             directory_path=os.path.join(
                 _get_projects_path(), slugify(project_name), "runs", run_name
             ),
@@ -184,10 +279,9 @@ class DataAzureClient(BaseStorageAzureClient):
 
     def rename_run_directory(self, run_name: str, project_name: str, new_name: str):
         """Change run folder name in project folder on Fileshare."""
-        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
-            share_name=share_name,
+            share_name=self.share_name,
             directory_path=os.path.join(
                 _get_projects_path(), slugify(project_name), "runs", run_name
             ),
@@ -261,11 +355,10 @@ class DataAzureClient(BaseStorageAzureClient):
             https://stackoverflow.com/questions/66532170/azure-file-share-recursive-directory-search-like-os-walk
         .. [2] Recursive files listing: https://stackoverflow.com/a/66543222/16109419
         """
-        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
 
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
-            share_name=share_name,
+            share_name=self.share_name,
             directory_path=dir_path,
         )
 
@@ -286,7 +379,7 @@ class DataAzureClient(BaseStorageAzureClient):
                 if fetch_detailed_information:
                     file_client = ShareFileClient.from_connection_string(
                         conn_str=self._storage_connection_string,
-                        share_name=share_name,
+                        share_name=self.share_name,
                         file_path=path,
                     )
                     yield ProjectFile.parse_obj(file_client.get_file_properties())
@@ -296,12 +389,12 @@ class DataAzureClient(BaseStorageAzureClient):
 
 def validate_run_data_file_path(path: Path, current_user: User):
     if not re.match(
-        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data)\/",  # noqa: E501
+        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data|HDF5)\/",  # noqa: E501
         str(path),
     ):
         # pylint: disable=line-too-long
         raise IncorrectDataFilePath(
-            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data)/"  # noqa: E501
+            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data|hdf5)/"  # noqa: E501
         )
     _validate_project_file_path(path, current_user)
 
