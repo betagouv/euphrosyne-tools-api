@@ -19,6 +19,8 @@ class Version:
     ```
     """
 
+    _release: tuple[int, ...]
+
     def __init__(self, version: str) -> None:
         match = re.match(VERSION_REGEX, version)
         if not match:
@@ -51,12 +53,12 @@ class Version:
             return NotImplemented
         return self._release <= other._release
 
-    def __eq__(self, other: "Version") -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Version):
             return NotImplemented
         return self._release == other._release
 
-    def __ne__(self, other: "Version") -> bool:
+    def __ne__(self, other: object) -> bool:
         if not isinstance(other, Version):
             return NotImplemented
         return self._release != other._release

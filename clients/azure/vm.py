@@ -280,7 +280,7 @@ class VMAzureClient:
 
         Returns:
         str
-            Latest version available
+            Latest version available, default to 1.0.0 if none is available
         """
         versions = self._get_image_versions(
             gallery_name=self.template_specs_image_gallery,
@@ -289,9 +289,15 @@ class VMAzureClient:
         if len(versions) <= 0:
             return "1.0.0"
 
-        versions = sorted(map(lambda v: Version(v), versions))
+        parsed_versions: list[Version] = []
+        for version in versions:
+            try:
+                parsed_versions.append(Version(version))
+            except ValueError:
+                pass
 
-        latest_version = versions[-1]
+        parsed_versions = sorted(parsed_versions)
+        latest_version = parsed_versions[-1]
 
         return str(latest_version)
 
