@@ -9,7 +9,7 @@
       "size": "S"
     },
     {
-      "command": "0 0 * * * python -m scripts.kill_unused_vm --no_connection",
+      "command": "0 0 * * * python -m scripts.kill_unused_vm --no-connection",
       "size": "S"
     }
   ]
