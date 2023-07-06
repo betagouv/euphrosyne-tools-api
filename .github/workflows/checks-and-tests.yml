@@ -28,7 +28,7 @@ jobs:
       - name: Black check
         run: python -m black --check .
       - name: Ruff check
-        run: python -m ruff --check .
+        run: python -m ruff check .
       - name: Mypy check
         run: python -m mypy .
       - name: Pytest
