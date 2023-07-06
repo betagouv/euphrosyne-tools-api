@@ -179,7 +179,7 @@ class GuacamoleClient:
         token = self._get_admin_token()
 
         resp = requests.get(
-            f"{self._guamacole_root_url}/api/session/data/mysql/connectionGroups/ROOT/tree?token={token}",  # pylint: disable=line-too-long
+            f"{self._guamacole_root_url}/api/session/data/mysql/connectionGroups/ROOT/tree?token={token}",  # noqa: E501
             timeout=5,
         )
 

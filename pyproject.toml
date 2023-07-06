@@ -1,24 +1,31 @@
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-
-[tool.pylint.messages_control]
-disable = [
-    "missing-module-docstring",
-    "missing-class-docstring",
-    "missing-function-docstring",
-    "too-few-public-methods"
+[tool.ruff]
+ignore = ["F401"] # ignore unused-import
+line-length = 88
+exclude = [
+  "venv",
+  ".ruff_cache",
+  ".pytest_cache",
+  ".mypy_cache",
+  "__pycache__"
 ]
-max-args = "6"
 
-[tool.pylint.basic]
-extension-pkg-whitelist = "pydantic"
+[tool.ruff.pylint]
+max-args = 6
 
-[tool.pylint.similarities]
-ignore-imports = "yes"
-
-[tool.pylint.design]
-max-attributes=8
+[tool.black]
+line-length = 88
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.pytest_cache
+  | \.venv
+  | __pycache__
+  | build
+  | dist
+  | venv
+)/
+'''
 
 [[tool.mypy.overrides]]
 module="azure.mgmt.*"

@@ -23,8 +23,7 @@ class BaseStorageAzureClient:
             storage_account_name=self.storage_account_name,
         )
 
-        # pylint: disable=line-too-long,consider-using-f-string
-        self._storage_connection_string = "DefaultEndpointsProtocol=https;AccountName={};AccountKey={};EndpointSuffix=core.windows.net".format(
+        self._storage_connection_string = "DefaultEndpointsProtocol=https;AccountName={};AccountKey={};EndpointSuffix=core.windows.net".format(  # noqa: E501
             self.storage_account_name, self._storage_key
         )
 
@@ -37,12 +36,12 @@ def _get_storage_key(
 ):
     """Fetches a storage account key to use as a credential"""
     storage_mgmt_client = StorageManagementClient(credential, subscription_id)
-    key = (
-        storage_mgmt_client.storage_accounts.list_keys(
-            resource_group_name, storage_account_name
-        )
-        .keys[0]
-        .value
+    keys = storage_mgmt_client.storage_accounts.list_keys(
+        resource_group_name, storage_account_name
     )
 
+    if keys is None:
+        raise ValueError("missing key")
+
+    key = keys[0].value
     return key
