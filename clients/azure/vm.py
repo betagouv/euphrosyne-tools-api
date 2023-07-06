@@ -173,7 +173,7 @@ class VMAzureClient:
         """
         Will use the given vm to create a new specialized image of this image and save it
         to the image gallery with the given version
-        """
+        """  # noqa: E501
         vm_name = _project_name_to_vm_name(project_name)
         template = self._get_template_specs(template_name="captureVMSpec")
 

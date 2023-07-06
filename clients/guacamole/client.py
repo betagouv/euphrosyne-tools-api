@@ -173,7 +173,7 @@ class GuacamoleClient:
         )
         bytes_to_encode = bytes("\0".join([connection_id, "c", "mysql"]), "utf-8")
         client_identifier = base64.b64encode(bytes_to_encode).decode("utf-8")
-        return f"{os.environ['GUACAMOLE_ROOT_URL']}/#/client/{client_identifier}?token={token}"
+        return f"{os.environ['GUACAMOLE_ROOT_URL']}/#/client/{client_identifier}?token={token}"  # noqa: E501
 
     def get_connections_and_groups(self) -> GuacamoleConnectionsAndGroupsResponse:
         token = self._get_admin_token()
@@ -243,14 +243,15 @@ class GuacamoleClient:
                     continue
 
                 if kill_no_connection and connection.last_active is None:
-                    # Nobody has been connected to this VM, but we want to kill it anyway
+                    # Nobody has been connected to this VM,
+                    # but we want to kill it anyway
                     projects_to_shutdown.append(connection.name)
 
                 if connection.last_active is None:
                     # Nobody has been connected to this VM
                     continue
 
-                # Make sure the `now` and `connection.last_active` are on the same timezone
+                # Make sure the `now` and `connection.last_active` are on the same timezone # noqa: E501
                 if from_date is None:
                     from_date = datetime.now(connection.last_active.tzinfo)
 

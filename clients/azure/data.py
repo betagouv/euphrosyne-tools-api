@@ -150,7 +150,7 @@ class DataAzureClient(BaseStorageAzureClient):
         return f"https://{self.storage_account_name}.file.core.windows.net/{share_name}/{dir_path}/{file_name}?{sas_params}"
 
     def init_project_directory(self, project_name: str):
-        """Create project folder on Fileshare with empty children folders (documents, runs)."""
+        """Create project folder on Fileshare with empty children folders (documents, runs)."""  # noqa: E501
         share_name = os.environ["AZURE_STORAGE_FILESHARE"]
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
@@ -296,12 +296,12 @@ class DataAzureClient(BaseStorageAzureClient):
 
 def validate_run_data_file_path(path: Path, current_user: User):
     if not re.match(
-        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data)\/",
+        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data)\/",  # noqa: E501
         str(path),
     ):
         # pylint: disable=line-too-long
         raise IncorrectDataFilePath(
-            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data)/"
+            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data)/"  # noqa: E501
         )
     _validate_project_file_path(path, current_user)
 

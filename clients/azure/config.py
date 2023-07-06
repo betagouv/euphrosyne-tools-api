@@ -38,10 +38,12 @@ class ConfigAzureClient(BaseStorageAzureClient):
     def set_project_vm_size(
         self, project_name: str, project_vm_size: Optional[VMSizes] = None
     ):
-        """Add the project name to a VM size category (imagery, ...). If project_vm_size is
+        """
+        Add the project name to a VM size category (imagery, ...). If project_vm_size is
         None, the project will be removed from its current category. Setting a vm size for
         a project overrides any previous configuration, i.e a project can not be added to
-        several category."""
+        several category.
+        """  # noqa: E501
         if project_vm_size is not None and not isinstance(project_vm_size, VMSizes):
             raise TypeError("project_vm_size must be an enum of VMSizes type.")
         project_vm_sizes = self._get_project_vm_sizes_conf()
