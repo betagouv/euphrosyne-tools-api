@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 
 # Authentication
@@ -44,14 +44,14 @@ class GuacamoleConnectionsListData(BaseModel):
         allow_population_by_field_name = True
 
 
-class GuacamoleConnectionsListResponse(BaseModel):
-    __root__: dict[str, GuacamoleConnectionsListData]
+class GuacamoleConnectionsListResponse(RootModel):
+    root: dict[str, GuacamoleConnectionsListData]
 
     def __iter__(self):
-        return iter(self.__root__)
+        return iter(self.root)
 
     def __getitem__(self, item):
-        return self.__root__[item]
+        return self.root[item]
 
     class Config:
         allow_population_by_field_name = True
