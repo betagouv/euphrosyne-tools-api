@@ -73,7 +73,7 @@ class AzureFileShareFile(io.BytesIO):
     @property
     def content_length(self) -> int:
         """Get the content length of the file."""
-        if not self._content_length:
+        if self._content_length is None:
             self._content_length = self.file_service.get_file_properties(
                 self.share_name,
                 self.directory_name,
@@ -122,7 +122,7 @@ class AzureFileShareFile(io.BytesIO):
         return len(data)
 
     def seek(self, offset: int, whence: int = SEEK_SET) -> int:
-        if whence == SEEK_SET:
+        if whence == SEEK_SET or whence is None:
             self._offset = offset
         if whence == SEEK_CUR:
             self._offset += offset
