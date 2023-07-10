@@ -1,3 +1,4 @@
+import logging
 import os
 
 from azure.identity import DefaultAzureCredential
@@ -7,6 +8,7 @@ from azure.mgmt.web.models import StringDictionary
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 
 class InfraAzureClient:
@@ -26,12 +28,15 @@ class InfraAzureClient:
     def update_guacamole_webapp_guacd_hostname(self, new_hostname: str):
         settings = self.list_guacamole_webapp_settings()
         if settings["GUACD_HOSTNAME"] == new_hostname:
+            logger.info("guacd hostname in guacamole is ok.")
             return None
+        logger.warning("guacd hostname in guacamole is NOT ok. Updating...")
         settings["GUACD_HOSTNAME"] = new_hostname
         self._update_webapp_settings(
             f'{os.environ["AZURE_RESOURCE_PREFIX"]}-guacamole', settings
         )
         self.restart_guacamole_weppapp()
+        logger.warning("hostname has been updated and app restarted.")
         return None
 
     def list_guacamole_webapp_settings(self) -> dict[str, str]:
