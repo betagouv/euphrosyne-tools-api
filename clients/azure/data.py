@@ -95,26 +95,25 @@ class AzureFileShareFile(io.BytesIO):
         super().__init__()
 
     @functools.lru_cache
-    def _read_chunk(self, start_range: int, end_range: int) -> bytes:
-        return self.file_service.get_file_to_bytes(
+    def _read_chunk(self, start_range: int, end_range: int) -> tuple[bytes, int]:
+        file = self.file_service.get_file_to_bytes(
             self.share_name,
             self.directory_name,
             self.file_name,
             start_range=start_range,
             end_range=end_range,
         )
+        return file.content, file.properties.content_length
 
     def read(self, size: int | None = -1) -> bytes:
         if not size:
             return b""
         end_range = self._offset + size - 1 if size > -1 else None
-        file = self._read_chunk(self._offset, end_range)
+        content, file_content_length = self._read_chunk(self._offset, end_range)
         self._offset = (
-            self._offset + size
-            if end_range is not None
-            else file.properties.content_length
+            self._offset + size if end_range is not None else file_content_length
         )
-        return file.content
+        return content
 
     def readinto(self, buffer) -> int:
         data = self.read(len(buffer))

@@ -1,6 +1,6 @@
 import functools
 import os
-
+import pathlib
 from fastapi import APIRouter, Depends
 
 from auth import User, get_current_user
@@ -23,7 +23,7 @@ def verify_file_path(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        validate_run_data_file_path(file, current_user)
+        validate_run_data_file_path(pathlib.Path(file), current_user)
     except IncorrectDataFilePath as error:
         raise NoProjectMembershipException from error
     return file
