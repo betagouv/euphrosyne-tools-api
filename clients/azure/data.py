@@ -244,7 +244,7 @@ class DataAzureClient(BaseStorageAzureClient):
             start=datetime.utcnow(),
         )
         # pylint: disable=line-too-long
-        return f"https://{self.storage_account_name}.file.core.windows.net/{share_name}/{dir_path}/{file_name}?{sas_params}"
+        return f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{dir_path}/{file_name}?{sas_params}"
 
     def init_project_directory(self, project_name: str):
         """Create project folder on Fileshare with empty children folders (documents, runs)."""  # noqa: E501

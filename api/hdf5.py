@@ -3,7 +3,7 @@ import os
 
 from fastapi import APIRouter, Depends
 
-from auth import User, get_current_user, verify_project_membership
+from auth import User, get_current_user
 from clients.azure.data import (
     DataAzureClient,
     IncorrectDataFilePath,
@@ -15,7 +15,7 @@ from exceptions import NoProjectMembershipException
 # This needs to be done before any import of h5py, so before h5grove import
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
-import h5grove.fastapi_utils as h5grove_fastapi  # noqa
+import h5grove.fastapi_utils as h5grove_fastapi  # pylint: disable=wrong-import-position,wrong-import-order
 
 
 def verify_file_path(
