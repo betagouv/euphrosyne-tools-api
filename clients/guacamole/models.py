@@ -169,7 +169,7 @@ class GuacamoleConnectionCreateParametersData(BaseModel):
     sftp_root_directory: str = Field("", alias="sftp-root-directory")
     sftp_directory: str = Field("", alias="sftp-directory")
     sftp_port: str = Field("", alias="sftp-port")
-    sftp_server_alive_interval = Field("", alias="sftp-server-alive-internal")
+    sftp_server_alive_interval: str = Field("", alias="sftp-server-alive-internal")
 
     class Config:
         allow_population_by_field_name = True
