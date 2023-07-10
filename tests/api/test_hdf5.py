@@ -8,13 +8,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from auth import get_current_user
-from dependencies import get_storage_azure_client
-
-from clients.azure.data import IncorrectDataFilePath
-
-
 from api.hdf5 import router
+from auth import get_current_user
+from clients.azure.data import IncorrectDataFilePath
+from dependencies import get_storage_azure_client
 
 
 @pytest.fixture(autouse=True)

@@ -1,8 +1,9 @@
+from io import SEEK_CUR, SEEK_END, SEEK_SET
+from unittest import mock
+
 import pytest
 
 from clients.azure.data import AzureFileShareFile
-from unittest import mock
-from io import SEEK_CUR, SEEK_END, SEEK_SET
 
 
 @pytest.fixture
