@@ -43,5 +43,5 @@ def _get_storage_key(
     if keys is None:
         raise ValueError("missing key")
 
-    key = keys[0].value
+    key = keys.keys[0].value
     return key
