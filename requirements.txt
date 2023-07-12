@@ -1,4 +1,4 @@
-anyio[trio]==3.7.0
+anyio[trio]==3.7.1
 azure-identity==1.13.0 
 azure-keyvault-secrets==4.7.0
 azure-mgmt-compute==30.0.0
@@ -18,7 +18,7 @@ python-jose[cryptography]==3.3.0
 python-slugify==8.0.1
 pytest==7.4.0 
 requests==2.31.0
-sentry-sdk[fastapi]==1.26.0
+sentry-sdk[fastapi]==1.27.1
 types-python-jose==3.3.4.7
 types-python-slugify==8.0.0.2 
 types-requests==2.31.0.1
