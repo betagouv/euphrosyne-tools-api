@@ -47,7 +47,7 @@ async def get_current_user(
 ):
     """Defines two way to authenticate. Default is JWT token. API token can be used -
     for example for development or endpoint test via OpenAPI - by setting API_TOKEN env variable.
-    """
+    """  # noqa: E501
     if not jwt_token:
         if os.getenv("API_TOKEN") and api_token == os.getenv("API_TOKEN"):
             return User(id=0, projects=[], is_admin=True)
@@ -82,8 +82,10 @@ def verify_is_euphrosyne_backend(jwt_token: Optional[str] = Depends(oauth2_schem
 
 
 def verify_has_azure_permission(api_key: Optional[str] = Depends(api_key_query_auth)):
-    """For euphrosyne tools - Azure communication. Token is passed in the URL and checked
-    aginst an Azure key vault."""
+    """
+    For euphrosyne tools - Azure communication. Token is passed in the URL and checked
+    aginst an Azure key vault.
+    """
     if not api_key:
         raise HTTPException(status_code=403, detail="Not allowed")
     secret_api_token = VaultClient(

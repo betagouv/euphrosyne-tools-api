@@ -33,6 +33,7 @@ def edit_project_vm_size(
     config_client: ConfigAzureClient = Depends(get_config_azure_client),
     vm_size: VMSizes | Literal[""] = Body(embed=True),
 ):
-    """Edit VM size configuration of a project. Passing empty string value will remove project from
+    """Edit VM size configuration of a project.
+    Passing empty string value will remove project from
     a VM size category."""
     config_client.set_project_vm_size(project_name, vm_size or None)

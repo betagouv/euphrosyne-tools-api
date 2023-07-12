@@ -23,15 +23,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 pytest
+          pip install pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Black check
         run: python -m black --check .
-      - name: Isort check
-        run: python -m isort --check .
+      - name: Ruff check
+        run: python -m ruff check .
       - name: Mypy check
         run: python -m mypy .
-      - name: Pylint check
-        run: python -m pylint $(find . -type f -path '*.py')
       - name: Pytest
         run: python -m pytest .
