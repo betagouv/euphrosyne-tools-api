@@ -58,6 +58,18 @@ class ProjectFile(BaseModel):
     path: Optional[str]
 
 
+class ProjectFolder(BaseModel):
+    name: str
+
+
+class ProjectFileOrDirectory(BaseModel):
+    name: str
+    path: Optional[str]
+    size: Optional[int]
+    last_modified: Optional[datetime]
+    type: Literal["file", "directory"]
+
+
 class DataAzureClient(BaseStorageAzureClient):
     def __init__(self):
         super().__init__()
@@ -92,6 +104,29 @@ class DataAzureClient(BaseStorageAzureClient):
         files = self._list_files_recursive(dir_path)
         try:
             return list(files)
+        except ResourceNotFoundError as error:
+            raise RunDataNotFound from error
+
+    def get_run_files_folders(
+        self,
+        project_name: str,
+        run_name: str,
+        folder: str,
+        data_type: RunDataTypeType,
+    ) -> list[ProjectFileOrDirectory]:
+        """Fetches run data files from Fileshare.
+        Specify `data_type` to get either 'raw_data' or 'processed_data'.
+        """
+        projects_path_prefix = _get_projects_path()
+        dir_path = os.path.join(
+            projects_path_prefix, project_name, "runs", run_name, data_type
+        )
+
+        if folder is not None:
+            dir_path = os.path.join(dir_path, folder)
+
+        try:
+            return self._list_files(dir_path)
         except ResourceNotFoundError as error:
             raise RunDataNotFound from error
 
@@ -229,6 +264,31 @@ class DataAzureClient(BaseStorageAzureClient):
                 )
             ]
         )
+
+    def _list_files(self, dir_path: str) -> list[ProjectFileOrDirectory]:
+        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
+
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=share_name,
+            directory_path=dir_path,
+        )
+
+        results: list[ProjectFileOrDirectory] = []
+
+        for file in dir_client.list_directories_and_files():
+            name, is_directory = file["name"], file["is_directory"]
+
+            file = ProjectFileOrDirectory(
+                name=name,
+                path=os.path.join(dir_path, name),
+                type="directory" if is_directory else "file",
+                size=file["size"] if not is_directory else None,
+                last_modified=file["last_modified"],
+            )
+            results.append(file)
+
+        return results
 
     def _list_files_recursive(
         self, dir_path: str, fetch_detailed_information: bool = False
