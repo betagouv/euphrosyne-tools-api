@@ -80,11 +80,11 @@ class DataAzureClient(BaseStorageAzureClient):
     def get_project_documents(
         self,
         project_name: str,
-    ) -> list[ProjectFile]:
+    ) -> list[ProjectFileOrDirectory]:
         dir_path = os.path.join(_get_projects_path(), project_name, "documents")
-        files = self._list_files_recursive(dir_path, fetch_detailed_information=True)
+        # files = self._list_files_recursive(dir_path, fetch_detailed_information=True)
         try:
-            return list(files)
+            return self._list_files(dir_path)
         except ResourceNotFoundError as error:
             raise ProjectDocumentsNotFound from error
 
@@ -276,8 +276,9 @@ class DataAzureClient(BaseStorageAzureClient):
 
         results: list[ProjectFileOrDirectory] = []
 
-        for file in dir_client.list_directories_and_files():
+        for file in dir_client.list_directories_and_files(include=["timestamps"]):
             name, is_directory = file["name"], file["is_directory"]
+            print(file)
 
             file = ProjectFileOrDirectory(
                 name=name,
