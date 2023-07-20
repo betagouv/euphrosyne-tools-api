@@ -21,8 +21,8 @@ def authenticate_user(app: FastAPI):
 
 @pytest.mark.parametrize(
     "route",
-    [route.path for route in router.routes],
-)  # type: ignore
+    [route.path for route in router.routes],  # type: ignore
+)
 @mock.patch("api.hdf5.validate_run_data_file_path")
 def test_403_when_wrong_data_path(
     fn_mock: mock.MagicMock, route: str, client: TestClient
