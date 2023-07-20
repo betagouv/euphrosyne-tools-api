@@ -150,7 +150,7 @@ def test_delete_vm_when_no_connection(app: FastAPI, client: TestClient):
 
 @pytest.mark.parametrize(
     ("data_type"),
-    (("raw_data"), ("processed_data")),
+    (("raw_data"), ("processed_data"), ("HDF5")),
 )
 def test_list_run_data(app: FastAPI, client: TestClient, data_type: tuple[str]):
     def yield_project_files():
