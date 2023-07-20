@@ -393,7 +393,7 @@ def validate_run_data_file_path(path: Path, current_user: User):
     ):
         # pylint: disable=line-too-long
         raise IncorrectDataFilePath(
-            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data|hdf5)/"  # noqa: E501
+            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data|HDF5)/"  # noqa: E501
         )
     _validate_project_file_path(path, current_user)
 
