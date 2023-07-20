@@ -16,7 +16,7 @@ from exceptions import NoProjectMembershipException
 # This needs to be done before any import of h5py, so before h5grove import
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
-import h5grove.fastapi_utils as h5grove_fastapi  # pylint: disable=wrong-import-position,wrong-import-order
+import h5grove.fastapi_utils as h5grove_fastapi  # noqa: E402,E501
 
 
 def verify_file_path(
