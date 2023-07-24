@@ -53,10 +53,11 @@ def list_run_data(
     project_name: str,
     run_name: str,
     data_type: str = Path(regex="^(raw_data|processed_data)$"),
+    folder: str | None = None,
     azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     try:
-        return azure_client.get_run_files_folders(project_name, run_name, data_type)  # type: ignore # noqa: E501
+        return azure_client.get_run_files_folders(project_name, run_name, folder, data_type)  # type: ignore # noqa: E501
     except RunDataNotFound:
         return JSONResponse({"detail": "Run data not found"}, status_code=404)
 
