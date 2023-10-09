@@ -20,7 +20,7 @@ python-slugify==8.0.1
 pytest==7.4.2 
 requests==2.31.0
 ruff==0.0.291
-sentry-sdk[fastapi]==1.30.0
+sentry-sdk[fastapi]==1.31.0
 types-python-jose==3.3.4.8
 types-python-slugify==8.0.0.3 
 types-requests==2.31.0.2
