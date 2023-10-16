@@ -6,7 +6,7 @@ azure-mgmt-containerinstance==10.1.0
 azure-mgmt-resource==23.0.1
 azure-mgmt-storage==21.1.0
 azure-mgmt-web==7.1.0
-azure-storage-blob==12.18.2
+azure-storage-blob==12.18.3
 azure-storage-file-share==12.14.2
 azure-storage-file==2.1.0
 black==23.9.1
