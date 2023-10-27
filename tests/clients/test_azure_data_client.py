@@ -471,3 +471,46 @@ def test_change_run_name_raise_error(
         except FolderCreationError:
             has_errored = True
     assert has_errored
+
+
+def test_is_project_data_available_returns_true(
+    client: DataAzureClient,
+):
+    with patch.object(
+        ShareDirectoryClient,
+        "list_directories_and_files",
+        return_value=[
+            {"name": "run1", "is_directory": True},
+            {"name": "run2", "is_directory": True},
+        ],
+    ), patch.object(
+        ShareDirectoryClient,
+        "get_subdirectory_client",
+        return_value=MagicMock(list_directories_and_files=lambda: [{"name": "file1"}]),
+    ):
+        result = client.is_project_data_available("test_project")
+        assert result
+
+
+def test_is_project_data_available_returns_false(
+    client: DataAzureClient,
+):
+    with patch.object(
+        ShareDirectoryClient,
+        "list_directories_and_files",
+        side_effect=ResourceNotFoundError,
+    ):
+        result = client.is_project_data_available("test_project")
+        assert not result
+
+    with patch.object(
+        ShareDirectoryClient,
+        "list_directories_and_files",
+        return_value=[{"name": "run1", "is_directory": True}],
+    ), patch.object(
+        ShareDirectoryClient,
+        "get_subdirectory_client",
+        return_value=MagicMock(list_directories_and_files=lambda: []),
+    ):
+        result = client.is_project_data_available("test_project")
+        assert not result
