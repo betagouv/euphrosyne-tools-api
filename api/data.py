@@ -25,6 +25,17 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 
 @router.get(
+    "/available/{project_name}",
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+)
+def check_project_data_available(
+    project_name: str,
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+):
+    return {"available": azure_client.is_project_data_available(project_name)}
+
+
+@router.get(
     "/{project_name}/documents",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],

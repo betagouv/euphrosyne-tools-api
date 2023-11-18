@@ -9,6 +9,7 @@ from io import SEEK_CUR, SEEK_END, SEEK_SET
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Literal, Optional
 
+import sentry_sdk
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 
 # pylint: disable=wrong-import-position
@@ -191,6 +192,34 @@ class DataAzureClient(BaseStorageAzureClient):
             directory_name,
             file_name,
         )
+
+    def is_project_data_available(self, project_name: str) -> bool:
+        """Check if project data is available on Fileshare."""
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=self.share_name,
+            directory_path=os.path.join(
+                _get_projects_path(), slugify(project_name), "runs"
+            ),
+        )
+        try:
+            run_folders = [
+                entry["name"]
+                for entry in dir_client.list_directories_and_files()
+                if entry["is_directory"]
+            ]
+        except ResourceNotFoundError as error:
+            sentry_sdk.capture_exception(error)
+            return False
+        for run_folder in run_folders:
+            # check if raw_data folder has any file or folder
+            if list(
+                dir_client.get_subdirectory_client(
+                    f"{run_folder}/raw_data"
+                ).list_directories_and_files()
+            ):
+                return True
+        return False
 
     def generate_run_data_sas_url(
         self,

@@ -20,7 +20,7 @@ def capture_vm():
         help="Name of the project vm you want to capture",
         required=True,
     )
-    parser.add_argument("--version", help="Version of this new image", required=True)
+    parser.add_argument("--version", help="Version of this new image")
     parser.add_argument(
         "-k",
         "--kill",
