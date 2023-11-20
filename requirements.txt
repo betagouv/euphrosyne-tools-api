@@ -1,5 +1,5 @@
 anyio[trio]==4.0.0
-azure-identity==1.14.1 
+azure-identity==1.15.0 
 azure-keyvault-secrets==4.7.0
 azure-mgmt-compute==30.3.0
 azure-mgmt-containerinstance==10.1.0 
