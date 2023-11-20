@@ -13,7 +13,7 @@ black==23.10.1
 fastapi==0.99.1 
 h5grove @ git+https://github.com/wiwski/h5grove.git@feature/filepath-resolver
 httpx==0.25.1
-mypy==1.0.1
+mypy==1.7.0
 python-dotenv==1.0.0 
 python-jose[cryptography]==3.3.0
 python-slugify==8.0.1
