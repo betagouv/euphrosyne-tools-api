@@ -12,7 +12,7 @@ azure-storage-file==2.1.0
 black==23.10.1
 fastapi==0.99.1 
 h5grove @ git+https://github.com/wiwski/h5grove.git@feature/filepath-resolver
-httpx==0.25.1
+httpx==0.25.2
 mypy==1.0.1
 python-dotenv==1.0.0 
 python-jose[cryptography]==3.3.0
