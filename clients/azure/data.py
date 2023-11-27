@@ -60,7 +60,7 @@ class IncorrectDataFilePath(Exception):
 
 class ProjectFile(BaseModel):
     name: str
-    last_modified: Optional[datetime]
+    last_modified: Optional[datetime] = None
     size: int
     path: Optional[str]
 
@@ -410,9 +410,9 @@ class DataAzureClient(BaseStorageAzureClient):
                         share_name=self.share_name,
                         file_path=path,
                     )
-                    yield ProjectFile.parse_obj(file_client.get_file_properties())
+                    yield ProjectFile.model_validate(file_client.get_file_properties())
                 else:
-                    yield ProjectFile.parse_obj({**file, "path": path})
+                    yield ProjectFile.model_validate({**file, "path": path})
 
 
 def validate_run_data_file_path(path: Path, current_user: User):

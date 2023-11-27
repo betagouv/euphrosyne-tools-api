@@ -60,7 +60,9 @@ class GuacamoleClient:
                 f"{response.text} [{response.status_code}]"
             )
 
-        parsed_response = GuacamoleAuthGenerateTokenResponse.parse_obj(response.json())
+        parsed_response = GuacamoleAuthGenerateTokenResponse.model_validate(
+            response.json()
+        )
         return parsed_response.auth_token
 
     def _get_admin_token(self):
@@ -75,7 +77,9 @@ class GuacamoleClient:
             f"{self._guamacole_root_url}/api/session/data/mysql/connections?token={token}",
             timeout=5,
         )
-        parsed_response = GuacamoleConnectionsListResponse.parse_obj(response.json())
+        parsed_response = GuacamoleConnectionsListResponse.model_validate(
+            response.json()
+        )
 
         for conn_id in parsed_response:
             conn = parsed_response[conn_id]
@@ -112,7 +116,7 @@ class GuacamoleClient:
 
         response = requests.post(
             f"{self._guamacole_root_url}/api/session/data/mysql/connections?token={token}",
-            json=input_data.dict(by_alias=True),
+            json=input_data.model_dump(by_alias=True),
             timeout=5,
         )
         if not response.ok:
@@ -128,6 +132,8 @@ class GuacamoleClient:
         )
         if response.ok:
             return None
+        if response.status_code == 404:
+            raise GuacamoleConnectionNotFound()
         raise GuacamoleHttpError(f"{response.text} [{response.status_code}]")
 
     def assign_user_to_connection(self, connection_id: str, username: str):
@@ -140,7 +146,7 @@ class GuacamoleClient:
                     op="add",
                     path=f"/connectionPermissions/{connection_id}",
                     value="READ",
-                ).dict(by_alias=True),
+                ).model_dump(by_alias=True),
             ],
             timeout=5,
         )
@@ -160,7 +166,7 @@ class GuacamoleClient:
             input_data = GuacamoleCreateUserInput(username=username, password=password)
             requests.post(
                 f"{self._guamacole_root_url}/api/session/data/mysql/users?token={token}",
-                json=input_data.dict(by_alias=True),
+                json=input_data.model_dump(by_alias=True),
                 timeout=5,
             )
 
@@ -189,7 +195,7 @@ class GuacamoleClient:
                 f"Error getting response ({resp.status_code}): {resp.json()['message']}"
             )
 
-        data = GuacamoleConnectionsAndGroupsResponse.parse_obj(resp.json())
+        data = GuacamoleConnectionsAndGroupsResponse.model_validate(resp.json())
         return data
 
     def get_vm_to_shutdown(

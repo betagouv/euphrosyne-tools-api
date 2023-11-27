@@ -149,10 +149,11 @@ def test_delete_connection_with_proper_parameters(client: GuacamoleClient):
 
 def test_delete_connection_raises_proper_error_on_404(client: GuacamoleClient):
     with patch.object(client, "_get_admin_token"):
-        with patch("clients.guacamole.client.requests") as requests_mock:
-            requests_mock.delete.return_value = MagicMock(ok=False, status_code=404)
-            with pytest.raises(GuacamoleConnectionNotFound):
-                client.delete_connection("connection")
+        with patch.object(client, "get_connection_by_name"):
+            with patch("clients.guacamole.client.requests") as requests_mock:
+                requests_mock.delete.return_value = MagicMock(ok=False, status_code=404)
+                with pytest.raises(GuacamoleConnectionNotFound):
+                    client.delete_connection("connection")
 
 
 def test_delete_connection_raises_proper_error_on_http_error(client: GuacamoleClient):
@@ -194,7 +195,7 @@ def test_vm_to_shutdown(client: GuacamoleClient):
         with patch.object(
             client,
             "get_connections_and_groups",
-            return_value=GuacamoleConnectionsAndGroupsResponse.parse_obj(
+            return_value=GuacamoleConnectionsAndGroupsResponse.model_validate(
                 GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE
             ),
         ):

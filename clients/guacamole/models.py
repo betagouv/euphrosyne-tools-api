@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
 # Authentication
@@ -11,8 +11,7 @@ class GuacamoleAuthGenerateTokenResponse(BaseModel):
     data_source: str = Field("", alias="dataSource")
     available_data_sources: list[str] = Field([], alias="availableDataSources")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # Connections
@@ -27,8 +26,7 @@ class GuacamoleConnectionsListDataAttributes(BaseModel):
     guacd_hostname: Optional[str] = Field(None, alias="guacd-hostname")
     guacd_port: Optional[str] = Field(None, alias="guacd-port")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class GuacamoleConnectionsListData(BaseModel):
@@ -40,8 +38,7 @@ class GuacamoleConnectionsListData(BaseModel):
     last_active: Optional[datetime] = Field(None, alias="lastActive")
     attributes: GuacamoleConnectionsListDataAttributes
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class GuacamoleConnectionsListResponse(RootModel):
@@ -53,8 +50,7 @@ class GuacamoleConnectionsListResponse(RootModel):
     def __getitem__(self, item):
         return self.root[item]
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class GuacamoleConnectionGroupAttribute(BaseModel):
@@ -64,8 +60,7 @@ class GuacamoleConnectionGroupAttribute(BaseModel):
     )
     enable_session_affinity: str = Field("", alias="enable-session-affinity")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class GuacamoleConnectionGroupData(BaseModel):
@@ -79,8 +74,7 @@ class GuacamoleConnectionGroupData(BaseModel):
         [], alias="childConnections"
     )
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class GuacamoleConnectionsAndGroupsResponse(BaseModel):
@@ -92,8 +86,7 @@ class GuacamoleConnectionsAndGroupsResponse(BaseModel):
         [], alias="childConnectionGroups"
     )
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # Create connection input
@@ -171,12 +164,11 @@ class GuacamoleConnectionCreateParametersData(BaseModel):
     sftp_port: str = Field("", alias="sftp-port")
     sftp_server_alive_interval: str = Field("", alias="sftp-server-alive-internal")
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class GuacamoleConnectionCreateInput(BaseModel):
-    parent_identifier: str = Field("", alias="parentIdentifier")
+    parent_identifier: str = Field(alias="parentIdentifier")
     name: str
     protocol: str
     attributes: GuacamoleConnectionsListDataAttributes = Field(
@@ -184,8 +176,7 @@ class GuacamoleConnectionCreateInput(BaseModel):
     )
     parameters: GuacamoleConnectionCreateParametersData
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class GuacamoleUserPermissionInput(BaseModel):
