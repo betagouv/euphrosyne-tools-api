@@ -198,9 +198,7 @@ class DataAzureClient(BaseStorageAzureClient):
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=self.share_name,
-            directory_path=os.path.join(
-                _get_projects_path(), slugify(project_name), "runs"
-            ),
+            directory_path=os.path.join(_generate_base_dir_path(project_name), "runs"),
         )
         try:
             run_folders = [
@@ -279,7 +277,7 @@ class DataAzureClient(BaseStorageAzureClient):
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=self.share_name,
-            directory_path=os.path.join(_get_projects_path(), slugify(project_name)),
+            directory_path=_generate_base_dir_path(project_name),
         )
         try:
             dir_client.create_directory()
@@ -294,9 +292,7 @@ class DataAzureClient(BaseStorageAzureClient):
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=self.share_name,
-            directory_path=os.path.join(
-                _get_projects_path(), slugify(project_name), "runs", run_name
-            ),
+            directory_path=_generate_base_dir_path(project_name, run_name),
         )
         try:
             dir_client.create_directory()
@@ -310,15 +306,11 @@ class DataAzureClient(BaseStorageAzureClient):
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=self.share_name,
-            directory_path=os.path.join(
-                _get_projects_path(), slugify(project_name), "runs", run_name
-            ),
+            directory_path=_generate_base_dir_path(project_name, run_name),
         )
         try:
             dir_client.rename_directory(
-                os.path.join(
-                    _get_projects_path(), slugify(project_name), "runs", new_name
-                ),
+                _generate_base_dir_path(project_name, new_name),
                 overwrite=False,
             )
         except (ResourceNotFoundError, ResourceExistsError) as error:
@@ -448,3 +440,12 @@ def _validate_project_file_path(path: Path, current_user: User):
     project_name = path_without_prefix.parts[0]
     if not current_user.has_project(project_name) and not current_user.is_admin:
         raise IncorrectDataFilePath(f"user is not part of project {project_name}")
+
+
+def _generate_base_dir_path(project_name: str, run_name: str = ""):
+    """Generate a path to a directory in the fileshare for a project and a run if `run_name`
+    is passed as a parameter."""
+    base_dir_path = os.path.join(_get_projects_path(), slugify(project_name))
+    if run_name:
+        base_dir_path = os.path.join(base_dir_path, "runs", run_name)
+    return base_dir_path
