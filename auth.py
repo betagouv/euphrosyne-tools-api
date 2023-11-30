@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, APIKeyQuery, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
+from slugify import slugify
 
 from clients.azure import VaultClient
 from exceptions import NoProjectMembershipException
@@ -38,7 +39,7 @@ class User(BaseModel):
     is_admin: bool
 
     def has_project(self, project_name: str):
-        return project_name in (project.slug for project in self.projects)
+        return slugify(project_name) in (project.slug for project in self.projects)
 
 
 async def get_current_user(
