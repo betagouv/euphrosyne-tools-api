@@ -402,9 +402,9 @@ class DataAzureClient(BaseStorageAzureClient):
                         share_name=self.share_name,
                         file_path=path,
                     )
-                    yield ProjectFile.model_validate(file_client.get_file_properties())
+                    yield ProjectFile(**dict(file_client.get_file_properties()))
                 else:
-                    yield ProjectFile.model_validate({**file, "path": path})
+                    yield ProjectFile(**{**file, "path": path})
 
 
 def validate_run_data_file_path(path: Path, current_user: User):

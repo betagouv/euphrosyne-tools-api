@@ -17,6 +17,7 @@ from clients.azure.data import (
     validate_project_document_file_path,
     validate_run_data_file_path,
 )
+from ..mocks.azure import factories as azure_factories
 
 
 @pytest.fixture
@@ -247,24 +248,24 @@ def test_list_files_recursive_with_detailed_info(
         files_and_folders__dir_1,
     ]
     share_file_client.get_file_properties.side_effect = [
-        {
-            "name": "file-1.txt",
-            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
-            "size": 123,
-            "path": "/file-1.txt",
-        },
-        {
-            "name": "file-2.txt",
-            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
-            "size": 345,
-            "path": "directory-1/file-2.txt",
-        },
-        {
-            "name": "file-3.txt",
-            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
-            "size": 123,
-            "path": "directory-1/file-3.txt",
-        },
+        azure_factories.file_properties_factory(
+            name="file-1.txt",
+            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            size=123,
+            path="/file-1.txt",
+        ),
+        azure_factories.file_properties_factory(
+            name="file-2.txt",
+            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            size=345,
+            path="/file-2.txt",
+        ),
+        azure_factories.file_properties_factory(
+            name="file-3.txt",
+            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            size=123,
+            path="directory-1/file-3.txt",
+        ),
     ]
 
     files = client._list_files_recursive(dir_path="/", fetch_detailed_information=True)

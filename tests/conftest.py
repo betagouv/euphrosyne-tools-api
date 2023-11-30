@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from slugify import slugify
 
 from auth import Project, User, get_current_user
 from clients.azure import DataAzureClient, VMAzureClient
@@ -43,8 +44,9 @@ def setenv(monkeypatch: pytest.MonkeyPatch):
 
 
 async def get_current_user_override():
+    projet_name = "project 01"
     return User(
         id=1,
-        projects=[Project(id=1, name="project 01", slug="project_01")],
+        projects=[Project(id=1, name=projet_name, slug=slugify(projet_name))],
         is_admin=False,
     )
