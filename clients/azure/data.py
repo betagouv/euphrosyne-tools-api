@@ -62,7 +62,7 @@ class ProjectFile(BaseModel):
     name: str
     last_modified: Optional[datetime] = None
     size: int
-    path: Optional[str]
+    path: str
 
 
 class AzureFileShareFile(io.BytesIO):
