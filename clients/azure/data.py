@@ -62,7 +62,7 @@ class ProjectFile(BaseModel):
     name: str
     last_modified: Optional[datetime] = None
     size: int
-    path: Optional[str]
+    path: str
 
 
 class AzureFileShareFile(io.BytesIO):
@@ -176,6 +176,27 @@ class DataAzureClient(BaseStorageAzureClient):
             return list(files)
         except ResourceNotFoundError as error:
             raise RunDataNotFound from error
+
+    def iter_project_run_files(
+        self, project_name: str, run_name: str, data_type: RunDataTypeType | None = None
+    ):
+        """
+        Yield files from a run directory.
+
+        Args:
+            project_name (str): The name of the project.
+            run_name (str): The name of the run.
+            data_type (RunDataTypeType | None, optional): The data type folder in the run.
+
+        Returns:
+            Iterator[ProjectFile]: An iterator of ProjectFile objects representing
+            the files in the run directory.
+        """
+        projects_path_prefix = _get_projects_path()
+        dir_path = os.path.join(projects_path_prefix, project_name, "runs", run_name)
+        if data_type:
+            os.path.join(data_type)
+        return self._iter_directory_files(dir_path)
 
     def download_run_file(
         self,
@@ -405,16 +426,46 @@ class DataAzureClient(BaseStorageAzureClient):
                 else:
                     yield ProjectFile(**{**file, "path": path})
 
+    def _iter_directory_files(self, dir_path: str):
+        """Stream a directory from the Fileshare."""
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=self.share_name,
+            directory_path=dir_path,
+        )
+        if not dir_client.exists():
+            raise RunDataNotFound()
+        files = self._list_files_recursive(dir_path)
+        for file in files:
+            file_client = ShareFileClient.from_connection_string(
+                conn_str=self._storage_connection_string,
+                share_name=self.share_name,
+                file_path=file.path,
+            )
+            yield file_client.download_file()
+
+
+def extract_info_from_path(path: Path):
+    """Extract project and run name from a path."""
+    _validate_run_data_file_path_regex(path)
+    projects_path_prefix = _get_projects_path()
+    path_without_prefix = Path(str(path).replace(projects_path_prefix + "/", "", 1))
+    info: dict[str, str | None] = {
+        "project_name": None,
+        "run_name": None,
+        "data_type": None,
+    }
+    if len(path_without_prefix.parts) > 0:
+        info["project_name"] = path_without_prefix.parts[0]
+    if len(path_without_prefix.parts) > 2:
+        info["run_name"] = path_without_prefix.parts[2]
+    if len(path_without_prefix.parts) > 3:
+        info["data_type"] = path_without_prefix.parts[3]
+    return info
+
 
 def validate_run_data_file_path(path: Path, current_user: User):
-    if not re.match(
-        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data|HDF5)\/",  # noqa: E501
-        str(path),
-    ):
-        # pylint: disable=line-too-long
-        raise IncorrectDataFilePath(
-            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data|HDF5)/"  # noqa: E501
-        )
+    _validate_run_data_file_path_regex(path)
     _validate_project_file_path(path, current_user)
 
 
@@ -448,3 +499,14 @@ def _generate_base_dir_path(project_name: str, run_name: str = ""):
     if run_name:
         base_dir_path = os.path.join(base_dir_path, "runs", run_name)
     return base_dir_path
+
+
+def _validate_run_data_file_path_regex(path: Path):
+    if not re.match(
+        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data|HDF5)",  # noqa: E501
+        str(path),
+    ):
+        # pylint: disable=line-too-long
+        raise IncorrectDataFilePath(
+            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data|HDF5)/"  # noqa: E501
+        )

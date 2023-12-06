@@ -12,7 +12,6 @@ def override_verify_project_membership():
 
 
 def test_update_guacamole_webapp_guacd_hostname(app: FastAPI, client: TestClient):
-    print(2)
     app.dependency_overrides[
         verify_has_azure_permission
     ] = override_verify_project_membership

@@ -10,11 +10,14 @@ from auth import (
     EUPHROSYNE_TOKEN_USER_ID_VALUE,
     Project,
     User,
+    generate_token_for_path,
     get_current_user,
     verify_admin_permission,
     verify_has_azure_permission,
     verify_is_euphrosyne_backend,
     verify_project_membership,
+    verify_path_permission,
+    _generate_jwt_token,
 )
 from exceptions import NoProjectMembershipException
 
@@ -171,3 +174,35 @@ def test_verify_has_azure_permission(
         vault_client_mock.return_value.get_secret_value.assert_called_with(
             "secret-api-key"
         )
+
+
+def test_verify_path_permission_with_valid_token():
+    valid_token = generate_token_for_path("/valid_path")
+    verify_path_permission("/valid_path", valid_token)
+
+
+def test_verify_path_permission_with_invalid_token():
+    valid_token = generate_token_for_path("/valid_path")
+    with pytest.raises(HTTPException):
+        verify_path_permission("/valid_path", valid_token + "invalid")
+
+
+def test_verify_path_permission_with_wrong_path():
+    valid_token = generate_token_for_path("/valid_path")
+    with pytest.raises(HTTPException):
+        verify_path_permission("/wrong_path", valid_token)
+
+
+def test_generate_token_for_path(monkeypatch: pytest.MonkeyPatch):
+    path = "/example"
+    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+    token = generate_token_for_path(path)
+    assert isinstance(token, str)
+    assert jwt.decode(token, "secret", algorithms=[ALGORITHM]) == {"path": path}
+
+
+def test_generate_jwt_token(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+    token = _generate_jwt_token({"test": "test"})
+    assert isinstance(token, str)
+    assert jwt.decode(token, "secret", algorithms=[ALGORITHM]) == {"test": "test"}

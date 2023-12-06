@@ -1,9 +1,11 @@
+from datetime import datetime
 import pathlib
 
 from fastapi import APIRouter, Depends, HTTPException, Path
-from fastapi.responses import JSONResponse
-
+from fastapi.responses import JSONResponse, StreamingResponse
 from auth import (
+    generate_token_for_path,
+    verify_path_permission,
     User,
     get_current_user,
     verify_is_euphrosyne_backend,
@@ -18,7 +20,9 @@ from clients.azure.data import (
     RunDataNotFound,
     validate_project_document_file_path,
     validate_run_data_file_path,
+    extract_info_from_path,
 )
+from clients.azure.stream import stream_zip_from_azure_files
 from dependencies import get_storage_azure_client
 
 router = APIRouter(prefix="/data", tags=["data"])
@@ -51,6 +55,45 @@ def list_project_documents(
         return JSONResponse(
             {"detail": "Folder for the project documents not found"}, status_code=404
         )
+
+
+@router.get(
+    "/run-data-zip",
+    status_code=200,
+    dependencies=[Depends(verify_path_permission)],
+)
+def zip_project_run_data(
+    path: pathlib.Path,
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+):
+    """
+    Stream a zip file containing all the run data files. The path must point
+    to a run data directory (raw_data, processed_data, ...).
+
+    Returns:
+        StreamingResponse: A streaming response containing the zip file.
+    """
+    try:
+        path_info = extract_info_from_path(path)
+    except IncorrectDataFilePath as error:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"loc": ["query", "path"], "msg": error.message}],
+        ) from error
+    try:
+        files = azure_client.iter_project_run_files(
+            path_info["project_name"], path_info["run_name"], path_info.get("data_type")
+        )
+    except RunDataNotFound:
+        raise HTTPException(status_code=404, detail="Run data not found.")
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    return StreamingResponse(
+        stream_zip_from_azure_files(files),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename={path_info['run_name']}-{timestamp}.zip"
+        },
+    )
 
 
 @router.get(
@@ -142,6 +185,28 @@ def generate_project_documents_upload_shared_access_signature(
         file_name=file_name,
     )
     return {"url": url}
+
+
+@router.get(
+    "/{project_name}/token",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+)
+def generate_signed_url_for_path(
+    path: pathlib.Path,
+    current_user: User = Depends(get_current_user),
+):
+    """Return a auth token for a given path. It is used to grant access to project data via
+    a GET request without revealing jwt access token. It is like an Azure SAS token."""
+    try:
+        validate_run_data_file_path(path, current_user)
+    except IncorrectDataFilePath as error:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"loc": ["query", "path"], "msg": error.message}],
+        ) from error
+    token = generate_token_for_path(str(path))
+    return {"token": token}
 
 
 @router.post(
