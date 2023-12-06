@@ -141,5 +141,5 @@ def test_zip_project_run_data(app: FastAPI, client: TestClient):
         "attachment; filename=runur"
     )
     assert response.headers.get("Content-Disposition").endswith(".zip")
-    assert response.headers.get["Content-Type"] == "application/zip"
+    assert response.headers.get("Content-Type") == "application/zip"
     assert response.content.decode("utf-8") == "abc"

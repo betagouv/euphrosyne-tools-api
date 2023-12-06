@@ -100,6 +100,8 @@ def verify_has_azure_permission(api_key: Optional[str] = Depends(api_key_query_a
 
 
 def verify_path_permission(path: str, token: str | None = Depends(token_query_auth)):
+    if not token:
+        raise JWT_CREDENTIALS_EXCEPTION
     payload = _decode_jwt(token)
     if not payload.get("path"):
         raise JWT_CREDENTIALS_EXCEPTION
