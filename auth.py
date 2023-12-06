@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
@@ -24,6 +24,7 @@ EUPHROSYNE_TOKEN_USER_ID_VALUE = "euphrosyne"  # user id value when decoding jwt
 
 api_key_header_auth = APIKeyHeader(name="X-API-KEY", auto_error=False)
 api_key_query_auth = APIKeyQuery(name="api_key")
+token_query_auth = APIKeyQuery(name="token")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
@@ -54,6 +55,8 @@ async def get_current_user(
             return User(id=0, projects=[], is_admin=True)
         raise JWT_CREDENTIALS_EXCEPTION
     payload = _decode_jwt(jwt_token)
+    if not payload.get("user_id"):
+        raise JWT_CREDENTIALS_EXCEPTION
     return User(
         id=payload.get("user_id"),
         projects=payload.get("projects"),
@@ -96,12 +99,40 @@ def verify_has_azure_permission(api_key: Optional[str] = Depends(api_key_query_a
         raise HTTPException(status_code=403, detail="Not allowed")
 
 
+def verify_path_permission(path: str, token: str | None = Depends(token_query_auth)):
+    payload = _decode_jwt(token)
+    if not payload.get("path"):
+        raise JWT_CREDENTIALS_EXCEPTION
+    if payload["path"] != path:
+        raise HTTPException(status_code=403, detail="Token not allowed for this path")
+
+
+def generate_token_for_path(path: str):
+    """
+    Generates a JWT token for a specific path.
+
+    Args:
+        path (str): The path for which the token is generated.
+
+    Returns:
+        str: The generated JWT token.
+
+    """
+    return _generate_jwt_token(
+        payload={
+            "path": path,
+        }
+    )
+
+
+def _generate_jwt_token(payload: dict[str, Any]):
+    return jwt.encode(payload, os.environ["JWT_SECRET_KEY"], algorithm=ALGORITHM)
+
+
 def _decode_jwt(jwt_token: str):
     try:
         secret_key = os.environ["JWT_SECRET_KEY"]
         payload = jwt.decode(jwt_token, secret_key, algorithms=[ALGORITHM])
     except JWTError as error:
         raise JWT_CREDENTIALS_EXCEPTION from error
-    if not payload.get("user_id"):
-        raise JWT_CREDENTIALS_EXCEPTION
     return payload
