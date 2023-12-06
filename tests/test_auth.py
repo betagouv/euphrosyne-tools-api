@@ -17,7 +17,7 @@ from auth import (
     verify_is_euphrosyne_backend,
     verify_project_membership,
     verify_path_permission,
-    _generate_signed_token,
+    _generate_jwt_token,
 )
 from exceptions import NoProjectMembershipException
 
@@ -201,8 +201,8 @@ def test_generate_token_for_path(monkeypatch: pytest.MonkeyPatch):
     assert jwt.decode(token, "secret", algorithms=[ALGORITHM]) == {"path": path}
 
 
-def test_generate_signed_token(monkeypatch: pytest.MonkeyPatch):
+def test_generate_jwt_token(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "secret")
-    token = _generate_signed_token({"test": "test"})
+    token = _generate_jwt_token({"test": "test"})
     assert isinstance(token, str)
     assert jwt.decode(token, "secret", algorithms=[ALGORITHM]) == {"test": "test"}
