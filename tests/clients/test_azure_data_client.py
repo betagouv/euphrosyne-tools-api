@@ -521,7 +521,9 @@ def test_is_project_data_available_returns_false(
 
 
 @patch("clients.azure.data._validate_run_data_file_path_regex", MagicMock())
-def test_extract_info_from_path():
+def test_extract_info_from_path(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+
     path1 = pathlib.Path("projects/project1/runs/run1/data")
     path2 = pathlib.Path("projects/project2/runs/run2")
     path3 = pathlib.Path("projects/project3")

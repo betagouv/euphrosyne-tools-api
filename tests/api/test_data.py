@@ -119,7 +119,11 @@ def test_zip_project_run_data_when_path_not_found_in_azure(
     assert response.status_code == 404
 
 
-def test_zip_project_run_data(app: FastAPI, client: TestClient):
+def test_zip_project_run_data(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+
     iter_project_run_files_mock = MagicMock()
     app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
         iter_project_run_files=iter_project_run_files_mock
