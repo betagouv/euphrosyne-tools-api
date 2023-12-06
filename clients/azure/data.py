@@ -152,7 +152,7 @@ class DataAzureClient(BaseStorageAzureClient):
         self,
         project_name: str,
     ) -> list[ProjectFile]:
-        dir_path = os.path.join(_get_projects_path(), project_name, "documents")
+        dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
         files = self._list_files_recursive(dir_path, fetch_detailed_information=True)
         try:
             return list(files)
@@ -168,9 +168,8 @@ class DataAzureClient(BaseStorageAzureClient):
         """Fetches run data files from Fileshare.
         Specify `data_type` to get either 'raw_data', 'processed_data' or 'HDF5'.
         """
-        projects_path_prefix = _get_projects_path()
         dir_path = os.path.join(
-            projects_path_prefix, project_name, "runs", run_name, data_type
+            _generate_base_dir_path(project_name, run_name), data_type
         )
         files = self._list_files_recursive(dir_path)
         try:
@@ -261,7 +260,7 @@ class DataAzureClient(BaseStorageAzureClient):
         an Azure Fileshare. Permission are write & create. To download and delete use
         generate_project_documents_sas_url.
         """
-        dir_path = os.path.join(_get_projects_path(), project_name, "documents")
+        dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
         permission = FilePermissions(read=False, create=True, write=True, delete=False)
         return self._generate_sas_url(dir_path, file_name, permission)
 
