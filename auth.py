@@ -1,5 +1,6 @@
 import os
 from typing import Any, Optional
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
@@ -7,7 +8,6 @@ from fastapi.security import APIKeyHeader, APIKeyQuery, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from slugify import slugify
-
 from clients.azure import VaultClient
 from exceptions import NoProjectMembershipException
 
@@ -128,13 +128,26 @@ def generate_token_for_path(path: str):
 
 
 def _generate_jwt_token(payload: dict[str, Any]):
-    return jwt.encode(payload, os.environ["JWT_SECRET_KEY"], algorithm=ALGORITHM)
+    payload = {
+        "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        **payload,
+    }
+    return jwt.encode(
+        payload,
+        os.environ["JWT_SECRET_KEY"],
+        algorithm=ALGORITHM,
+    )
 
 
 def _decode_jwt(jwt_token: str):
     try:
         secret_key = os.environ["JWT_SECRET_KEY"]
-        payload = jwt.decode(jwt_token, secret_key, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            jwt_token,
+            secret_key,
+            algorithms=[ALGORITHM],
+            options={"require_exp": True},
+        )
     except JWTError as error:
         raise JWT_CREDENTIALS_EXCEPTION from error
     return payload
