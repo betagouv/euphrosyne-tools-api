@@ -4,12 +4,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException, status
 from jose import jwt
-
+import auth
 from auth import (
     ALGORITHM,
     EUPHROSYNE_TOKEN_USER_ID_VALUE,
     Project,
     User,
+    _decode_jwt,
     generate_token_for_path,
     get_current_user,
     verify_admin_permission,
@@ -18,6 +19,7 @@ from auth import (
     verify_project_membership,
     verify_path_permission,
     _generate_jwt_token,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from exceptions import NoProjectMembershipException
 
@@ -198,11 +200,30 @@ def test_generate_token_for_path(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     token = generate_token_for_path(path)
     assert isinstance(token, str)
-    assert jwt.decode(token, "secret", algorithms=[ALGORITHM]) == {"path": path}
+    decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
+    assert decoded_token["path"] == path
 
 
 def test_generate_jwt_token(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "secret")
-    token = _generate_jwt_token({"test": "test"})
+    with patch.object(auth, "datetime") as datetime_mock:
+        utcnow = datetime.utcnow()
+        datetime_mock.utcnow.return_value = utcnow
+        token = _generate_jwt_token({"test": "test"})
     assert isinstance(token, str)
-    assert jwt.decode(token, "secret", algorithms=[ALGORITHM]) == {"test": "test"}
+    decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
+    decoded_token["test"] == "test"
+    decoded_token["exp"] == (
+        utcnow + timedelta(ACCESS_TOKEN_EXPIRE_MINUTES)
+    ).timestamp()
+
+
+def test_decode_jwt_without_exp_raises(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+    token = jwt.encode(
+        {},
+        "secret",
+        algorithm=ALGORITHM,
+    )
+    with pytest.raises(HTTPException):
+        _decode_jwt(token)
