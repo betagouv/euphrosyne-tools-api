@@ -195,7 +195,7 @@ class DataAzureClient(BaseStorageAzureClient):
         projects_path_prefix = _get_projects_path()
         dir_path = os.path.join(projects_path_prefix, project_name, "runs", run_name)
         if data_type:
-            os.path.join(data_type)
+            dir_path = os.path.join(dir_path, data_type)
         return self._iter_directory_files(dir_path)
 
     def download_run_file(
