@@ -14,32 +14,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      steps:
-        - uses: actions/checkout@v3
-        - name: Set up Python 3.10
-          uses: actions/setup-python@v3
-          with:
-            python-version: "3.10"
-        - name: Install dependencies
-          run: |
-            python -m pip install --upgrade pip
-            pip install pytest
-            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-        #### mypy ####
-        - name: Restore mypy cache
-          id: cache-mypy-restore
-          uses: actions/cache/restore@v3
-          with:
-            path: .mypy_cache
-            key: ${{ runner.os }}-mypy-${{ hashFiles('requirements.txt') }}
-        - name: Mypy check
-          if: steps.cache.outputs.cache-hit != 'true'
-          run: python -m mypy .
-        - name: Save mypy cache
-          if: steps.cache.outputs.cache-hit != 'true'
-          id: cache-mypy-save
-          uses: actions/cache/save@v3
-          with:
-            path: .mypy_cache
-            key: ${{ steps.cache-mypy-restore.outputs.cache-primary-key }}
+      #### mypy ####
+      - name: Restore mypy cache
+        id: cache-mypy-restore
+        uses: actions/cache/restore@v3
+        with:
+          path: .mypy_cache
+          key: ${{ runner.os }}-mypy-${{ hashFiles('requirements.txt') }}
+      - name: Mypy check
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: python -m mypy .
+      - name: Save mypy cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        id: cache-mypy-save
+        uses: actions/cache/save@v3
+        with:
+          path: .mypy_cache
+          key: ${{ steps.cache-mypy-restore.outputs.cache-primary-key }}
