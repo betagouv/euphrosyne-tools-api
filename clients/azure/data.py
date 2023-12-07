@@ -228,15 +228,21 @@ class DataAzureClient(BaseStorageAzureClient):
             ]
         except ResourceNotFoundError as error:
             sentry_sdk.capture_exception(error)
+            self.init_project_directory(project_name)
             return False
         for run_folder in run_folders:
-            # check if raw_data folder has any file or folder
-            if list(
-                dir_client.get_subdirectory_client(
-                    f"{run_folder}/raw_data"
-                ).list_directories_and_files()
-            ):
-                return True
+            try:
+                # check if raw_data folder has any file or folder
+                if list(
+                    dir_client.get_subdirectory_client(
+                        f"{run_folder}/raw_data"
+                    ).list_directories_and_files()
+                ):
+                    return True
+            except ResourceNotFoundError as error:
+                sentry_sdk.capture_exception(error)
+                self.init_run_directory(run_folder, project_name)
+                return False
         return False
 
     def generate_run_data_sas_url(

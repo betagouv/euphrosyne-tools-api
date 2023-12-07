@@ -496,7 +496,9 @@ def test_is_project_data_available_returns_true(
         assert result
 
 
-def test_is_project_data_available_returns_false(
+@patch("clients.azure.data.DataAzureClient.init_project_directory")
+def test_is_project_data_available_when_project_dir_not_exist(
+    init_project_directory_mock: MagicMock,
     client: DataAzureClient,
 ):
     with patch.object(
@@ -505,8 +507,13 @@ def test_is_project_data_available_returns_false(
         side_effect=ResourceNotFoundError,
     ):
         result = client.is_project_data_available("test_project")
+        init_project_directory_mock.assert_called_once_with("test_project")
         assert not result
 
+
+def test_is_project_data_available_when_run_dir_empty(
+    client: DataAzureClient,
+):
     with patch.object(
         ShareDirectoryClient,
         "list_directories_and_files",
@@ -518,6 +525,27 @@ def test_is_project_data_available_returns_false(
     ):
         result = client.is_project_data_available("test_project")
         assert not result
+
+
+@patch("clients.azure.data.DataAzureClient.init_run_directory")
+def test_is_project_data_available_when_run_dir_not_exists(
+    init_run_directory_mock: MagicMock,
+    client: DataAzureClient,
+):
+    with patch.object(
+        ShareDirectoryClient,
+        "list_directories_and_files",
+        return_value=[{"name": "run1", "is_directory": True}],
+    ), patch.object(
+        ShareDirectoryClient,
+        "get_subdirectory_client",
+        return_value=MagicMock(
+            list_directories_and_files=MagicMock(side_effect=ResourceNotFoundError)
+        ),
+    ):
+        result = client.is_project_data_available("test_project")
+        assert not result
+        init_run_directory_mock.assert_called_once_with("run1", "test_project")
 
 
 @patch("clients.azure.data._validate_run_data_file_path_regex", MagicMock())
