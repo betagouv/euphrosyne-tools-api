@@ -35,15 +35,9 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: .mypy_cache
-          key: ${{ runner.os }}-mypy
+          key: ${{ runner.os }}-mypy-${{ hashFiles('requirements.txt') }}
       - name: Mypy check
         run: python -m mypy .
-      - name: Save mypy cache
-        id: cache-mypy-save
-        uses: actions/cache/save@v3
-        with:
-          path: .mypy_cache
-          key: ${{ steps.cache-mypy-restore.outputs.cache-primary-key }}
 
       - name: Pytest
         run: python -m pytest .
