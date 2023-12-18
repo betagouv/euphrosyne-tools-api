@@ -21,7 +21,7 @@ python-jose[cryptography]==3.3.0
 python-slugify==8.0.1
 pytest==7.4.3 
 requests==2.31.0
-ruff==0.1.7
+ruff==0.1.8
 sentry-sdk[fastapi]==1.39.1
 stream-zip==0.0.68
 types-python-jose==3.3.4.8
