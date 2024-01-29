@@ -16,7 +16,7 @@ fastapi==0.100.0
 isort==5.13.2 
 mypy==1.0.1
 pydantic-settings==2.1.0 
-python-dotenv==1.0.0 
+python-dotenv==1.0.1 
 python-jose[cryptography]==3.3.0
 python-slugify==8.0.1
 pytest==7.4.4 
