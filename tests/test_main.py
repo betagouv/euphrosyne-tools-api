@@ -115,6 +115,19 @@ def test_deploy_vm_when_already_deployed(app: FastAPI, client: TestClient):
         mock.assert_not_called()
 
 
+@patch("fastapi.BackgroundTasks.add_task", MagicMock())
+def test_deploy_vm_when_project_has_image_definition(app: FastAPI, client: TestClient):
+    client_mock = MagicMock()
+    app.dependency_overrides[get_vm_azure_client] = lambda: client_mock
+    app.dependency_overrides[get_config_azure_client] = lambda: MagicMock(
+        get_project_vm_size=MagicMock(return_value=None),
+        get_project_image_definition=MagicMock(return_value="animage"),
+    )
+    response = client.post("/deployments/project_01")
+    assert response.status_code == 202
+    assert client_mock.deploy_vm.call_args[1]["image_definition"] == "animage"
+
+
 def test_delete_vm(app: FastAPI, client: TestClient):
     azure_mock = MagicMock(spec=VMAzureClient)
     app.dependency_overrides[get_vm_azure_client] = lambda: azure_mock

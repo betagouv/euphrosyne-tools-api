@@ -1,4 +1,5 @@
 import os
+import logging
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
@@ -16,6 +17,9 @@ from clients import VMSizes
 from clients.version import Version
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
 
 PROJECT_TYPE_VM_SIZE: dict[VMSizes | None, str] = {
     None: "Standard_B8ms",  # default
@@ -112,6 +116,7 @@ class VMAzureClient:
         project_name: str,
         vm_size: Optional[VMSizes] = None,
         spec_version: Optional[str] = None,
+        image_definition: str | None = None,
     ) -> Optional[AzureVMDeploymentProperties]:
         """Deploys a VM based on Template Specs specified
         with AZURE_TEMPLATE_SPECS_NAME env variable.
@@ -123,6 +128,11 @@ class VMAzureClient:
             deployment_name=slugify(project_name),
         ):
             return None
+        if (
+            image_definition
+            and image_definition not in self.list_vm_image_definitions()
+        ):
+            raise ValueError(f"Image definition {image_definition} not found")
         template = self._get_template_specs(
             template_name=self.template_specs_name, version=spec_version
         )
@@ -130,7 +140,7 @@ class VMAzureClient:
             "vmName": slugify(project_name),
             "fileShareProjectFolder": slugify(project_name),
             "imageGallery": self.template_specs_image_gallery,
-            "imageDefinition": self.template_specs_image_definition,
+            "imageDefinition": image_definition or self.template_specs_image_definition,
             "resourcePrefix": self.resource_prefix,
             "storageAccountName": os.environ["AZURE_STORAGE_ACCOUNT"],
             "fileShareName": os.environ["AZURE_STORAGE_FILESHARE"],
@@ -169,23 +179,70 @@ class VMAzureClient:
         operation.result()
         return operation.status()
 
-    def create_new_image_version(self, project_name: str, version: str | None = None):
+    def create_new_image_version(
+        self,
+        project_name: str,
+        version: str | None = None,
+        image_definition: str | None = None,
+    ):
         """
         Will use the given vm to create a new specialized image of this image and save it
-        to the image gallery with the given version
+        to the image gallery with the given version. If no version is given, the latest
+        version will be used and incremented by 1. If no image_definition is given, the
+        default one will be used.
         """  # noqa: E501
         vm_name = _project_name_to_vm_name(project_name)
         template = self._get_template_specs(template_name="captureVMSpec")
 
+        if image_definition:
+            try:
+                self._compute_mgmt_client.gallery_images.get(
+                    resource_group_name=self.resource_group_name,
+                    gallery_name=self.template_specs_image_gallery,
+                    gallery_image_name=image_definition,
+                )
+            except ResourceNotFoundError:
+                logger.info("Image %s not found, creating it...", image_definition)
+                default_image = self._compute_mgmt_client.gallery_images.get(
+                    resource_group_name=self.resource_group_name,
+                    gallery_name=self.template_specs_image_gallery,
+                    gallery_image_name=self.template_specs_image_definition,
+                )
+                poller = self._compute_mgmt_client.gallery_images.begin_create_or_update(
+                    resource_group_name=self.resource_group_name,
+                    gallery_name=self.template_specs_image_gallery,
+                    gallery_image_name=image_definition,
+                    gallery_image={
+                        "location": default_image.location,
+                        "os_state": default_image.os_state,
+                        "os_type": default_image.os_type,
+                        "hyper_v_generation": default_image.hyper_v_generation,
+                        "identifier": {
+                            "publisher": default_image.identifier.publisher,
+                            "offer": default_image.identifier.offer,
+                            "sku": f"euphro-{self.template_specs_image_gallery}-{image_definition}",
+                        },
+                    },
+                )
+                poller.result()
+                if poller.status() != "Succeeded":
+                    # pylint: disable=raise-missing-from,broad-exception-raised
+                    raise Exception(f"Failed to create image {image_definition}")
+                logger.info("Image %s created", image_definition)
+
         if version is None:
-            version = self.get_latest_image_version()
+            version = self.get_latest_image_version(
+                image_definition=image_definition
+                or self.template_specs_image_definition
+            )
             version = self.get_next_image_version(version)
 
         parameters = {
             "vmName": vm_name,
             "version": version,
             "galleryName": self.template_specs_image_gallery,
-            "imageDefinitionName": self.template_specs_image_definition,
+            "imageDefinitionName": image_definition
+            or self.template_specs_image_definition,
         }
 
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
@@ -246,6 +303,19 @@ class VMAzureClient:
             template_spec_version=version,
         ).main_template
 
+    def list_vm_image_definitions(self) -> list[str]:
+        """List VM image definitions, except default one."""
+        images = self._compute_mgmt_client.gallery_images.list_by_gallery(
+            resource_group_name=self.resource_group_name,
+            gallery_name=self.template_specs_image_gallery,
+        )
+        return [
+            image.name
+            for image in images
+            if image.name != self.template_specs_image_definition
+            # all images except the default one
+        ]
+
     def _get_image_versions(
         self, gallery_name: str, gallery_image_name: str
     ) -> list[str]:
@@ -273,10 +343,15 @@ class VMAzureClient:
         )
         return list(map(lambda img_version: str(img_version.name), image_versions))
 
-    def get_latest_image_version(self) -> str:
+    def get_latest_image_version(self, image_definition: str) -> str:
         """
         For the configured image gallery and image definition,
         get the latest version available
+
+        Parameters:
+        -----------
+        image_definition: str
+            Name of the image definition
 
         Returns:
         str
@@ -284,7 +359,7 @@ class VMAzureClient:
         """
         versions = self._get_image_versions(
             gallery_name=self.template_specs_image_gallery,
-            gallery_image_name=self.template_specs_image_definition,
+            gallery_image_name=image_definition,
         )
         if len(versions) <= 0:
             return "1.0.0"
