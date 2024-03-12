@@ -1,7 +1,9 @@
 import os
+import datetime
 import logging
+import concurrent.futures
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Callable
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.core.polling import LROPoller
@@ -25,6 +27,19 @@ PROJECT_TYPE_VM_SIZE: dict[VMSizes | None, str] = {
     None: "Standard_B8ms",  # default
     VMSizes.IMAGERY: "Standard_B20ms",
 }
+
+DeploymentStatus = Literal[
+    "NotSpecified",
+    "Accepted",
+    "Running",
+    "Ready",
+    "Creating",
+    "Created",
+    "Canceled",
+    "Failed",
+    "Succeeded",
+    "Updating",
+]
 
 
 class DeploymentNotFound(Exception):
@@ -87,29 +102,64 @@ class VMAzureClient:
             deployment_name=slugify(project_name),
         )
 
-    def get_deployment_status(
-        self, project_name: str
-    ) -> Literal[
-        "NotSpecified",
-        "Accepted",
-        "Running",
-        "Ready",
-        "Creating",
-        "Created",
-        "Canceled",
-        "Failed",
-        "Succeeded",
-        "Updating",
-    ]:
+    def get_deployment_status(self, project_name: str) -> DeploymentStatus:
         """Retrieves VM information."""
-        try:
-            deployment = self._resource_mgmt_client.deployments.get(
-                resource_group_name=self.resource_group_name,
-                deployment_name=slugify(project_name),
-            )
-        except ResourceNotFoundError as error:
-            raise DeploymentNotFound() from error
-        return deployment.properties.provisioning_state
+        deployment = self._get_latest_ongoing_deployment_for_project(
+            project_name=project_name
+        )
+        if not deployment:
+            raise DeploymentNotFound()
+        return deployment.properties.provisioning_state  # type: ignore
+
+    def _get_latest_ongoing_deployment_for_project(
+        self, project_name: str
+    ) -> DeploymentExtended | None:
+        """Retrieves the latest ongoing deployment for a project.
+        If no deployment is found, returns None."""
+        deployments = self._get_ongoing_deployments()
+        project_deployments = [
+            deployment
+            for deployment in deployments
+            if _get_project_name_from_deployment(deployment.name) == project_name  # type: ignore
+        ]
+
+        def sort_func(deployment: DeploymentExtended) -> datetime.datetime:
+            if deployment.properties and deployment.properties.timestamp:
+                ts: datetime.datetime = deployment.properties.timestamp
+                return ts
+            return datetime.datetime.min
+
+        sorted_deployments = sorted(project_deployments, key=sort_func, reverse=True)
+
+        if not sorted_deployments:
+            return None
+        return sorted_deployments[0]
+
+    def _get_ongoing_deployments(self) -> list[DeploymentExtended]:
+        statuses = [
+            "Accepted",
+            "Creating",
+            "Created",
+            "Deleting",
+            "Running",
+            "Ready",
+            "Updating",
+        ]
+
+        deployments = []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_status = {
+                executor.submit(
+                    self._resource_mgmt_client.deployments.list_by_resource_group,
+                    self.resource_group_name,
+                    f"provisioningState eq '{status}'",
+                ): status
+                for status in statuses
+            }
+            for future in concurrent.futures.as_completed(future_to_status):
+                deployments += future.result()
+        return deployments
 
     def deploy_vm(
         self,
@@ -123,11 +173,14 @@ class VMAzureClient:
         In both cases where the deployment is created or it has
         already been created before, the function returns None.
         """
-        if self._resource_mgmt_client.deployments.check_existence(
-            resource_group_name=self.resource_group_name,
-            deployment_name=slugify(project_name),
-        ):
-            return None
+        try:
+            status = self.get_deployment_status(project_name)
+            if status in ["Running", "Ready", "Accepted", "Creating", "Updating"]:
+                return None
+        except DeploymentNotFound:
+            # No deployment found, ok
+            pass
+
         if (
             image_definition
             and image_definition not in self.list_vm_image_definitions()
@@ -151,7 +204,7 @@ class VMAzureClient:
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
         poller = self._resource_mgmt_client.deployments.begin_create_or_update(
             resource_group_name=self.resource_group_name,
-            deployment_name=slugify(project_name),
+            deployment_name=_project_name_to_deployment_name(project_name),
             parameters={
                 "properties": {
                     "template": template,
@@ -419,3 +472,11 @@ def _project_name_to_vm_name(project_name: str):
     """Returns a correct vm name (prefix added, slugified) based on a project name"""
     # pylint: disable=consider-using-f-string
     return "{}-vm-{}".format(os.getenv("AZURE_RESOURCE_PREFIX"), slugify(project_name))
+
+
+def _project_name_to_deployment_name(project_name: str):
+    return f"{slugify(project_name)}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+
+def _get_project_name_from_deployment(deployment_name: str):
+    return "-".join(deployment_name.split("-")[:-1])

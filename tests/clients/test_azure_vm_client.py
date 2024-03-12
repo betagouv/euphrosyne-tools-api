@@ -1,5 +1,6 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
+import datetime
 from unittest.mock import DEFAULT, MagicMock, Mock, patch
 
 import pytest
@@ -14,6 +15,8 @@ from clients.azure.vm import (
     AzureVMDeploymentProperties,
     DeploymentNotFound,
     VMNotFound,
+    _get_project_name_from_deployment,
+    _project_name_to_deployment_name,
     _project_name_to_vm_name,
     wait_for_deployment_completeness,
 )
@@ -43,8 +46,9 @@ def client(monkeypatch: MonkeyPatch):
 
 @patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
 def test_deploy_exits_when_vm_exists(client: VMAzureClient):
-    client._resource_mgmt_client.deployments.check_existence.return_value = True
-    client.deploy_vm("vm-test")
+    with patch.object(client, "get_deployment_status") as mock_method:
+        mock_method.return_value = "Running"
+        client.deploy_vm("vm-test")
 
     client._resource_mgmt_client.deployments.begin_create_or_update.assert_not_called()
 
@@ -344,12 +348,12 @@ def test_get_deployment_status_returns_status(client: VMAzureClient):
     deployment_get_return = MagicMock(
         properties=MagicMock(provisioning_state="Succeeded")
     )
-    client._resource_mgmt_client.deployments.get.return_value = deployment_get_return
-    status = client.get_deployment_status("VM")
+    with patch.object(
+        client, "_get_latest_ongoing_deployment_for_project"
+    ) as mock_method:
+        mock_method.return_value = deployment_get_return
+        status = client.get_deployment_status("VM")
 
-    client._resource_mgmt_client.deployments.get.assert_called_with(
-        resource_group_name="resource_group_name", deployment_name="vm"
-    )
     assert status == "Succeeded"
 
 
@@ -358,6 +362,51 @@ def test_get_deployment_raises_if_deployment_absent(client: VMAzureClient):
 
     with pytest.raises(DeploymentNotFound):
         client.get_deployment_status("VM")
+
+
+def test_get_latest_ongoing_deployment_for_project(client: VMAzureClient):
+    ongoing_deployments = [
+        MagicMock(
+            properties=MagicMock(timestamp=datetime.datetime.now()),
+        ),
+        MagicMock(
+            properties=MagicMock(
+                timestamp=datetime.datetime.now() + datetime.timedelta(days=1)
+            ),
+        ),
+    ]
+    for deployment_mock in ongoing_deployments:
+        deployment_mock.name = _project_name_to_deployment_name("project")
+    with patch.object(
+        client, "_get_ongoing_deployments", return_value=ongoing_deployments
+    ):
+        result = client._get_latest_ongoing_deployment_for_project("project")
+    assert result == ongoing_deployments[1]
+
+
+def test_get_ongoing_deployments(client: VMAzureClient):
+    statuses = [
+        "Accepted",
+        "Creating",
+        "Created",
+        "Deleting",
+        "Running",
+        "Ready",
+        "Updating",
+    ]
+    with patch.object(
+        client._resource_mgmt_client.deployments, "list_by_resource_group"
+    ) as method_mock:
+        method_mock.return_value = ["deployment"]
+        deployments = client._get_ongoing_deployments()
+
+    assert len(deployments) == len(statuses)
+    assert deployments == ["deployment"] * len(statuses)
+    assert method_mock.call_count == len(statuses)
+    filters_args = [call[0][1] for call in method_mock.call_args_list]
+    assert all(
+        [f"provisioningState eq '{status}'" in filters_args for status in statuses]
+    )
 
 
 @pytest.mark.parametrize(
@@ -431,3 +480,13 @@ def test_get_latest_next_versions(client: VMAzureClient):
 def test_get_bad_next_version(client: VMAzureClient):
     with pytest.raises(InvalidVersion):
         client.get_next_image_version("bad_version")
+
+
+def test_project_name_to_deployment_name():
+    with patch("clients.azure.vm.datetime") as datetime_mock:
+        datetime_mock.datetime.now.return_value.strftime.return_value = "now"
+        assert _project_name_to_deployment_name("projectname") == "projectname-now"
+
+
+def test_get_project_name_from_deployment():
+    assert _get_project_name_from_deployment("projectname-now") == "projectname"

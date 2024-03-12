@@ -16,7 +16,11 @@ logger = get_logger(__name__)
 def delete_vm_script():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "project_name", help="Project name related to the VM to delete."
+        "-p",
+        "--project",
+        dest="project_name",
+        help="Project name related to the VM to delete.",
+        required=True,
     )
     args = parser.parse_args()
     delete_vm(args.project_name)
@@ -34,8 +38,8 @@ def delete_vm(
     )
     if status == "Failed":
         logger.error("%s - Couldn't delete Azure VM.", project_name)
-    logger.info("%s - Deleting Azure deployment...", project_name)
-    azure_client.delete_deployment(project_name)
+    # logger.info("%s - Deleting Azure deployment...", project_name)
+    # azure_client.delete_deployment(project_name)
     logger.info("%s - Deleting Guacamole connection...", project_name)
     try:
         guacamole_client.delete_connection(project_name)

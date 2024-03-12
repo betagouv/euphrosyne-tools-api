@@ -290,11 +290,9 @@ def test_wait_for_deploy_when_success():
     with patch("backgrounds.wait_for_deployment_completeness") as wait_deployment_mock:
         wait_deployment_mock.return_value = deployment_information
         guacamole_client_mock = MagicMock(spec=GuacamoleClient)
-        azure_client_mock = MagicMock(spec=VMAzureClient)
         wait_for_deploy(
             deployment_properties,
             guacamole_client=guacamole_client_mock,
-            azure_client=azure_client_mock,
         )
         guacamole_client_mock.create_connection.assert_called_once_with(
             name=deployment_properties.project_name,
@@ -302,9 +300,6 @@ def test_wait_for_deploy_when_success():
             password=deployment_properties.password,
             username=deployment_properties.username,
             vm_size=None,
-        )
-        azure_client_mock.delete_deployment.assert_called_once_with(
-            deployment_information.name
         )
 
 
@@ -321,6 +316,5 @@ def test_wait_for_deploy_when_failed():
         wait_for_deploy(
             deployment_properties,
             guacamole_client=guacamole_client_mock,
-            azure_client=MagicMock(spec=VMAzureClient),
         )
         guacamole_client_mock.create_connection.assert_not_called()
