@@ -26,3 +26,15 @@ def delete_vm(
         guacamole_client.delete_connection(project_name)
     except GuacamoleConnectionNotFound:
         pass
+
+
+@router.get(
+    "/image-definitions",
+    status_code=200,
+    dependencies=[Depends(verify_admin_permission)],
+)
+def list_image_definitions(
+    azure_client: VMAzureClient = Depends(get_vm_azure_client),
+):
+    """List all available image definitions."""
+    return {"image_definitions": azure_client.list_vm_image_definitions()}
