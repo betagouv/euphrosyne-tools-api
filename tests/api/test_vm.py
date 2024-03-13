@@ -35,3 +35,13 @@ def test_list_image_definitions(client: TestClient):
 
     assert response.status_code == 200
     assert response.json() == {"image_definitions": ["image1", "image2"]}
+
+
+def test_list_vms(client: TestClient):
+    app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
+        spec=VMAzureClient, **{"list_vms": MagicMock(return_value=["vm1", "vm2"])}
+    )
+    response = client.get("vms/")
+
+    assert response.status_code == 200
+    assert response.json() == ["vm1", "vm2"]

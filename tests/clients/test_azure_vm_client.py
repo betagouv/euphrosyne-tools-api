@@ -490,3 +490,23 @@ def test_project_name_to_deployment_name():
 
 def test_get_project_name_from_deployment():
     assert _get_project_name_from_deployment("projectname-now") == "projectname"
+
+
+def test_list_vms(client: VMAzureClient):
+    vms = []
+    for name in ["vm1", "vm2"]:
+        value = MagicMock()
+        value.name = name
+        vms.append(value)
+    client._compute_mgmt_client.virtual_machines.list.return_value = vms
+    assert client.list_vms() == ["vm1", "vm2"]
+
+
+def test_list_vms_with_exclude(client: VMAzureClient):
+    vms = []
+    for name in ["euphro-vm1", "blabla-vm2"]:
+        value = MagicMock()
+        value.name = name
+        vms.append(value)
+    client._compute_mgmt_client.virtual_machines.list.return_value = vms
+    assert client.list_vms(exclude_regex_patterns=[r"euphro-.+"]) == ["blabla-vm2"]
