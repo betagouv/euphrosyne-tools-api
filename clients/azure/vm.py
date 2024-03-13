@@ -1,4 +1,5 @@
 import os
+import re
 import datetime
 import logging
 import concurrent.futures
@@ -85,6 +86,18 @@ class VMAzureClient:
         self._template_specs_client = TemplateSpecsClient(
             credentials, os.environ["AZURE_SUBSCRIPTION_ID"]
         )
+
+    def list_vms(self, exclude_regex_patterns: list[str] | None = None) -> list[str]:
+        if not exclude_regex_patterns:
+            exclude_regex_patterns = []
+        vms = self._compute_mgmt_client.virtual_machines.list(self.resource_group_name)
+        filtered_vms = filter(
+            lambda vm: not any(  # type: ignore
+                re.match(regexp, vm.name) for regexp in exclude_regex_patterns
+            ),
+            vms,
+        )
+        return [vm.name for vm in filtered_vms]  # type: ignore
 
     def get_vm(self, project_name: str):
         """Retrieves VM information with project name."""
