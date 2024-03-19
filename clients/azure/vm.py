@@ -51,6 +51,10 @@ class VMNotFound(Exception):
     pass
 
 
+class ImageDefinitionNotFound(Exception):
+    pass
+
+
 @dataclass
 class AzureVMDeploymentProperties:
     project_name: str
@@ -380,6 +384,39 @@ class VMAzureClient:
             for image in images
             if image.name != self.template_specs_image_definition
             # all images except the default one
+        ]
+
+    def delete_vm_image_definition(self, image_definition: str) -> LROPoller:
+        """Delete image definition."""
+        try:
+            return self._compute_mgmt_client.gallery_images.begin_delete(
+                resource_group_name=self.resource_group_name,
+                gallery_name=self.template_specs_image_gallery,
+                gallery_image_name=image_definition,
+            )
+        except ResourceNotFoundError as error:
+            raise ImageDefinitionNotFound() from error
+
+    def delete_vm_image_definition_versions(
+        self,
+        image_definition: str,
+    ) -> list[tuple[str, LROPoller]]:
+        """Delete image definition."""
+        return [
+            (
+                version.name,
+                self._compute_mgmt_client.gallery_image_versions.begin_delete(
+                    resource_group_name=self.resource_group_name,
+                    gallery_name=self.template_specs_image_gallery,
+                    gallery_image_name=image_definition,
+                    gallery_image_version_name=version.name,
+                ),
+            )
+            for version in self._compute_mgmt_client.gallery_image_versions.list_by_gallery_image(
+                resource_group_name=self.resource_group_name,
+                gallery_name=self.template_specs_image_gallery,
+                gallery_image_name=image_definition,
+            )
         ]
 
     def _get_image_versions(
