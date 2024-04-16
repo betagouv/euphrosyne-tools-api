@@ -184,6 +184,8 @@ class GuacamoleUserPermissionInput(BaseModel):
     path: str = Field(...)
     value: str = Field(...)
 
+    model_config = ConfigDict(populate_by_name=True)
+
 
 # User
 
@@ -200,8 +202,12 @@ class GuacamoleUserAttributes(BaseModel):
     guac_organization: str = Field("", alias="guac-organization")
     guac_organization_role: str = Field("", alias="guac-organization-role")
 
+    model_config = ConfigDict(populate_by_name=True)
+
 
 class GuacamoleCreateUserInput(BaseModel):
     username: str = Field(...)
     password: str = Field(...)
     attributes: GuacamoleUserAttributes = Field(GuacamoleUserAttributes())
+
+    model_config = ConfigDict(populate_by_name=True)
