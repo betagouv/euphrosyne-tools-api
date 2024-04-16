@@ -4,6 +4,7 @@ from typing import Optional
 
 from azure.storage.blob import BlobClient, BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
+from slugify import slugify
 
 from ..common import VMSizes
 from ._storage import BaseStorageAzureClient
@@ -31,7 +32,7 @@ class ConfigAzureClient(BaseStorageAzureClient):
         None will be returned has a default value."""
         project_vm_sizes = self._get_project_vm_sizes_conf()
         for vm_size, project_names in project_vm_sizes.items():
-            if project_name in project_names:
+            if slugify(project_name) in project_names:
                 return VMSizes[vm_size]
         return None
 
@@ -44,18 +45,19 @@ class ConfigAzureClient(BaseStorageAzureClient):
         a project overrides any previous configuration, i.e a project can not be added to
         several category.
         """  # noqa: E501
+        project_slug = slugify(project_name)
         if project_vm_size is not None and not isinstance(project_vm_size, VMSizes):
             raise TypeError("project_vm_size must be an enum of VMSizes type.")
         project_vm_sizes = self._get_project_vm_sizes_conf()
         for _, project_names in project_vm_sizes.items():
-            if project_name in project_names:
-                project_names.remove(project_name)
+            if project_slug in project_names:
+                project_names.remove(project_slug)
         if project_vm_size is not None:
             project_vm_sizes = {
                 **project_vm_sizes,
                 project_vm_size.name: [
                     *project_vm_sizes.get(project_vm_size.name, []),
-                    project_name,
+                    project_slug,
                 ],
             }
         blob_client = self._get_or_create_project_vm_sizes_blob()
