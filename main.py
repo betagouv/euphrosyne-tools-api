@@ -1,14 +1,13 @@
 import os
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from api import config, connect, data, deployments, infra, vms
-from exceptions import (
-    NoProjectMembershipException,
-    no_project_membership_exception_handler,
-)
+from api import config, connect, data, deployments, hdf5, infra, vms
+from exceptions import NoProjectMembershipException
+
 
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN"),
@@ -17,10 +16,6 @@ sentry_sdk.init(
 )
 
 app = FastAPI()
-
-app.add_exception_handler(
-    NoProjectMembershipException, no_project_membership_exception_handler
-)
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,3 +31,16 @@ app.include_router(deployments.router)
 app.include_router(data.router)
 app.include_router(config.router)
 app.include_router(infra.router)
+app.include_router(hdf5.router)
+
+
+@app.exception_handler(NoProjectMembershipException)
+# pylint: disable=unused-argument
+async def no_project_membership_exception_handler(
+    request: Request,
+    exc: NoProjectMembershipException,
+):
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content={"detail": "User does not have access to this project"},
+    )

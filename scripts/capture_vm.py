@@ -20,12 +20,18 @@ def capture_vm():
         help="Name of the project vm you want to capture",
         required=True,
     )
-    parser.add_argument("--version", help="Version of this new image", required=True)
+    parser.add_argument("--version", help="Version of this new image")
     parser.add_argument(
         "-k",
         "--kill",
         help="Destroy the VM once the image has been captured",
         action="store_true",
+    )
+    parser.add_argument(
+        "-i",
+        "--image",
+        help="Name of the image definition to create. If not provided, \
+        the default image will be used",
     )
 
     args = parser.parse_args()
@@ -33,7 +39,9 @@ def capture_vm():
     azure_client = VMAzureClient()
 
     logger.info("Capturing VM...")
-    deployment = azure_client.create_new_image_version(args.project, args.version)
+    deployment = azure_client.create_new_image_version(
+        args.project, args.version, args.image
+    )
     if not deployment:
         logger.info("Image already captured")
         return

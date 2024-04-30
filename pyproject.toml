@@ -27,10 +27,17 @@ exclude = '''
 )/
 '''
 
+[tool.mypy]
+mypy_path = "stubs"
+
 [[tool.mypy.overrides]]
 module="azure.mgmt.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module="azure.storage.file.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module="h5grove.*"
 ignore_missing_imports = true

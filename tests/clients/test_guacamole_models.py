@@ -15,7 +15,7 @@ def test_parse_auth_response():
         "availableDataSources": ["mysql", "mysql-shared"],
     }
 
-    parsed_data = models.GuacamoleAuthGenerateTokenResponse.parse_obj(json)
+    parsed_data = models.GuacamoleAuthGenerateTokenResponse.model_validate(json)
     assert parsed_data.auth_token == json["authToken"]
     assert parsed_data.username == json["username"]
     assert parsed_data.data_source == json["dataSource"]
@@ -25,7 +25,7 @@ def test_parse_auth_response():
 def test_parse_list_connections_response():
     json = GUACAMOLE_CONNECTION_LIST_RESPONSE
 
-    parsed_data = models.GuacamoleConnectionsListResponse.parse_obj(json)
+    parsed_data = models.GuacamoleConnectionsListResponse.model_validate(json)
     assert isinstance(parsed_data["1"], models.GuacamoleConnectionsListData)
     assert isinstance(parsed_data["2"], models.GuacamoleConnectionsListData)
 
@@ -43,7 +43,7 @@ def test_parse_list_connections_response():
 def test_parse_list_connections_and_groups():
     json = GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE
 
-    parsed_data = models.GuacamoleConnectionsAndGroupsResponse.parse_obj(json)
+    parsed_data = models.GuacamoleConnectionsAndGroupsResponse.model_validate(json)
     assert isinstance(parsed_data, models.GuacamoleConnectionsAndGroupsResponse)
     assert parsed_data.name == json["name"]
     assert parsed_data.identifier == json["identifier"]

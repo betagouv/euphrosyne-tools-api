@@ -26,13 +26,20 @@ def create_vm():
         "--version",
         help="Version of the Azure Template Spec to use",
     )
+    parser.add_argument(
+        "-i",
+        "--image",
+        help="Image definition to uses",
+    )
     args = parser.parse_args()
 
     azure_client = VMAzureClient()
 
     logger.info("Deploying VM... This can take a while.")
     deployment = azure_client.deploy_vm(
-        project_name=args.project_name, spec_version=args.version
+        project_name=args.project_name,
+        spec_version=args.version,
+        image_definition=args.image,
     )
     if not deployment:
         logger.info("VM is already deployed.")
@@ -48,8 +55,8 @@ def create_vm():
             password=deployment.password,
             username=deployment.username,
         )
-        logger.info("Guacamole connection created. Deleting Azure deployment...")
-        azure_client.delete_deployment(deployment_information.name)
+        # logger.info("Guacamole connection created. Deleting Azure deployment...")
+        # azure_client.delete_deployment(deployment_information.name)
         logger.info("OK")
     else:
         logger.error("Deployment failed !")

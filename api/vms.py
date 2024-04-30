@@ -8,6 +8,15 @@ from dependencies import get_guacamole_client, get_vm_azure_client
 router = APIRouter(prefix="/vms", tags=["vms"])
 
 
+@router.get("/", status_code=200, dependencies=[Depends(verify_admin_permission)])
+def list_vms(
+    azure_client: VMAzureClient = Depends(get_vm_azure_client),
+):
+    """List all vms."""
+    vms_to_exclude_exp = [r"euphro-(stg|prod)-vm-hsds"]
+    return azure_client.list_vms(exclude_regex_patterns=vms_to_exclude_exp)
+
+
 # pylint: disable=inconsistent-return-statements
 @router.delete(
     "/{project_name}", status_code=202, dependencies=[Depends(verify_admin_permission)]
@@ -26,3 +35,15 @@ def delete_vm(
         guacamole_client.delete_connection(project_name)
     except GuacamoleConnectionNotFound:
         pass
+
+
+@router.get(
+    "/image-definitions",
+    status_code=200,
+    dependencies=[Depends(verify_admin_permission)],
+)
+def list_image_definitions(
+    azure_client: VMAzureClient = Depends(get_vm_azure_client),
+):
+    """List all available image definitions."""
+    return {"image_definitions": azure_client.list_vm_image_definitions()}

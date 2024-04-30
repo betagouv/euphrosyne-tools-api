@@ -1,17 +1,16 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
-
-name: Python application
+# This workflow builds the Python package dependencies every time that the requirements
+# files are modified and store it in cache to be accessible by all the CI in all other
+# branches.
+name: update-caches
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, edited]
-
-permissions:
-  contents: read
+  push:
+    branches:
+      - "main"
 
 jobs:
-  build:
+  build-cache:
+    name: Build Cache
     runs-on: ubuntu-latest
 
     steps:
@@ -25,11 +24,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      - name: Black check
-        run: python -m black --check .
-      - name: Ruff check
-        run: python -m ruff check .
 
+      #### mypy ####
       - name: Restore mypy cache
         id: cache-mypy-restore
         uses: actions/cache/restore@v3
@@ -37,7 +33,12 @@ jobs:
           path: .mypy_cache
           key: ${{ runner.os }}-mypy-${{ hashFiles('requirements.txt') }}
       - name: Mypy check
+        if: steps.cache.outputs.cache-hit != 'true'
         run: python -m mypy .
-
-      - name: Pytest
-        run: python -m pytest .
+      - name: Save mypy cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        id: cache-mypy-save
+        uses: actions/cache/save@v3
+        with:
+          path: .mypy_cache
+          key: ${{ steps.cache-mypy-restore.outputs.cache-primary-key }}

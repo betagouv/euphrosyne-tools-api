@@ -1,6 +1,7 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
 from datetime import datetime
+import pathlib
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -14,9 +15,12 @@ from clients.azure.data import (
     FolderCreationError,
     IncorrectDataFilePath,
     ProjectFile,
+    RunDataNotFound,
+    extract_info_from_path,
     validate_project_document_file_path,
     validate_run_data_file_path,
 )
+from ..mocks.azure import factories as azure_factories
 
 
 @pytest.fixture
@@ -247,24 +251,24 @@ def test_list_files_recursive_with_detailed_info(
         files_and_folders__dir_1,
     ]
     share_file_client.get_file_properties.side_effect = [
-        {
-            "name": "file-1.txt",
-            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
-            "size": 123,
-            "path": "/file-1.txt",
-        },
-        {
-            "name": "file-2.txt",
-            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
-            "size": 345,
-            "path": "directory-1/file-2.txt",
-        },
-        {
-            "name": "file-3.txt",
-            "last_modified": datetime(2022, 6, 22, 11, 22, 33),
-            "size": 123,
-            "path": "directory-1/file-3.txt",
-        },
+        azure_factories.file_properties_factory(
+            name="file-1.txt",
+            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            size=123,
+            path="/file-1.txt",
+        ),
+        azure_factories.file_properties_factory(
+            name="file-2.txt",
+            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            size=345,
+            path="/file-2.txt",
+        ),
+        azure_factories.file_properties_factory(
+            name="file-3.txt",
+            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            size=123,
+            path="directory-1/file-3.txt",
+        ),
     ]
 
     files = client._list_files_recursive(dir_path="/", fetch_detailed_information=True)
@@ -471,3 +475,141 @@ def test_change_run_name_raise_error(
         except FolderCreationError:
             has_errored = True
     assert has_errored
+
+
+def test_is_project_data_available_returns_true(
+    client: DataAzureClient,
+):
+    with patch.object(
+        ShareDirectoryClient,
+        "list_directories_and_files",
+        return_value=[
+            {"name": "run1", "is_directory": True},
+            {"name": "run2", "is_directory": True},
+        ],
+    ), patch.object(
+        ShareDirectoryClient,
+        "get_subdirectory_client",
+        return_value=MagicMock(list_directories_and_files=lambda: [{"name": "file1"}]),
+    ):
+        result = client.is_project_data_available("test_project")
+        assert result
+
+
+@patch("clients.azure.data.DataAzureClient.init_project_directory")
+def test_is_project_data_available_when_project_dir_not_exist(
+    init_project_directory_mock: MagicMock,
+    client: DataAzureClient,
+):
+    with patch.object(
+        ShareDirectoryClient,
+        "list_directories_and_files",
+        side_effect=ResourceNotFoundError,
+    ):
+        result = client.is_project_data_available("test_project")
+        init_project_directory_mock.assert_called_once_with("test_project")
+        assert not result
+
+
+def test_is_project_data_available_when_run_dir_empty(
+    client: DataAzureClient,
+):
+    with patch.object(
+        ShareDirectoryClient,
+        "list_directories_and_files",
+        return_value=[{"name": "run1", "is_directory": True}],
+    ), patch.object(
+        ShareDirectoryClient,
+        "get_subdirectory_client",
+        return_value=MagicMock(list_directories_and_files=lambda: []),
+    ):
+        result = client.is_project_data_available("test_project")
+        assert not result
+
+
+@patch("clients.azure.data.DataAzureClient.init_run_directory")
+def test_is_project_data_available_when_run_dir_not_exists(
+    init_run_directory_mock: MagicMock,
+    client: DataAzureClient,
+):
+    with patch.object(
+        ShareDirectoryClient,
+        "list_directories_and_files",
+        return_value=[{"name": "run1", "is_directory": True}],
+    ), patch.object(
+        ShareDirectoryClient,
+        "get_subdirectory_client",
+        return_value=MagicMock(
+            list_directories_and_files=MagicMock(side_effect=ResourceNotFoundError)
+        ),
+    ):
+        result = client.is_project_data_available("test_project")
+        assert not result
+        init_run_directory_mock.assert_called_once_with("run1", "test_project")
+
+
+@patch("clients.azure.data._validate_run_data_file_path_regex", MagicMock())
+def test_extract_info_from_path(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+
+    path1 = pathlib.Path("projects/project1/runs/run1/data")
+    path2 = pathlib.Path("projects/project2/runs/run2")
+    path3 = pathlib.Path("projects/project3")
+
+    info1 = extract_info_from_path(path1)
+    info2 = extract_info_from_path(path2)
+    info3 = extract_info_from_path(path3)
+
+    assert info1["project_name"] == "project1"
+    assert info1["run_name"] == "run1"
+    assert info1["data_type"] == "data"
+    assert info2["project_name"] == "project2"
+    assert info2["run_name"] == "run2"
+    assert info2["data_type"] is None
+    assert info3["project_name"] == "project3"
+    assert info3["run_name"] is None
+    assert info3["data_type"] is None
+
+
+@patch("clients.azure.data.ShareDirectoryClient.from_connection_string")
+def test__iter_directory_files_directory_not_found(
+    mock_dir_client: MagicMock,
+    client: DataAzureClient,
+):
+    mock_dir_client.return_value.exists.return_value = False
+    with pytest.raises(RunDataNotFound):
+        list(client._iter_directory_files("project1/run1"))
+    mock_dir_client.return_value.exists.assert_called_once()
+
+
+@patch("clients.azure.data.ShareDirectoryClient")
+@patch("clients.azure.data.ShareFileClient")
+def test__iter_directory_files_directory(
+    mock_file_client: MagicMock,
+    mock_dir_client: MagicMock,
+    client: DataAzureClient,
+):
+    with patch.object(client, "_list_files_recursive") as list_files_recursive_mock:
+        list_files_recursive_mock.return_value = [
+            ProjectFile(name="file-1", path="/1", size=123),
+            ProjectFile(name="file-2", path="/2", size=123),
+        ]
+        mock_dir_client.from_connection_string.return_value.exists.return_value = True
+
+        list(client._iter_directory_files("project1/run1"))
+
+        assert len(mock_file_client.from_connection_string.call_args_list) == 2
+        assert (
+            mock_file_client.from_connection_string.call_args_list[0][1]["file_path"]
+            == "/1"
+        )
+        assert (
+            mock_file_client.from_connection_string.call_args_list[1][1]["file_path"]
+            == "/2"
+        )
+        assert (
+            len(
+                mock_file_client.from_connection_string.return_value.download_file.call_args_list
+            )
+            == 2
+        )

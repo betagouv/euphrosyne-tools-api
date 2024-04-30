@@ -46,8 +46,9 @@ def deploy_vm(
 ):
     """Deploys a VM for a specific project."""
     vm_size = config_client.get_project_vm_size(project_name)
-    vm_information = vm_client.deploy_vm(project_name, vm_size=vm_size)
+    image_definition = config_client.get_project_image_definition(project_name)
+    vm_information = vm_client.deploy_vm(
+        project_name, vm_size=vm_size, image_definition=image_definition
+    )
     if vm_information:
-        background_tasks.add_task(
-            wait_for_deploy, vm_information, guacamole_client, vm_client
-        )
+        background_tasks.add_task(wait_for_deploy, vm_information, guacamole_client)
