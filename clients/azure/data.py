@@ -162,7 +162,6 @@ class DataAzureClient(BaseStorageAzureClient):
         project_name: str,
     ) -> list[ProjectFileOrDirectory]:
         dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
-        files = self._list_files_recursive(dir_path, fetch_detailed_information=True)
         try:
             return self._list_files(dir_path)
         except ResourceNotFoundError as error:
