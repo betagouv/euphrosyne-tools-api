@@ -29,6 +29,9 @@ exclude = '''
 
 [tool.mypy]
 mypy_path = "stubs"
+plugins = [
+  "pydantic.mypy"
+]
 
 [[tool.mypy.overrides]]
 module="azure.mgmt.*"
