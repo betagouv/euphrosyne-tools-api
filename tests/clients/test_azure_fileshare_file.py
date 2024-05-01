@@ -61,7 +61,6 @@ def test_read_when_offset_is_set(file: AzureFileShareFile):
     ("seek_param", "value"), ((None, 4), (SEEK_SET, 4), (SEEK_CUR, 14), (SEEK_END, 96))
 )
 def test_seek_method(seek_param, value: int, file: AzureFileShareFile):
-    print(seek_param, value)
     file._content_length = 100
     file._offset = 10
     file.seek(4, seek_param)

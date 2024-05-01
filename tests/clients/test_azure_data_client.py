@@ -55,11 +55,12 @@ def test_get_project_documents_with_prefix(
             ]
         )
     )
-    with patch.object(client, "_list_files_recursive", _list_files_recursive_mock):
-        files = client.get_project_documents("project")
+    with patch.object(client, "_list_files", _list_files_recursive_mock):
+        files = list(client.get_project_documents("project"))
         assert _list_files_recursive_mock.call_args[0] == ("/prefix/project/documents",)
-        assert isinstance(files, list)
-        assert len(list(files)) == 1
+        assert len(files) == 1
+        assert isinstance(files[0], ProjectFile)
+        assert files[0].path == "/prefix/project/documents/file-1.txt"
 
 
 def test_get_run_files_with_prefix(client: DataAzureClient, monkeypatch: MonkeyPatch):

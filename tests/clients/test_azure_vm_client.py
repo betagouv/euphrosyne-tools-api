@@ -299,7 +299,6 @@ def test_list_vm_image_definitions(client: VMAzureClient):
     client._compute_mgmt_client.gallery_images.list_by_gallery.return_value = (
         return_values
     )
-    print(client.list_vm_image_definitions())
     assert client.list_vm_image_definitions() == ["image1", "image2"]
 
 

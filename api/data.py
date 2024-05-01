@@ -16,7 +16,7 @@ from clients.azure.data import (
     FolderCreationError,
     IncorrectDataFilePath,
     ProjectDocumentsNotFound,
-    ProjectFile,
+    ProjectFileOrDirectory,
     RunDataNotFound,
     validate_project_document_file_path,
     validate_run_data_file_path,
@@ -43,7 +43,7 @@ def check_project_data_available(
     "/{project_name}/documents",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
-    response_model=list[ProjectFile],
+    response_model=list[ProjectFileOrDirectory],
 )
 def list_project_documents(
     project_name: str,
@@ -100,18 +100,23 @@ def zip_project_run_data(
     "/{project_name}/runs/{run_name}/{data_type}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
-    response_model=list[ProjectFile],
+    response_model=list[ProjectFileOrDirectory],
 )
 def list_run_data(
     project_name: str,
     run_name: str,
     data_type: str = Path(regex="^(raw_data|processed_data|HDF5)$"),
+    folder: str | None = None,
     azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     try:
-        return azure_client.get_run_files(project_name, run_name, data_type)  # type: ignore # noqa: E501
+        return azure_client.get_run_files_folders(project_name, run_name, data_type, folder)  # type: ignore # noqa: E501
     except RunDataNotFound:
-        return JSONResponse({"detail": "Run data not found"}, status_code=404)
+        return JSONResponse(
+            {"detail": "Run data not found"},
+            status_code=404,
+            headers={"Cache-Control": "max-age=3600"},
+        )
 
 
 @router.get(
