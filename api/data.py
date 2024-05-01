@@ -113,7 +113,11 @@ def list_run_data(
     try:
         return azure_client.get_run_files_folders(project_name, run_name, folder, data_type)  # type: ignore # noqa: E501
     except RunDataNotFound:
-        return JSONResponse({"detail": "Run data not found"}, status_code=404)
+        return JSONResponse(
+            {"detail": "Run data not found"},
+            status_code=404,
+            headers={"Cache-Control": "max-age=3600"},
+        )
 
 
 @router.get(
