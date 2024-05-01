@@ -64,12 +64,15 @@ class ProjectFile(BaseModel):
     size: int
     path: str
 
-      
+
 class ProjectFolder(BaseModel):
     name: str
 
+
 class ProjectFileOrDirectory(ProjectFile):
+    size: int | None
     type: Literal["file", "directory"]
+
 
 class AzureFileShareFile(io.BytesIO):
     """File-like object for Azure File Share files."""
@@ -145,6 +148,7 @@ class AzureFileShareFile(io.BytesIO):
     def truncate(self, size: int | None = None) -> int:
         return super().truncate(size)
 
+
 class DataAzureClient(BaseStorageAzureClient):
     def __init__(self):
         super().__init__()
@@ -204,7 +208,7 @@ class DataAzureClient(BaseStorageAzureClient):
             return self._list_files(dir_path)
         except ResourceNotFoundError as error:
             raise RunDataNotFound from error
- 
+
     def iter_project_run_files(
         self, project_name: str, run_name: str, data_type: RunDataTypeType | None = None
     ):
@@ -411,7 +415,6 @@ class DataAzureClient(BaseStorageAzureClient):
 
         for file in dir_client.list_directories_and_files(include=["timestamps"]):
             name, is_directory = file["name"], file["is_directory"]
-            print(file)
 
             file = ProjectFileOrDirectory(
                 name=name,
