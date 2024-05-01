@@ -192,8 +192,8 @@ class DataAzureClient(BaseStorageAzureClient):
         self,
         project_name: str,
         run_name: str,
-        folder: str,
         data_type: RunDataTypeType,
+        folder: str,
     ) -> list[ProjectFileOrDirectory]:
         """Fetches run data files from Fileshare.
         Specify `data_type` to get either 'raw_data' or 'processed_data'.

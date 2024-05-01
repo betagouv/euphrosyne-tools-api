@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from auth import User, get_current_user
 from backgrounds import wait_for_deploy
 from clients.azure import VMAzureClient
-from clients.azure.data import IncorrectDataFilePath, ProjectFile
+from clients.azure.data import IncorrectDataFilePath, ProjectFileOrDirectory
 from clients.azure.vm import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
 from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
 from dependencies import (
@@ -168,25 +168,29 @@ def test_delete_vm_when_no_connection(app: FastAPI, client: TestClient):
 def test_list_run_data(app: FastAPI, client: TestClient, data_type: tuple[str]):
     def yield_project_files():
         for i in range(4):
-            yield ProjectFile(
+            yield ProjectFileOrDirectory(
                 name=f"file-{i}.txt",
                 last_modified=datetime(2022, 6, 22, 11, 22, 33),
                 size=i * 222,
                 path=f"somepath/file-{i}.txt",
+                type="file",
             )
 
-    get_run_files_mock = MagicMock(
-        get_run_files=MagicMock(return_value=yield_project_files())
+    get_run_files_folders_mock = MagicMock(
+        get_run_files_folders=MagicMock(return_value=yield_project_files())
     )
-    app.dependency_overrides[get_storage_azure_client] = lambda: get_run_files_mock
+    app.dependency_overrides[
+        get_storage_azure_client
+    ] = lambda: get_run_files_folders_mock
 
     response = client.get(f"/data/project_01/runs/run_01/{data_type}")
     files = response.json()
 
-    assert get_run_files_mock.mock_calls[0][1] == (
+    assert get_run_files_folders_mock.mock_calls[0][1] == (
         "project_01",
         "run_01",
         f"{data_type}",
+        None,
     )
     assert response.status_code == 200
     assert len(files) == 4
