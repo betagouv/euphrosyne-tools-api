@@ -16,7 +16,6 @@ from clients.azure.data import (
     FolderCreationError,
     IncorrectDataFilePath,
     ProjectDocumentsNotFound,
-    ProjectFile,
     ProjectFileOrDirectory,
     RunDataNotFound,
     validate_project_document_file_path,

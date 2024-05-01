@@ -58,6 +58,10 @@ class IncorrectDataFilePath(Exception):
         super().__init__(*args)
 
 
+class ProjectFolder(BaseModel):
+    name: str
+
+
 class ProjectFile(BaseModel):
     name: str
     last_modified: Optional[datetime] = None
@@ -65,12 +69,11 @@ class ProjectFile(BaseModel):
     path: str
 
 
-class ProjectFolder(BaseModel):
+class ProjectFileOrDirectory(BaseModel):
     name: str
-
-
-class ProjectFileOrDirectory(ProjectFile):
+    last_modified: Optional[datetime] = None
     size: int | None
+    path: str
     type: Literal["file", "directory"]
 
 
