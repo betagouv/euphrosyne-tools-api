@@ -3,7 +3,7 @@ azure-identity==1.16.0
 azure-keyvault-secrets==4.8.0
 azure-mgmt-compute==31.0.0
 azure-mgmt-containerinstance==10.1.0 
-azure-mgmt-resource==23.0.1
+azure-mgmt-resource==23.1.1
 azure-mgmt-storage==21.1.0
 azure-mgmt-web==7.2.0
 azure-storage-blob==12.19.1
