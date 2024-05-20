@@ -19,7 +19,7 @@ pydantic-settings==2.2.1
 python-dotenv==1.0.1 
 python-jose[cryptography]==3.3.0
 python-slugify==8.0.4
-pytest==8.2.0 
+pytest==8.2.1 
 requests==2.31.0
 ruff==0.4.4
 sentry-sdk[fastapi]==2.2.0
