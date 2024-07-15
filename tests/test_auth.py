@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
-
 import pytest
 from fastapi import HTTPException, status
 from jose import jwt
@@ -204,11 +203,21 @@ def test_generate_token_for_path(monkeypatch: pytest.MonkeyPatch):
     assert decoded_token["path"] == path
 
 
+def test_generate_token_for_path_with_expiration(monkeypatch: pytest.MonkeyPatch):
+    path = "/example"
+    exp = datetime.now(timezone.utc)
+    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+    token = generate_token_for_path(path, expiration=exp)
+    decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
+
+    assert decoded_token["exp"] == int(exp.timestamp())
+
+
 def test_generate_jwt_token(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     with patch.object(auth, "datetime") as datetime_mock:
-        utcnow = datetime.utcnow()
-        datetime_mock.utcnow.return_value = utcnow
+        utcnow = datetime.now(timezone.utc)
+        datetime_mock.now.return_value = utcnow
         token = _generate_jwt_token({"test": "test"})
     assert isinstance(token, str)
     decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])

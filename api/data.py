@@ -200,9 +200,12 @@ def generate_project_documents_upload_shared_access_signature(
 def generate_signed_url_for_path(
     path: pathlib.Path,
     current_user: User = Depends(get_current_user),
+    expiration: datetime | None = None,
 ):
     """Return a auth token for a given path. It is used to grant access to project data via
     a GET request without revealing jwt access token. It is like an Azure SAS token."""
+    if expiration:
+        _verify_can_set_token_expiration(current_user)
     try:
         validate_run_data_file_path(path, current_user)
     except IncorrectDataFilePath as error:
@@ -210,7 +213,7 @@ def generate_signed_url_for_path(
             status_code=422,
             detail=[{"loc": ["query", "path"], "msg": error.message}],
         ) from error
-    token = generate_token_for_path(str(path))
+    token = generate_token_for_path(str(path), expiration=expiration)
     return {"token": token}
 
 
@@ -260,3 +263,10 @@ def rename_run_folder(
         return azure_client.rename_run_directory(run_name, project_name, new_run_name)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
+
+
+def _verify_can_set_token_expiration(user: User):
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=403, detail="Only admins can set token expiration"
+        )

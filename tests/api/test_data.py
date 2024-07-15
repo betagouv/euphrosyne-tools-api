@@ -3,18 +3,20 @@ Some routes may be tested in tests.main
 (older tests that haven't been migrated to this module)"""
 
 from unittest.mock import MagicMock, patch
-
+import datetime
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from auth import get_current_user, verify_has_azure_permission
 
-from auth import verify_is_euphrosyne_backend, verify_path_permission
+from auth import User, verify_is_euphrosyne_backend, verify_path_permission
 from clients.azure.data import (
     FolderCreationError,
     IncorrectDataFilePath,
     RunDataNotFound,
 )
 from dependencies import get_storage_azure_client
+from api.data import _verify_can_set_token_expiration
 
 
 @pytest.fixture(autouse=True)
@@ -147,3 +149,29 @@ def test_zip_project_run_data(
     assert response.headers.get("Content-Disposition").endswith(".zip")
     assert response.headers.get("Content-Type") == "application/zip"
     assert response.content.decode("utf-8") == "abc"
+
+
+@patch("api.data._verify_can_set_token_expiration", MagicMock())
+@patch("api.data.validate_run_data_file_path", MagicMock())
+def test_generate_signed_url_for_path_with_expiration(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    app.dependency_overrides[get_current_user] = lambda: User(
+        id=1, projects=[], is_admin=True
+    )
+    with patch("api.data.generate_token_for_path") as generate_token_for_path_mock:
+        response = client.get(
+            "/data/project-name/token?path=/a/path&expiration=2024-07-15T15:51:27.911649"
+        )
+        generate_token_for_path_mock.assert_called_once_with(
+            "/a/path",
+            expiration=datetime.datetime.fromisoformat("2024-07-15T15:51:27.911649"),
+        )
+        assert response.status_code == 200
+    del app.dependency_overrides[get_current_user]
+
+
+def test_verify_can_set_token_expiration():
+    with pytest.raises(HTTPException):
+        _verify_can_set_token_expiration(user=User(id="1", projects=[], is_admin=False))
+    _verify_can_set_token_expiration(user=User(id="1", projects=[], is_admin=True))
