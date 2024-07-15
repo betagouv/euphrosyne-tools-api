@@ -109,7 +109,7 @@ def verify_path_permission(path: str, token: str | None = Depends(token_query_au
         raise HTTPException(status_code=403, detail="Token not allowed for this path")
 
 
-def generate_token_for_path(path: str):
+def generate_token_for_path(path: str, expiration: datetime | None = None):
     """
     Generates a JWT token for a specific path.
 
@@ -123,13 +123,16 @@ def generate_token_for_path(path: str):
     return _generate_jwt_token(
         payload={
             "path": path,
-        }
+        },
+        expiration=expiration,
     )
 
 
-def _generate_jwt_token(payload: dict[str, Any]):
+def _generate_jwt_token(payload: dict[str, Any], expiration: datetime | None = None):
+    if expiration is None:
+        expiration = datetime.now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
-        "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        "exp": expiration,
         **payload,
     }
     return jwt.encode(
