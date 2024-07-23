@@ -1,9 +1,11 @@
 from datetime import datetime
 import pathlib
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
 from auth import (
+    ExtraPayloadTokenGetter,
     generate_token_for_path,
     verify_path_permission,
     User,
@@ -24,6 +26,7 @@ from clients.azure.data import (
 )
 from clients.azure.stream import stream_zip_from_azure_files
 from dependencies import get_storage_azure_client
+from hooks.euphrosyne import post_data_access_event
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -64,6 +67,10 @@ def list_project_documents(
 )
 def zip_project_run_data(
     path: pathlib.Path,
+    data_request: Annotated[
+        str | None, Depends(ExtraPayloadTokenGetter(key="data_request"))
+    ],
+    background_tasks: BackgroundTasks,
     azure_client: DataAzureClient = Depends(get_storage_azure_client),
 ):
     """
@@ -87,6 +94,11 @@ def zip_project_run_data(
     except RunDataNotFound:
         raise HTTPException(status_code=404, detail="Run data not found.")
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    if data_request:
+        # If request come from a data request, log it in Euphrosyne
+        background_tasks.add_task(
+            post_data_access_event, str(path), data_request=data_request
+        )
     return StreamingResponse(
         stream_zip_from_azure_files(files),
         media_type="application/zip",
@@ -200,6 +212,7 @@ def generate_project_documents_upload_shared_access_signature(
 def generate_signed_url_for_path(
     path: pathlib.Path,
     current_user: User = Depends(get_current_user),
+    data_request: str | None = None,
     expiration: datetime | None = None,
 ):
     """Return a auth token for a given path. It is used to grant access to project data via
@@ -213,7 +226,9 @@ def generate_signed_url_for_path(
             status_code=422,
             detail=[{"loc": ["query", "path"], "msg": error.message}],
         ) from error
-    token = generate_token_for_path(str(path), expiration=expiration)
+    token = generate_token_for_path(
+        str(path), expiration=expiration, data_request=data_request
+    )
     return {"token": token}
 
 

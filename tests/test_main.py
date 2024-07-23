@@ -21,12 +21,12 @@ from tests.conftest import get_current_user_override
 
 
 async def get_admin_user_override():
-    return User(id=1, projects=[], is_admin=True)
+    return User(id="1", projects=[], is_admin=True)
 
 
 def test_no_project_membership_exception_handler(app: FastAPI, client: TestClient):
     def get_not_permitted_user_override():
-        return User(id=1, projects=[], is_admin=False)
+        return User(id="1", projects=[], is_admin=False)
 
     app.dependency_overrides[get_current_user] = get_not_permitted_user_override
     response = client.get("/connect/project_01")

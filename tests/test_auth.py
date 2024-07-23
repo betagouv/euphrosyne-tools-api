@@ -43,14 +43,14 @@ async def test_get_current_user_raises_if_no_user_id():
 async def test_returns_user_with_projects():
     token = _generate_token(
         {
-            "user_id": 1,
+            "user_id": "1",
             "is_admin": False,
             "projects": [{"id": 444, "name": "Projet AD", "slug": "projet-ad"}],
         }
     )
     user = await get_current_user(token)
     assert isinstance(user, User)
-    assert user.id == 1
+    assert user.id == "1"
     assert user.projects
     assert user.projects[0].id == 444
 
@@ -62,7 +62,7 @@ async def test_login_with_api_key_when_env_set(monkeypatch):
 
     assert isinstance(user, User)
     assert user.is_admin
-    assert user.id == 0
+    assert user.id == "0"
 
 
 @pytest.mark.anyio
@@ -84,14 +84,14 @@ async def test_jwt_takes_precedence_over_api_key(monkeypatch):
     monkeypatch.setenv("API_TOKEN", "api_token")
     jwt_token = _generate_token(
         {
-            "user_id": 1,
+            "user_id": "1",
             "is_admin": False,
             "projects": [],
         }
     )
     user = await get_current_user(jwt_token, "api_token")
     assert isinstance(user, User)
-    assert user.id == 1
+    assert user.id == "1"
     assert not user.is_admin
 
 
@@ -100,7 +100,7 @@ def test_verify_project_membership_passes_for_ownership():
     verify_project_membership(
         "hello-world",
         User(
-            id=1,
+            id="1",
             is_admin=False,
             projects=[
                 Project(id=1, name="hello-world", slug="hello-world"),
@@ -115,7 +115,7 @@ def test_verify_project_membership_passes_for_admin():
     verify_project_membership(
         "hello-world",
         User(
-            id=1,
+            id="1",
             is_admin=True,
             projects=[],
         ),
@@ -127,7 +127,7 @@ def test_verify_project_membership_fails_for_regular_user():
         verify_project_membership(
             "hello-world",
             User(
-                id=1,
+                id="1",
                 is_admin=False,
                 projects=[],
             ),
@@ -138,7 +138,7 @@ def test_verify_admin_permission():
     with pytest.raises(HTTPException):
         verify_admin_permission(
             User(
-                id=1,
+                id="1",
                 is_admin=False,
                 projects=[],
             ),
@@ -236,3 +236,24 @@ def test_decode_jwt_without_exp_raises(monkeypatch: pytest.MonkeyPatch):
     )
     with pytest.raises(HTTPException):
         _decode_jwt(token)
+
+
+def test_generate_token_for_euphrosyne_backend(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+
+    token = auth.generate_token_for_euphrosyne_backend()
+    decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
+
+    assert isinstance(token, str)
+    assert decoded_token["user_id"] == EUPHROSYNE_TOKEN_USER_ID_VALUE
+
+
+def test_extra_payload_token_getter():
+    token = jwt.encode(
+        {"test": "value", "exp": datetime.now() + timedelta(minutes=15)},
+        "secret",
+        algorithm=ALGORITHM,
+    )
+    getter = auth.ExtraPayloadTokenGetter("test")
+
+    assert getter(token) == "value"

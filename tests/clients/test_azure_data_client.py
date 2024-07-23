@@ -313,7 +313,7 @@ def test_validate_run_data_file_path(path, is_valid):
         validate_run_data_file_path(
             path,
             User(
-                id=1,
+                id="1",
                 is_admin=False,
                 projects=[Project(id=2, name="hello", slug="hello")],
             ),
@@ -340,7 +340,7 @@ def test_validate_document_file_path(path, is_valid):
         validate_project_document_file_path(
             path,
             User(
-                id=1,
+                id="1",
                 is_admin=False,
                 projects=[Project(id=2, name="hello", slug="hello")],
             ),
