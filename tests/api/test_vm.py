@@ -10,7 +10,7 @@ from main import app
 
 
 async def get_admin_user_override():
-    return User(id=1, projects=[], is_admin=True)
+    return User(id="1", projects=[], is_admin=True)
 
 
 _client = TestClient(app)

@@ -1,6 +1,6 @@
 import os
-from typing import Any, Optional
 from datetime import datetime, timedelta
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
@@ -8,6 +8,7 @@ from fastapi.security import APIKeyHeader, APIKeyQuery, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from slugify import slugify
+
 from clients.azure import VaultClient
 from exceptions import NoProjectMembershipException
 
@@ -35,7 +36,7 @@ class Project(BaseModel):
 
 
 class User(BaseModel):
-    id: int
+    id: str
     projects: list[Project]
     is_admin: bool
 
@@ -52,7 +53,7 @@ async def get_current_user(
     """  # noqa: E501
     if not jwt_token:
         if os.getenv("API_TOKEN") and api_token == os.getenv("API_TOKEN"):
-            return User(id=0, projects=[], is_admin=True)
+            return User(id="0", projects=[], is_admin=True)
         raise JWT_CREDENTIALS_EXCEPTION
     payload = _decode_jwt(jwt_token)
     if not payload.get("user_id"):
@@ -109,12 +110,9 @@ def verify_path_permission(path: str, token: str | None = Depends(token_query_au
         raise HTTPException(status_code=403, detail="Token not allowed for this path")
 
 
-def generate_token_for_path(path: str, expiration: datetime | None = None):
+def generate_token_for_euphrosyne_backend():
     """
-    Generates a JWT token for a specific path.
-
-    Args:
-        path (str): The path for which the token is generated.
+    Generates a JWT token for Euphrosyne backend.
 
     Returns:
         str: The generated JWT token.
@@ -122,10 +120,46 @@ def generate_token_for_path(path: str, expiration: datetime | None = None):
     """
     return _generate_jwt_token(
         payload={
-            "path": path,
-        },
+            "user_id": EUPHROSYNE_TOKEN_USER_ID_VALUE,
+        }
+    )
+
+
+def generate_token_for_path(
+    path: str, data_request: str | None = None, expiration: datetime | None = None
+):
+    """
+    Generates a JWT token for a specific path.
+
+    Args:
+        path (str): The path for which the token is generated.
+        data_request (str): (Optional) The data request ID for which the token is generated.
+        expiration (datetime): (Optional) The expiration date of the token.
+
+    Returns:
+        str: The generated JWT token.
+
+    """
+    payload = {
+        "path": path,
+    }
+    if data_request:
+        payload["data_request"] = data_request
+    return _generate_jwt_token(
+        payload=payload,
         expiration=expiration,
     )
+
+
+class ExtraPayloadTokenGetter:
+    def __init__(self, key: str):
+        self.key = key
+
+    def __call__(self, token: str | None = Depends(token_query_auth)):
+        if token:
+            payload = _decode_jwt(token)
+            return payload.get(self.key)
+        return None
 
 
 def _generate_jwt_token(payload: dict[str, Any], expiration: datetime | None = None):

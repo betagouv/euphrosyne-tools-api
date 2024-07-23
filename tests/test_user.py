@@ -8,7 +8,7 @@ from auth import Project, User
     [
         (
             User(
-                id=1,
+                id="1",
                 projects=[Project(id=1, name="Project Nono", slug="project-nono")],
                 is_admin=False,
             ),
@@ -16,7 +16,7 @@ from auth import Project, User
         ),
         (
             User(
-                id=1,
+                id="1",
                 projects=[Project(id=1, name="Project Yesyes", slug="project-yesyes")],
                 is_admin=False,
             ),

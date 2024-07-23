@@ -46,7 +46,7 @@ def setenv(monkeypatch: pytest.MonkeyPatch):
 async def get_current_user_override():
     projet_name = "project 01"
     return User(
-        id=1,
+        id="1",
         projects=[Project(id=1, name=projet_name, slug=slugify(projet_name))],
         is_admin=False,
     )
