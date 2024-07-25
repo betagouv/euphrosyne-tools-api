@@ -59,7 +59,7 @@ async def get_current_user(
     if not payload.get("user_id"):
         raise JWT_CREDENTIALS_EXCEPTION
     return User(
-        id=payload.get("user_id"),
+        id=str(payload.get("user_id")),
         projects=payload.get("projects"),
         is_admin=payload.get("is_admin"),
     )
