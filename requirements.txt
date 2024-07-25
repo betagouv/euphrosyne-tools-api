@@ -23,7 +23,7 @@ pytest==8.3.1
 requests==2.32.3
 ruff==0.5.2
 sentry-sdk[fastapi]==2.10.0
-stream-zip==0.0.71
+stream-zip==0.0.81
 types-python-jose==3.3.4.20240106
 types-python-slugify==8.0.2.20240310 
 types-requests==2.32.0.20240712
