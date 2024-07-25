@@ -361,16 +361,30 @@ class DataAzureClient(BaseStorageAzureClient):
         except (ResourceNotFoundError, ResourceExistsError) as error:
             raise FolderCreationError(error.message) from error
 
+    def rename_project_directory(self, project_name: str, new_name: str):
+        """Change project folder name on Fileshare."""
+        self._rename_directory(
+            directory_path=_generate_base_dir_path(project_name),
+            new_directory_path=_generate_base_dir_path(new_name),
+        )
+
     def rename_run_directory(self, run_name: str, project_name: str, new_name: str):
         """Change run folder name in project folder on Fileshare."""
+        self._rename_directory(
+            directory_path=_generate_base_dir_path(project_name, run_name),
+            new_directory_path=_generate_base_dir_path(project_name, new_name),
+        )
+
+    def _rename_directory(self, directory_path: str, new_directory_path: str):
+        """Rename folder path on Fileshare."""
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=self.share_name,
-            directory_path=_generate_base_dir_path(project_name, run_name),
+            directory_path=directory_path,
         )
         try:
             dir_client.rename_directory(
-                _generate_base_dir_path(project_name, new_name),
+                new_name=new_directory_path,
                 overwrite=False,
             )
         except (ResourceNotFoundError, ResourceExistsError) as error:

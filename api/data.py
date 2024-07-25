@@ -264,6 +264,22 @@ def init_run_data(
 
 
 @router.post(
+    "/{project_name}/rename/{new_project_name}",
+    status_code=204,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+)
+def rename_project_folder(
+    project_name: str,
+    new_project_name: str,
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+):
+    try:
+        return azure_client.rename_project_directory(project_name, new_project_name)
+    except FolderCreationError as error:
+        return JSONResponse({"detail": error.message}, status_code=400)
+
+
+@router.post(
     "/{project_name}/runs/{run_name}/rename/{new_run_name}",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend)],

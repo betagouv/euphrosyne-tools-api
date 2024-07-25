@@ -101,6 +101,31 @@ def test_change_run_name_when_caught_error(app: FastAPI, client: TestClient):
     assert response.json()["detail"] == "an error"
 
 
+def test_change_project_name(app: FastAPI, client: TestClient):
+    rename_project_directory_mock = MagicMock()
+    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+        rename_project_directory=rename_project_directory_mock
+    )
+    response = client.post("/data/project_01/rename/project_02")
+
+    assert response.status_code == 204
+    rename_project_directory_mock.assert_called_with("project_01", "project_02")
+
+
+def test_change_project_name_when_caught_error(app: FastAPI, client: TestClient):
+    rename_project_directory_mock = MagicMock(
+        **{"side_effect": FolderCreationError("an error")}
+    )
+    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+        rename_project_directory=rename_project_directory_mock
+    )
+    response = client.post("/data/project_01/rename/project_02")
+
+    rename_project_directory_mock.assert_called_with("project_01", "project_02")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "an error"
+
+
 @patch("auth._decode_jwt", MagicMock(return_value={}))
 def test_zip_project_run_data_when_path_incorrect(app: FastAPI, client: TestClient):
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()

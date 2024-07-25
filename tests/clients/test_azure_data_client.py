@@ -438,6 +438,25 @@ def test_init_run_directory_raise_error(
 
 def test_change_run_name(client: DataAzureClient, monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    with patch.object(client, "_rename_directory") as mock:
+        client.rename_run_directory("myrun", "My Project", "myrun2")
+        mock.assert_called_once_with(
+            directory_path="projects/my-project/runs/myrun",
+            new_directory_path="projects/my-project/runs/myrun2",
+        )
+
+
+def test_change_project_name(client: DataAzureClient, monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    with patch.object(client, "_rename_directory") as mock:
+        client.rename_project_directory("Old project", "New project")
+        mock.assert_called_once_with(
+            directory_path="projects/old-project",
+            new_directory_path="projects/new-project",
+        )
+
+
+def test_rename_directory(client: DataAzureClient, monkeypatch: MonkeyPatch):
     share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
     with patch(
         "clients.azure.data.ShareDirectoryClient",
@@ -445,14 +464,12 @@ def test_change_run_name(client: DataAzureClient, monkeypatch: MonkeyPatch):
             **{"from_connection_string.return_value": share_directory_client_mock}
         ),
     ) as mock:
-        client.rename_run_directory("myrun", "My Project", "myrun2")
-        # Test project name to slug conversion
+        client._rename_directory("oldpath", "newpath")
         assert (
-            mock.from_connection_string.call_args.kwargs["directory_path"]
-            == "projects/my-project/runs/myrun"
+            mock.from_connection_string.call_args.kwargs["directory_path"] == "oldpath"
         )
     share_directory_client_mock.rename_directory.assert_called_once_with(
-        "projects/my-project/runs/myrun2", overwrite=False
+        new_name="newpath", overwrite=False
     )
 
 
