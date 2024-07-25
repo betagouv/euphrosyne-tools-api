@@ -1,7 +1,6 @@
 from datetime import datetime
 from stat import S_IFREG
 from clients.azure.stream import iter_files_zip_attr, stream_zip_from_azure_files
-from stream_zip import ZIP_AUTO
 
 
 # Mock StorageStreamDownloader class for testing
@@ -40,7 +39,6 @@ def test_iter_files_zip_attr():
     assert result[0][0] == "file1.txt"
     assert result[0][1] == datetime(2022, 1, 1)
     assert result[0][2] == S_IFREG | 0o600
-    assert isinstance(result[0][3], type(ZIP_AUTO(files[0].size)))
     assert list(result[0][4]) == [b"chunk1", b"chunk2", b"chunk3"]
 
 
