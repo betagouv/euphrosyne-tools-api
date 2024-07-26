@@ -7,13 +7,15 @@ def ZIP_32(offset, default_get_compressobj): ...
 def ZIP_64(offset, default_get_compressobj): ...
 def ZIP_AUTO(uncompressed_size, level: int = ...): ...
 def stream_zip(
-    files: Generator[
-        tuple[str, datetime.datetime, int, Callable, Generator[bytes, Any, None]],
-        Any,
-        None,
-    ]
-    | tuple[str, datetime.datetime, int, Callable, Generator[bytes, Any, None]]
-    | tuple[str, datetime.datetime, int, Callable, bytes],
+    files: (
+        Generator[
+            tuple[str, datetime.datetime, int, Callable, Generator[bytes, Any, None]],
+            Any,
+            None,
+        ]
+        | tuple[str, datetime.datetime, int, Callable, Generator[bytes, Any, None]]
+        | tuple[str, datetime.datetime, int, Callable, bytes]
+    ),
     chunk_size: int = ...,
     get_compressobj=...,
     extended_timestamps: bool = ...,
