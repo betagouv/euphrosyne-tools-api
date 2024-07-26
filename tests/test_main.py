@@ -179,9 +179,9 @@ def test_list_run_data(app: FastAPI, client: TestClient, data_type: tuple[str]):
     get_run_files_folders_mock = MagicMock(
         get_run_files_folders=MagicMock(return_value=yield_project_files())
     )
-    app.dependency_overrides[
-        get_storage_azure_client
-    ] = lambda: get_run_files_folders_mock
+    app.dependency_overrides[get_storage_azure_client] = (
+        lambda: get_run_files_folders_mock
+    )
 
     response = client.get(f"/data/project_01/runs/run_01/{data_type}")
     files = response.json()

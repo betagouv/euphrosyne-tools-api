@@ -12,9 +12,9 @@ def override_verify_project_membership():
 
 
 def test_update_guacamole_webapp_guacd_hostname(app: FastAPI, client: TestClient):
-    app.dependency_overrides[
-        verify_has_azure_permission
-    ] = override_verify_project_membership
+    app.dependency_overrides[verify_has_azure_permission] = (
+        override_verify_project_membership
+    )
 
     update_guacamole_webapp_guacd_hostname_mock = MagicMock()
     app.dependency_overrides[get_infra_azure_client] = lambda: MagicMock(
