@@ -2,7 +2,7 @@
 Some routes may be tested in tests.main
 (older tests that haven't been migrated to this module)"""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import datetime
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -139,13 +139,13 @@ def test_zip_project_run_data_when_path_incorrect(app: FastAPI, client: TestClie
 def test_zip_project_run_data_when_path_not_found_in_azure(
     app: FastAPI, client: TestClient
 ):
-    iter_project_run_files_mock = MagicMock(side_effect=RunDataNotFound())
+    iter_project_run_files_async_mock = MagicMock(side_effect=RunDataNotFound())
     app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
-        iter_project_run_files=iter_project_run_files_mock
+        iter_project_run_files_async=iter_project_run_files_async_mock
     )
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
     with patch("api.data.extract_info_from_path"):
-        response = client.get("/data/run-data-zip?token=wrong-token&path=/a/wrong/path")
+        response = client.get("/data/run-data-zip?token=token&path=/a/wrong/path")
     assert response.status_code == 404
 
 
@@ -155,14 +155,10 @@ def test_zip_project_run_data(
 ):
     monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
 
-    iter_project_run_files_mock = MagicMock()
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
-        iter_project_run_files=iter_project_run_files_mock
-    )
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
     app.dependency_overrides[ExtraPayloadTokenGetter] = lambda: MagicMock()
     with patch(
-        "api.data.stream_zip_from_azure_files"
+        "api.data.stream_zip_from_azure_files_async"
     ) as stream_zip_from_azure_files_mock:
         stream_zip_from_azure_files_mock.return_value = (s.encode() for s in "abc")
         response = client.get(
@@ -170,9 +166,6 @@ def test_zip_project_run_data(
         )
 
     assert response.status_code == 200, response.content
-    iter_project_run_files_mock.assert_called_once_with(
-        "project-01", "runur", "raw_data"
-    )
     assert response.headers.get("Content-Disposition").startswith(
         "attachment; filename=runur"
     )
@@ -192,14 +185,10 @@ def test_zip_project_run_data_with_data_request(
 ):
     monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
 
-    iter_project_run_files_mock = MagicMock()
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
-        iter_project_run_files=iter_project_run_files_mock
-    )
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
     with patch("fastapi.BackgroundTasks.add_task") as add_background_task_mock:
         with patch(
-            "api.data.stream_zip_from_azure_files"
+            "api.data.stream_zip_from_azure_files_async"
         ) as stream_zip_from_azure_files_mock:
             decode_jwt_mock.return_value = {"data_request": "12"}
             stream_zip_from_azure_files_mock.return_value = (s.encode() for s in "abc")

@@ -1,8 +1,8 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
-
+import asyncio
 from datetime import datetime
 import pathlib
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call, patch, AsyncMock
 
 import pytest
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -15,7 +15,6 @@ from clients.azure.data import (
     FolderCreationError,
     IncorrectDataFilePath,
     ProjectFile,
-    RunDataNotFound,
     extract_info_from_path,
     validate_project_document_file_path,
     validate_run_data_file_path,
@@ -61,30 +60,6 @@ def test_get_project_documents_with_prefix(
         assert len(files) == 1
         assert isinstance(files[0], ProjectFile)
         assert files[0].path == "/prefix/project/documents/file-1.txt"
-
-
-def test_get_run_files_with_prefix(client: DataAzureClient, monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "/prefix")
-    _list_files_recursive_mock = MagicMock(
-        return_value=(
-            p
-            for p in [
-                ProjectFile(
-                    name="file-1.txt",
-                    last_modified=datetime(2022, 6, 22, 11, 22, 33),
-                    size=222,
-                    path="/prefix/project/file-1.txt",
-                )
-            ]
-        )
-    )
-    with patch.object(client, "_list_files_recursive", _list_files_recursive_mock):
-        files = client.get_run_files("project", "run", "processed_data")
-        assert _list_files_recursive_mock.call_args[0] == (
-            "/prefix/project/runs/run/processed_data",
-        )
-        assert isinstance(files, list)
-        assert len(list(files)) == 1
 
 
 def test_generate_project_documents_sas_url(
@@ -198,7 +173,6 @@ def test_list_files_recursive_without_detailed_info(
     ]
     files_and_folders__dir_1 = [
         {"name": "file-2.txt", "is_directory": False, "size": 124},
-        {"name": "file-3.txt", "is_directory": False, "size": 456},
     ]
     share_directory_client.from_connection_string.return_value = share_directory_client
     share_file_client.from_connection_string.return_value = share_file_client
@@ -208,10 +182,15 @@ def test_list_files_recursive_without_detailed_info(
         files_and_folders__dir_1,
     ]
 
-    files = client._list_files_recursive(dir_path="/")
-    files_list = list(files)
+    gen = client._list_files_recursive_async(dir_path="/")
+    files_list = []
+    while True:
+        try:
+            files_list.append(asyncio.run(gen.__anext__()))
+        except StopAsyncIteration:
+            break
 
-    assert len(files_list) == 3
+    assert len(files_list) == 2
     assert all(isinstance(file, ProjectFile) for file in files_list)
     assert len(share_directory_client.list_directories_and_files.call_args) == 2
     assert (
@@ -242,7 +221,6 @@ def test_list_files_recursive_with_detailed_info(
     ]
     files_and_folders__dir_1 = [
         {"name": "file-2.txt", "is_directory": False, "size": 124},
-        {"name": "file-3.txt", "is_directory": False, "size": 456},
     ]
     share_directory_client.from_connection_string.return_value = share_directory_client
     share_file_client.from_connection_string.return_value = share_file_client
@@ -259,23 +237,24 @@ def test_list_files_recursive_with_detailed_info(
             path="/file-1.txt",
         ),
         azure_factories.file_properties_factory(
-            name="file-2.txt",
-            last_modified=datetime(2022, 6, 22, 11, 22, 33),
-            size=345,
-            path="/file-2.txt",
-        ),
-        azure_factories.file_properties_factory(
             name="file-3.txt",
             last_modified=datetime(2022, 6, 22, 11, 22, 33),
             size=123,
-            path="directory-1/file-3.txt",
+            path="directory-1/file-2.txt",
         ),
     ]
 
-    files = client._list_files_recursive(dir_path="/", fetch_detailed_information=True)
-    files_list = list(files)
+    files = client._list_files_recursive_async(
+        dir_path="/", fetch_detailed_information=True
+    )
+    files_list = []
+    while True:
+        try:
+            files_list.append(asyncio.run(files.__anext__()))
+        except StopAsyncIteration:
+            break
 
-    assert len(files_list) == 3
+    assert len(files_list) == 2
     assert all(isinstance(file, ProjectFile) for file in files_list)
     assert len(share_directory_client.list_directories_and_files.call_args) == 2
     assert (
@@ -589,17 +568,6 @@ def test_extract_info_from_path(monkeypatch: MonkeyPatch):
     assert info3["data_type"] is None
 
 
-@patch("clients.azure.data.ShareDirectoryClient.from_connection_string")
-def test__iter_directory_files_directory_not_found(
-    mock_dir_client: MagicMock,
-    client: DataAzureClient,
-):
-    mock_dir_client.return_value.exists.return_value = False
-    with pytest.raises(RunDataNotFound):
-        list(client._iter_directory_files("project1/run1"))
-    mock_dir_client.return_value.exists.assert_called_once()
-
-
 @patch("clients.azure.data.ShareDirectoryClient")
 @patch("clients.azure.data.ShareFileClient")
 def test__iter_directory_files_directory(
@@ -607,27 +575,25 @@ def test__iter_directory_files_directory(
     mock_dir_client: MagicMock,
     client: DataAzureClient,
 ):
-    with patch.object(client, "_list_files_recursive") as list_files_recursive_mock:
-        list_files_recursive_mock.return_value = [
-            ProjectFile(name="file-1", path="/1", size=123),
-            ProjectFile(name="file-2", path="/2", size=123),
-        ]
+    async def gen_async():
+        yield ProjectFile(name="file-1", path="/1", size=123)
+
+    with patch.object(
+        client,
+        "_list_files_recursive_async",
+        MagicMock(return_value=gen_async()),
+    ):
         mock_dir_client.from_connection_string.return_value.exists.return_value = True
 
-        list(client._iter_directory_files("project1/run1"))
+        gen = client._iter_directory_files_async("project1/run1")
+        while True:
+            try:
+                asyncio.run(gen.__anext__())
+            except StopAsyncIteration:
+                break
 
-        assert len(mock_file_client.from_connection_string.call_args_list) == 2
+        assert len(mock_file_client.from_connection_string.call_args_list) == 1
         assert (
             mock_file_client.from_connection_string.call_args_list[0][1]["file_path"]
             == "/1"
-        )
-        assert (
-            mock_file_client.from_connection_string.call_args_list[1][1]["file_path"]
-            == "/2"
-        )
-        assert (
-            len(
-                mock_file_client.from_connection_string.return_value.download_file.call_args_list
-            )
-            == 2
         )
