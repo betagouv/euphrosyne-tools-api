@@ -24,7 +24,7 @@ from clients.azure.data import (
     validate_run_data_file_path,
     extract_info_from_path,
 )
-from clients.azure.stream import stream_zip_from_azure_files
+from clients.azure.stream import stream_zip_from_azure_files_async
 from dependencies import get_storage_azure_client
 from hooks.euphrosyne import post_data_access_event
 
@@ -65,7 +65,7 @@ def list_project_documents(
     status_code=200,
     dependencies=[Depends(verify_path_permission)],
 )
-def zip_project_run_data(
+async def zip_project_run_data(
     path: pathlib.Path,
     data_request: Annotated[
         str | None, Depends(ExtraPayloadTokenGetter(key="data_request"))
@@ -88,7 +88,7 @@ def zip_project_run_data(
             detail=[{"loc": ["query", "path"], "msg": error.message}],
         ) from error
     try:
-        files = azure_client.iter_project_run_files(
+        files = azure_client.iter_project_run_files_async(
             path_info["project_name"], path_info["run_name"], path_info.get("data_type")
         )
     except RunDataNotFound:
@@ -100,7 +100,7 @@ def zip_project_run_data(
             post_data_access_event, str(path), data_request=data_request
         )
     return StreamingResponse(
-        stream_zip_from_azure_files(files),
+        stream_zip_from_azure_files_async(files),
         media_type="application/zip",
         headers={
             "Content-Disposition": f"attachment; filename={path_info['run_name']}-{timestamp}.zip"

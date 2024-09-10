@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import functools
 import io
 import os
@@ -170,24 +171,6 @@ class DataAzureClient(BaseStorageAzureClient):
         except ResourceNotFoundError as error:
             raise ProjectDocumentsNotFound from error
 
-    def get_run_files(
-        self,
-        project_name: str,
-        run_name: str,
-        data_type: RunDataTypeType,
-    ) -> list[ProjectFile]:
-        """Fetches run data files from Fileshare.
-        Specify `data_type` to get either 'raw_data', 'processed_data' or 'HDF5'.
-        """
-        dir_path = os.path.join(
-            _generate_base_dir_path(project_name, run_name), data_type
-        )
-        files = self._list_files_recursive(dir_path)
-        try:
-            return list(files)
-        except ResourceNotFoundError as error:
-            raise RunDataNotFound from error
-
     def get_run_files_folders(
         self,
         project_name: str,
@@ -211,7 +194,7 @@ class DataAzureClient(BaseStorageAzureClient):
         except ResourceNotFoundError as error:
             raise RunDataNotFound from error
 
-    def iter_project_run_files(
+    def iter_project_run_files_async(
         self, project_name: str, run_name: str, data_type: RunDataTypeType | None = None
     ):
         """
@@ -226,11 +209,17 @@ class DataAzureClient(BaseStorageAzureClient):
             Iterator[ProjectFile]: An iterator of ProjectFile objects representing
             the files in the run directory.
         """
-        projects_path_prefix = _get_projects_path()
-        dir_path = os.path.join(projects_path_prefix, project_name, "runs", run_name)
-        if data_type:
-            dir_path = os.path.join(dir_path, data_type)
-        return self._iter_directory_files(dir_path)
+        dir_path = _generate_base_dir_path(
+            project_name=project_name, run_name=run_name, data_type=data_type
+        )
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=self.share_name,
+            directory_path=dir_path,
+        )
+        if not dir_client.exists():
+            raise RunDataNotFound()
+        return self._iter_directory_files_async(dir_path)
 
     def download_run_file(
         self,
@@ -443,9 +432,9 @@ class DataAzureClient(BaseStorageAzureClient):
 
         return results
 
-    def _list_files_recursive(
+    async def _list_files_recursive_async(
         self, dir_path: str, fetch_detailed_information: bool = False
-    ) -> Generator[ProjectFile, None, None]:
+    ):
         """
         List files from FileShare on Azure Storage Account.
 
@@ -474,7 +463,6 @@ class DataAzureClient(BaseStorageAzureClient):
             https://stackoverflow.com/questions/66532170/azure-file-share-recursive-directory-search-like-os-walk
         .. [2] Recursive files listing: https://stackoverflow.com/a/66543222/16109419
         """
-
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=self.share_name,
@@ -482,17 +470,18 @@ class DataAzureClient(BaseStorageAzureClient):
         )
 
         # Listing files from current directory path:
-        for file in dir_client.list_directories_and_files():
+        files = await asyncio.to_thread(dir_client.list_directories_and_files)
+        for file in files:
             name, is_directory = file["name"], file["is_directory"]
             path = os.path.join(dir_path, name)
 
             if is_directory:
                 # Listing files recursively:
-                childrens = self._list_files_recursive(
+                children = self._list_files_recursive_async(
                     dir_path=path,
                 )
 
-                for child in childrens:
+                async for child in children:
                     yield child
             else:
                 if fetch_detailed_information:
@@ -501,27 +490,23 @@ class DataAzureClient(BaseStorageAzureClient):
                         share_name=self.share_name,
                         file_path=path,
                     )
-                    yield ProjectFile(**dict(file_client.get_file_properties()))
+                    properties = await asyncio.to_thread(
+                        file_client.get_file_properties
+                    )
+                    yield ProjectFile(**dict(properties))
                 else:
                     yield ProjectFile(**{**file, "path": path})
 
-    def _iter_directory_files(self, dir_path: str):
+    async def _iter_directory_files_async(self, dir_path: str):
         """Stream a directory from the Fileshare."""
-        dir_client = ShareDirectoryClient.from_connection_string(
-            conn_str=self._storage_connection_string,
-            share_name=self.share_name,
-            directory_path=dir_path,
-        )
-        if not dir_client.exists():
-            raise RunDataNotFound()
-        files = self._list_files_recursive(dir_path)
-        for file in files:
+        files = self._list_files_recursive_async(dir_path)
+        async for file in files:
             file_client = ShareFileClient.from_connection_string(
                 conn_str=self._storage_connection_string,
                 share_name=self.share_name,
                 file_path=file.path,
             )
-            yield file_client.download_file()
+            yield asyncio.to_thread(file_client.download_file)
 
 
 def extract_info_from_path(path: Path):
@@ -571,12 +556,16 @@ def _validate_project_file_path(path: Path, current_user: User):
         raise IncorrectDataFilePath(f"user is not part of project {project_name}")
 
 
-def _generate_base_dir_path(project_name: str, run_name: str = ""):
+def _generate_base_dir_path(
+    project_name: str, run_name: str = "", data_type: RunDataTypeType | None = None
+):
     """Generate a path to a directory in the fileshare for a project and a run if `run_name`
     is passed as a parameter."""
     base_dir_path = os.path.join(_get_projects_path(), slugify(project_name))
     if run_name:
         base_dir_path = os.path.join(base_dir_path, "runs", run_name)
+        if data_type:
+            base_dir_path = os.path.join(base_dir_path, data_type)
     return base_dir_path
 
 
