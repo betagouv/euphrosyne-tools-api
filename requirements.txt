@@ -1,4 +1,4 @@
-anyio[trio]==4.4.0
+anyio[trio]==4.6.0
 azure-identity==1.17.1 
 azure-keyvault-secrets==4.8.0
 azure-mgmt-compute==33.0.0
