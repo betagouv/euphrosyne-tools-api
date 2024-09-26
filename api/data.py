@@ -2,8 +2,15 @@ from datetime import datetime
 import pathlib
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Path,
+    BackgroundTasks,
+)
 from fastapi.responses import JSONResponse, StreamingResponse
+import pydantic
 from auth import (
     ExtraPayloadTokenGetter,
     generate_token_for_path,
@@ -294,6 +301,28 @@ def rename_run_folder(
         return azure_client.rename_run_directory(run_name, project_name, new_run_name)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
+
+
+class CheckFoldersSyncBody(pydantic.BaseModel):
+    project_slugs: list[str]
+
+
+@router.post(
+    "/check-folders-sync",
+    status_code=200,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+)
+def check_folders_sync(
+    body: CheckFoldersSyncBody,
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+):
+    unsynced_dirs = []
+    project_dirs = azure_client.list_project_dirs()
+    for slug in body.project_slugs:
+        if slug not in project_dirs:
+            unsynced_dirs.append(slug)
+    orphans_dirs = [dir for dir in project_dirs if dir not in body.project_slugs]
+    return {"unsynced_dirs": unsynced_dirs, "orphan_dirs": orphans_dirs}
 
 
 def _verify_can_set_token_expiration(user: User):

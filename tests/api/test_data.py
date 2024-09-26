@@ -223,6 +223,22 @@ def test_generate_signed_url_for_path_with_expiration(
     del app.dependency_overrides[get_current_user]
 
 
+def test_check_folders_sync(app: FastAPI, client: TestClient):
+    app.dependency_overrides[verify_is_euphrosyne_backend] = lambda: MagicMock()
+    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+        list_project_dirs=MagicMock(return_value=["project1", "project2"])
+    )
+    response = client.post(
+        "/data/check-folders-sync",
+        json={"project_slugs": ["project1", "unsynced project"]},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "unsynced_dirs": ["unsynced project"],
+        "orphan_dirs": ["project2"],
+    }
+
+
 def test_verify_can_set_token_expiration():
     with pytest.raises(HTTPException):
         _verify_can_set_token_expiration(user=User(id="1", projects=[], is_admin=False))
