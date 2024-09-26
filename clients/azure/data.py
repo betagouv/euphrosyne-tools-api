@@ -161,6 +161,17 @@ class DataAzureClient(BaseStorageAzureClient):
         )
         self.share_name = os.environ["AZURE_STORAGE_FILESHARE"]
 
+    def list_project_dirs(self) -> list[str]:
+        """Returns all directory names in project folder"""
+        dir_path = _get_projects_path()
+        files_and_folders = self._list_files(dir_path)
+
+        def filter_folder(f: ProjectFileOrDirectory):
+            return f.type == "directory"
+
+        folders = filter(filter_folder, files_and_folders)
+        return [f.name for f in folders]
+
     def get_project_documents(
         self,
         project_name: str,
