@@ -7,6 +7,7 @@ from clients.azure import (
     VMAzureClient,
 )
 from clients.guacamole import GuacamoleClient
+from clients.azure.images import ImageStorageClient
 
 
 @lru_cache()
@@ -32,3 +33,8 @@ def get_infra_azure_client():
 @lru_cache()
 def get_guacamole_client():
     return GuacamoleClient()
+
+
+@lru_cache()
+def get_image_storage_client():
+    return ImageStorageClient()
