@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta
 from io import SEEK_CUR, SEEK_END, SEEK_SET
 from pathlib import Path
-from typing import TYPE_CHECKING, Generator, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 import sentry_sdk
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError

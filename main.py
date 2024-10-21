@@ -5,9 +5,8 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api import config, connect, data, deployments, hdf5, infra, vms
+from api import config, connect, data, deployments, hdf5, images, infra, vms
 from exceptions import NoProjectMembershipException
-
 
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN"),
@@ -32,6 +31,7 @@ app.include_router(data.router)
 app.include_router(config.router)
 app.include_router(infra.router)
 app.include_router(hdf5.router)
+app.include_router(images.router)
 
 
 @app.exception_handler(NoProjectMembershipException)
