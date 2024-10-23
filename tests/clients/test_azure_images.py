@@ -22,11 +22,12 @@ def client(monkeypatch: MonkeyPatch):
 
 
 def test_get_object_image_blob_name(client: ImageStorageClient):
-    assert client._get_object_image_blob_name(123) == "images/object-groups/123"
+    assert client._get_image_blob_name(object_id=123) == "images/object-groups/123"
     assert (
-        client._get_object_image_blob_name(123, "filename")
+        client._get_image_blob_name(object_id=123, file_name="filename")
         == "images/object-groups/123/filename"
     )
+    assert client._get_image_blob_name(file_name="filename") == "images/filename"
 
 
 def test_get_container_name_for_project(client):
@@ -150,7 +151,7 @@ async def test_list_project_object_images_with_sas_token(client: ImageStorageCli
     client._generate_sas_token_for_container = MagicMock(return_value="sas-token")  # type: ignore[method-assign]
 
     result = []
-    async for url in client.list_project_object_images(
+    async for url in client.list_project_images(
         project_slug, object_id, with_sas_token
     ):
         result.append(url)
@@ -181,7 +182,7 @@ async def test_list_project_object_images_without_sas_token(client: ImageStorage
     client._generate_sas_token_for_container = MagicMock(return_value="sas-token")  # type: ignore[method-assign]
 
     result = []
-    async for url in client.list_project_object_images(
+    async for url in client.list_project_images(
         project_slug, object_id, with_sas_token
     ):
         result.append(url)
@@ -211,7 +212,7 @@ async def test_list_project_object_images_resource_not_found(
     client._generate_sas_token_for_container = MagicMock(return_value="sas-token")  # type: ignore[method-assign]
 
     result = []
-    async for url in client.list_project_object_images(
+    async for url in client.list_project_images(
         project_slug, object_id, with_sas_token
     ):
         result.append(url)
@@ -231,13 +232,13 @@ async def test_generate_signed_upload_project_object_image_url(
     container_mock.url = "https://test.blob.core.windows.net/test-container"
     container_mock.create_container = AsyncMock()
     client._get_project_container = MagicMock(return_value=container_mock)
-    client._get_object_image_blob_name = MagicMock(  # type: ignore[method-assign]
+    client._get_image_blob_name = MagicMock(  # type: ignore[method-assign]
         return_value="images/object-groups/123/test.jpg"
     )
 
     with patch("clients.azure.images.generate_blob_sas", return_value="sas-token"):
-        result = await client.generate_signed_upload_project_object_image_url(
-            project_slug, object_id, file_name
+        result = await client.generate_signed_upload_project_image_url(
+            project_slug=project_slug, object_id=object_id, file_name=file_name
         )
 
     assert (
@@ -245,4 +246,6 @@ async def test_generate_signed_upload_project_object_image_url(
         == "https://test.blob.core.windows.net/test-container/images/object-groups/123/test.jpg?sas-token"
     )
     client._get_project_container.assert_called_once_with(project_slug)
-    client._get_object_image_blob_name.assert_called_once_with(object_id, file_name)
+    client._get_image_blob_name.assert_called_once_with(
+        object_id=object_id, file_name=file_name
+    )
