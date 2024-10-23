@@ -91,15 +91,18 @@ class BlobAzureClient(BaseStorageAzureClient):
 class ImageStorageClient(BlobAzureClient):
     """Client used to query images on Azure Blob Storage."""
 
-    async def list_project_object_images(
-        self, project_slug: str, object_id: int, with_sas_token: bool = False
+    async def list_project_images(
+        self,
+        project_slug: str,
+        object_id: int | None = None,
+        with_sas_token: bool = False,
     ):
         """List all URLs of project object group images stored in an Azure container. If with_sas_token is
         True, a SAS token will be appended to each URL."""
         container = self._get_project_container(project_slug)
         container_url = container.url
         blobs = container.list_blob_names(
-            name_starts_with=self._get_object_image_blob_name(object_id=object_id)
+            name_starts_with=self._get_image_blob_name(object_id=object_id)
         )
         sas_token: str | None = None
         if with_sas_token:
@@ -115,15 +118,18 @@ class ImageStorageClient(BlobAzureClient):
         except ResourceNotFoundError:
             return
 
-    async def generate_signed_upload_project_object_image_url(
-        self, project_slug: str, object_id: int, file_name: str
+    async def generate_signed_upload_project_image_url(
+        self, file_name: str, project_slug: str, object_id: int | None = None
     ):
+        """Returns a signed URL to upload an image in a project container. If object_id is passed it will
+        return a signed URL to upload an image in the object group folder inside the project folder.
+        """
         container = self._get_project_container(project_slug)
 
         # Run a task to create the container. We will await at the end of the fn.
         create_container_task = asyncio.create_task(container.create_container())  # type: ignore
 
-        blob_name = self._get_object_image_blob_name(object_id, file_name)
+        blob_name = self._get_image_blob_name(object_id=object_id, file_name=file_name)
         token = generate_blob_sas(
             account_name=self.storage_account_name,
             container_name=container.container_name,
@@ -146,10 +152,14 @@ class ImageStorageClient(BlobAzureClient):
         return os.path.join(container.url, blob_name) + "?" + token
 
     @staticmethod
-    def _get_object_image_blob_name(object_id: int, file_name: str | None = None):
+    def _get_image_blob_name(
+        file_name: str | None = None, object_id: int | None = None
+    ):
         """Returns blob name for object images in a project container. If file_name is omitted,
         it returns the base path where object images are stored."""
-        path = f"images/object-groups/{object_id}"
+        path = "images"
+        if object_id:
+            path = os.path.join(path, f"object-groups/{object_id}")
         if file_name:
             path = os.path.join(path, file_name)
         return path

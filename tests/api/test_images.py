@@ -25,8 +25,8 @@ def override_dependencies(app: FastAPI, image_storage_client: ImageStorageClient
 def test_list_project_object_images(
     client: TestClient, image_storage_client, override_dependencies
 ):
-    image_storage_client.list_project_object_images.return_value = AsyncMock()
-    image_storage_client.list_project_object_images.return_value.__aiter__.return_value = [
+    image_storage_client.list_project_images.return_value = AsyncMock()
+    image_storage_client.list_project_images.return_value.__aiter__.return_value = [
         "image1.png",
         "image2.jpg",
     ]
@@ -40,7 +40,7 @@ def test_list_project_object_images(
 def test_get_upload_signed_url_valid_extension(
     client: TestClient, image_storage_client, override_dependencies
 ):
-    image_storage_client.generate_signed_upload_project_object_image_url.return_value = (
+    image_storage_client.generate_signed_upload_project_image_url.return_value = (
         "http://signed.url"
     )
 

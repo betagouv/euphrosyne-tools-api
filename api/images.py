@@ -17,19 +17,25 @@ class ListProjectObjectImagesResponse(pydantic.BaseModel):
 
 
 @router.get(
+    "/projects/{project_name}",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+    response_model=ListProjectObjectImagesResponse,
+)
+@router.get(
     "/projects/{project_name}/object-groups/{object_group_id}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=ListProjectObjectImagesResponse,
 )
-async def list_project_object_images(
+async def list_project_images(
     project_name: str,
-    object_group_id: int,
+    object_group_id: int | None = None,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
 ):
     images: list[str] = []
-    images_gen = azure_client.list_project_object_images(
-        project_name, object_group_id, with_sas_token=True
+    images_gen = azure_client.list_project_images(
+        project_slug=project_name, object_id=object_group_id, with_sas_token=True
     )
     async for image in images_gen:
         images.append(image)
@@ -48,8 +54,8 @@ class GetUploadSignedUrlResponse(pydantic.BaseModel):
 )
 async def get_upload_signed_url(
     project_name: str,
-    object_group_id: int,
     file_name: str,
+    object_group_id: int | None = None,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
 ):
     """Returns a signed URL to upload an image in a project container."""
@@ -63,8 +69,10 @@ async def get_upload_signed_url(
             },
         )
     uiid_file_name = uuid.uuid4().hex + f".{file_ext}"
-    url = await azure_client.generate_signed_upload_project_object_image_url(
-        project_name, object_group_id, file_name=uiid_file_name
+    url = await azure_client.generate_signed_upload_project_image_url(
+        file_name=uiid_file_name,
+        project_slug=project_name,
+        object_id=object_group_id,
     )
     return {"url": url}
 
