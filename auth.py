@@ -110,6 +110,12 @@ def verify_path_permission(path: str, token: str | None = Depends(token_query_au
         raise HTTPException(status_code=403, detail="Token not allowed for this path")
 
 
+def verify_authenticated_query_url_jwt(token: str | None = Depends(token_query_auth)):
+    if not token:
+        raise JWT_CREDENTIALS_EXCEPTION
+    _decode_jwt(token)
+
+
 def generate_token_for_euphrosyne_backend():
     """
     Generates a JWT token for Euphrosyne backend.
