@@ -429,15 +429,15 @@ class DataAzureClient(BaseStorageAzureClient):
 
         results: list[ProjectFileOrDirectory] = []
 
-        for file in dir_client.list_directories_and_files(include=["timestamps"]):
-            name, is_directory = file["name"], file["is_directory"]
+        for f in dir_client.list_directories_and_files(include=["timestamps"]):
+            name, is_directory = f["name"], f["is_directory"]
 
             file = ProjectFileOrDirectory(
                 name=name,
                 path=os.path.join(dir_path, name),
                 type="directory" if is_directory else "file",
-                size=file["size"] if not is_directory else None,
-                last_modified=file["last_modified"],
+                size=f["size"] if not is_directory else None,
+                last_modified=f["last_modified"],
             )
             results.append(file)
 
