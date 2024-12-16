@@ -1,4 +1,4 @@
-aiohttp==3.11.9
+aiohttp==3.11.10
 anyio[trio]==4.7.0
 azure-identity==1.19.0 
 azure-keyvault-secrets==4.9.0
