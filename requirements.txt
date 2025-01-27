@@ -8,7 +8,7 @@ azure-mgmt-resource==23.2.0
 azure-mgmt-storage==21.2.1
 azure-mgmt-web==7.3.1
 azure-storage-blob==12.24.1
-azure-storage-file-share==12.20.0
+azure-storage-file-share==12.20.1
 azure-storage-file==2.1.0
 black==24.10.0
 h5grove @ git+https://github.com/wiwski/h5grove.git@feature/filepath-resolver
