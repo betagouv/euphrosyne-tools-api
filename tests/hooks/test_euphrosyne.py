@@ -1,8 +1,9 @@
-import pytest
-from hooks.euphrosyne import post_data_access_event
-
 import unittest
 from unittest import mock
+
+import pytest
+
+from hooks.euphrosyne import post_data_access_event
 
 
 class TestPostDataEvent(unittest.TestCase):

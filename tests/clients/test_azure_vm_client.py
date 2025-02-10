@@ -9,17 +9,13 @@ from pytest import MonkeyPatch
 
 from clients import VMSizes
 from clients.azure import VMAzureClient
-from clients.azure.vm import (
-    PROJECT_TYPE_VM_SIZE,
-    AzureCaptureDeploymentProperties,
-    AzureVMDeploymentProperties,
-    DeploymentNotFound,
-    VMNotFound,
-    _get_project_name_from_deployment,
-    _project_name_to_deployment_name,
-    _project_name_to_vm_name,
-    wait_for_deployment_completeness,
-)
+from clients.azure.vm import (PROJECT_TYPE_VM_SIZE,
+                              AzureCaptureDeploymentProperties,
+                              AzureVMDeploymentProperties, DeploymentNotFound,
+                              VMNotFound, _get_project_name_from_deployment,
+                              _project_name_to_deployment_name,
+                              _project_name_to_vm_name,
+                              wait_for_deployment_completeness)
 from clients.version import InvalidVersion
 
 

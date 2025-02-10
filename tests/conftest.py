@@ -8,11 +8,8 @@ from slugify import slugify
 from auth import Project, User, get_current_user
 from clients.azure import DataAzureClient, VMAzureClient
 from clients.guacamole import GuacamoleClient
-from dependencies import (
-    get_guacamole_client,
-    get_storage_azure_client,
-    get_vm_azure_client,
-)
+from dependencies import (get_guacamole_client, get_storage_azure_client,
+                          get_vm_azure_client)
 from main import app as _app
 
 _client = TestClient(_app)

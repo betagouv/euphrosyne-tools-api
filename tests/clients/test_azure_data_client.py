@@ -1,8 +1,8 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 import asyncio
-from datetime import datetime
 import pathlib
-from unittest.mock import MagicMock, call, patch, AsyncMock
+from datetime import datetime
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -11,14 +11,11 @@ from pytest import MonkeyPatch
 
 from auth import Project, User
 from clients.azure import DataAzureClient
-from clients.azure.data import (
-    FolderCreationError,
-    IncorrectDataFilePath,
-    ProjectFile,
-    extract_info_from_path,
-    validate_project_document_file_path,
-    validate_run_data_file_path,
-)
+from clients.azure.data import (FolderCreationError, IncorrectDataFilePath,
+                                ProjectFile, extract_info_from_path,
+                                validate_project_document_file_path,
+                                validate_run_data_file_path)
+
 from ..mocks.azure import factories as azure_factories
 
 

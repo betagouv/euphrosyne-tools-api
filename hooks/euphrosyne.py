@@ -1,7 +1,9 @@
-from auth import generate_token_for_euphrosyne_backend
-import os
-import requests
 import logging
+import os
+
+import requests
+
+from auth import generate_token_for_euphrosyne_backend
 
 logger = logging.getLogger(__name__)
 

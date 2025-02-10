@@ -9,14 +9,11 @@ from auth import User, get_current_user
 from backgrounds import wait_for_deploy
 from clients.azure import VMAzureClient
 from clients.azure.data import IncorrectDataFilePath, ProjectFileOrDirectory
-from clients.azure.vm import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
+from clients.azure.vm import (AzureVMDeploymentProperties, DeploymentNotFound,
+                              VMNotFound)
 from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
-from dependencies import (
-    get_config_azure_client,
-    get_guacamole_client,
-    get_storage_azure_client,
-    get_vm_azure_client,
-)
+from dependencies import (get_config_azure_client, get_guacamole_client,
+                          get_storage_azure_client, get_vm_azure_client)
 from tests.conftest import get_current_user_override
 
 

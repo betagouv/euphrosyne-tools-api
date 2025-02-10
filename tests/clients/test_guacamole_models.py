@@ -1,10 +1,8 @@
 from typing import Any
 
 from clients.guacamole import models
-from tests.mocks import (
-    GUACAMOLE_CONNECTION_LIST_RESPONSE,
-    GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE,
-)
+from tests.mocks import (GUACAMOLE_CONNECTION_LIST_RESPONSE,
+                         GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE)
 
 
 def test_parse_auth_response():

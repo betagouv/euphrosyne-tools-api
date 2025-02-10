@@ -9,15 +9,12 @@ import requests
 from dotenv import load_dotenv
 
 from ..common import VMSizes
-from .models import (
-    GuacamoleAuthGenerateTokenResponse,
-    GuacamoleConnectionCreateInput,
-    GuacamoleConnectionCreateParametersData,
-    GuacamoleConnectionsAndGroupsResponse,
-    GuacamoleConnectionsListResponse,
-    GuacamoleCreateUserInput,
-    GuacamoleUserPermissionInput,
-)
+from .models import (GuacamoleAuthGenerateTokenResponse,
+                     GuacamoleConnectionCreateInput,
+                     GuacamoleConnectionCreateParametersData,
+                     GuacamoleConnectionsAndGroupsResponse,
+                     GuacamoleConnectionsListResponse,
+                     GuacamoleCreateUserInput, GuacamoleUserPermissionInput)
 
 load_dotenv()
 
