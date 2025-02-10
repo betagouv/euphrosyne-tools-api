@@ -1,5 +1,4 @@
 [tool.ruff]
-ignore = ["F401"] # ignore unused-import
 line-length = 88
 exclude = [
   "venv",
@@ -9,7 +8,7 @@ exclude = [
   "__pycache__"
 ]
 
-[tool.ruff.pylint]
+[tool.ruff.lint.pylint]
 max-args = 6
 
 [tool.black]
