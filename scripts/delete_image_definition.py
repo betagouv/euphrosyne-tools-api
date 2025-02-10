@@ -5,7 +5,7 @@ Delete an Azure image definition
 import argparse
 import time
 
-from clients.azure.vm import VMAzureClient, ImageDefinitionNotFound
+from clients.azure.vm import ImageDefinitionNotFound, VMAzureClient
 
 from . import get_logger
 

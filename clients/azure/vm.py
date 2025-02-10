@@ -4,7 +4,7 @@ import datetime
 import logging
 import concurrent.futures
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Callable
+from typing import Any, Literal, Optional
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.core.polling import LROPoller

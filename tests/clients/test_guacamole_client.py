@@ -7,18 +7,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from clients import VMSizes
-from clients.guacamole import (
-    GuacamoleClient,
-    GuacamoleConnectionNotFound,
-    GuacamoleHttpError,
-    get_password_for_username,
-)
+from clients.guacamole import (GuacamoleClient, GuacamoleConnectionNotFound,
+                               GuacamoleHttpError, get_password_for_username)
 from clients.guacamole.models import GuacamoleConnectionsAndGroupsResponse
 
-from ..mocks import (
-    GUACAMOLE_CONNECTION_LIST_RESPONSE,
-    GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE,
-)
+from ..mocks import (GUACAMOLE_CONNECTION_LIST_RESPONSE,
+                     GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE)
 
 
 @pytest.fixture

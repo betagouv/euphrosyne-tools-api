@@ -2,21 +2,20 @@
 Some routes may be tested in tests.main
 (older tests that haven't been migrated to this module)"""
 
-from unittest.mock import AsyncMock, MagicMock, patch
 import datetime
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from auth import ExtraPayloadTokenGetter, get_current_user, verify_has_azure_permission
 
-from auth import User, verify_is_euphrosyne_backend, verify_path_permission
-from clients.azure.data import (
-    FolderCreationError,
-    IncorrectDataFilePath,
-    RunDataNotFound,
-)
-from dependencies import get_storage_azure_client
 from api.data import _verify_can_set_token_expiration
+from auth import (ExtraPayloadTokenGetter, User, get_current_user,
+                  verify_is_euphrosyne_backend,
+                  verify_path_permission)
+from clients.azure.data import (FolderCreationError, IncorrectDataFilePath,
+                                RunDataNotFound)
+from dependencies import get_storage_azure_client
 from hooks.euphrosyne import post_data_access_event
 
 

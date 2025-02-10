@@ -1,10 +1,9 @@
 import asyncio
 from datetime import datetime
 from stat import S_IFREG
-from clients.azure.stream import (
-    iter_files_zip_attr_async,
-    stream_zip_from_azure_files_async,
-)
+
+from clients.azure.stream import (iter_files_zip_attr_async,
+                                  stream_zip_from_azure_files_async)
 
 
 # Mock StorageStreamDownloader class for testing
