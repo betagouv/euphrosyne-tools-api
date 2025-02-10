@@ -1,3 +1,5 @@
+import datetime
+
 from fastapi import APIRouter, Depends
 
 from auth import verify_admin_permission
@@ -11,10 +13,13 @@ router = APIRouter(prefix="/vms", tags=["vms"])
 @router.get("/", status_code=200, dependencies=[Depends(verify_admin_permission)])
 def list_vms(
     azure_client: VMAzureClient = Depends(get_vm_azure_client),
+    created_before: datetime.datetime | None = None,
 ):
     """List all vms."""
     vms_to_exclude_exp = [r"euphro-(stg|prod)-vm-hsds"]
-    return azure_client.list_vms(exclude_regex_patterns=vms_to_exclude_exp)
+    return azure_client.list_vms(
+        exclude_regex_patterns=vms_to_exclude_exp, created_before=created_before
+    )
 
 
 # pylint: disable=inconsistent-return-statements

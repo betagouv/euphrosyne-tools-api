@@ -1,3 +1,4 @@
+import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -45,3 +46,16 @@ def test_list_vms(client: TestClient):
 
     assert response.status_code == 200
     assert response.json() == ["vm1", "vm2"]
+
+
+def test_list_vms_(client: TestClient):
+    list_vms_mock = MagicMock()
+    app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
+        spec=VMAzureClient, **{"list_vms": list_vms_mock}
+    )
+    response = client.get("vms?created_before=2022-01-01T00:00:00")
+
+    assert response.status_code == 200
+    assert list_vms_mock.call_args.kwargs["created_before"] == datetime.datetime(
+        2022, 1, 1, 0, 0
+    )

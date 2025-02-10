@@ -1,15 +1,17 @@
-import os
-import re
+import concurrent.futures
 import datetime
 import logging
-import concurrent.futures
+import os
+import re
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Callable
+from typing import Any, Literal, Optional
+import typing
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.core.polling import LROPoller
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
+from azure.mgmt.compute.models import VirtualMachine
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentExtended
 from azure.mgmt.resource.templatespecs import TemplateSpecsClient
@@ -91,14 +93,29 @@ class VMAzureClient:
             credentials, os.environ["AZURE_SUBSCRIPTION_ID"]
         )
 
-    def list_vms(self, exclude_regex_patterns: list[str] | None = None) -> list[str]:
+    def list_vms(
+        self,
+        exclude_regex_patterns: list[str] | None = None,
+        created_before: datetime.datetime | None = None,
+    ) -> list[str]:
         if not exclude_regex_patterns:
             exclude_regex_patterns = []
+
+        def filter_func(vm: VirtualMachine) -> bool:
+            filters = []
+            filters.append(
+                not any(
+                    re.match(regexp, typing.cast(str, vm.name))
+                    for regexp in exclude_regex_patterns
+                )
+            )
+            if created_before:
+                filters.append(vm.time_created < created_before)  # type: ignore
+            return all(filters)
+
         vms = self._compute_mgmt_client.virtual_machines.list(self.resource_group_name)
         filtered_vms = filter(
-            lambda vm: not any(  # type: ignore
-                re.match(regexp, vm.name) for regexp in exclude_regex_patterns
-            ),
+            filter_func,
             vms,
         )
         return [vm.name for vm in filtered_vms]  # type: ignore
