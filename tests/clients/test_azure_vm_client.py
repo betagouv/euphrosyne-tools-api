@@ -509,3 +509,24 @@ def test_list_vms_with_exclude(client: VMAzureClient):
         vms.append(value)
     client._compute_mgmt_client.virtual_machines.list.return_value = vms
     assert client.list_vms(exclude_regex_patterns=[r"euphro-.+"]) == ["blabla-vm2"]
+
+
+def test_list_vms_with_created_before(client: VMAzureClient):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    vms = []
+    for name, time_created in [
+        ("eupro-prod-vm-test1", now - datetime.timedelta(hours=25)),
+        ("eupro-prod-vm-test2", now - datetime.timedelta(hours=23)),
+        ("eupro-prod-vm-test3", now - datetime.timedelta(hours=26)),
+    ]:
+        mock = MagicMock(time_created=time_created)
+        mock.name = name
+        vms.append(mock)
+
+    client._compute_mgmt_client.virtual_machines.list.return_value = vms
+
+    long_running_vms = client.list_vms(
+        created_before=now - datetime.timedelta(hours=24)
+    )
+
+    assert long_running_vms == ["eupro-prod-vm-test1", "eupro-prod-vm-test3"]
