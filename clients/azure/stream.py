@@ -1,4 +1,4 @@
-""" 
+"""
 Streaming zip files from Azure file shares.
 
 This module provides functions for streaming and zipping files from Azure file shares.
@@ -30,7 +30,7 @@ async def iterate_blocking(iterator):
 
 
 async def iter_files_zip_attr_async(
-    files: Generator[Coroutine[StorageStreamDownloader, None, None], Any, None]
+    files: Generator[Coroutine[StorageStreamDownloader, None, None], Any, None],
 ):
     """
     Iterates over a generator of `StorageStreamDownloader` objects and
@@ -54,7 +54,7 @@ async def iter_files_zip_attr_async(
             yield chunk
 
     async def download_file_async(
-        stream_obj_coro: Coroutine[StorageStreamDownloader, None, None]
+        stream_obj_coro: Coroutine[StorageStreamDownloader, None, None],
     ) -> StreamZipFile:
 
         stream_obj: StorageStreamDownloader = await stream_obj_coro  # type: ignore[func-returns-value, assignment]
@@ -102,7 +102,7 @@ async def iter_files_zip_attr_async(
 
 
 async def stream_zip_from_azure_files_async(
-    files: Generator[Coroutine[StorageStreamDownloader, None, None], Any, None]
+    files: Generator[Coroutine[StorageStreamDownloader, None, None], Any, None],
 ):
     """
     Streams a zip file from Azure files.

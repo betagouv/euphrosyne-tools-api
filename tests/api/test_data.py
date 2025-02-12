@@ -1,13 +1,13 @@
-""" Test routes in api.data.
+"""Test routes in api.data.
 Some routes may be tested in tests.main
 (older tests that haven't been migrated to this module)"""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 import datetime
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from auth import ExtraPayloadTokenGetter, get_current_user, verify_has_azure_permission
+from auth import ExtraPayloadTokenGetter, get_current_user
 
 from auth import User, verify_is_euphrosyne_backend, verify_path_permission
 from clients.azure.data import (

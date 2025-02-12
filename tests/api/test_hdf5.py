@@ -1,4 +1,4 @@
-""" Test routes in api.data.
+"""Test routes in api.data.
 Some routes may be tested in tests.main
 (older tests that haven't been migrated to this module)"""
 
@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from api.hdf5 import router
 from auth import get_current_user
 from clients.azure.data import IncorrectDataFilePath
-from dependencies import get_storage_azure_client
 
 
 @pytest.fixture(autouse=True)

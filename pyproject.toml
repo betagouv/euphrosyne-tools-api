@@ -1,5 +1,4 @@
 [tool.ruff]
-ignore = ["F401"] # ignore unused-import
 line-length = 88
 exclude = [
   "venv",
