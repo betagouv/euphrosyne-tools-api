@@ -2,7 +2,7 @@
 import asyncio
 from datetime import datetime
 import pathlib
-from unittest.mock import MagicMock, call, patch, AsyncMock
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
