@@ -15,7 +15,7 @@ h5grove @ git+https://github.com/wiwski/h5grove.git@feature/filepath-resolver
 httpx==0.28.1
 fastapi==0.115.8 
 isort==6.0.0 
-mypy==1.14.1
+mypy==1.15.0
 pydantic-settings==2.7.1 
 python-dotenv==1.0.1 
 python-jose[cryptography]==3.3.0
