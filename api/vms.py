@@ -1,9 +1,11 @@
 import datetime
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
-from auth import verify_admin_permission
+from auth import verify_admin_permission, verify_project_membership
 from clients.azure import VMAzureClient
+from clients.azure.vm import VMNotFound
 from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
 from dependencies import get_guacamole_client, get_vm_azure_client
 
@@ -20,6 +22,35 @@ def list_vms(
     return azure_client.list_vms(
         exclude_regex_patterns=vms_to_exclude_exp, created_before=created_before
     )
+
+
+@router.get(
+    "/image-definitions",
+    status_code=200,
+    dependencies=[Depends(verify_admin_permission)],
+)
+def list_image_definitions(
+    azure_client: VMAzureClient = Depends(get_vm_azure_client),
+):
+    """List all available image definitions."""
+    return {"image_definitions": azure_client.list_vm_image_definitions()}
+
+
+@router.get(
+    "/{project_name}",
+    status_code=200,
+    dependencies=[Depends(verify_project_membership)],
+)
+def get_vm(
+    project_name: str,
+    azure_client: VMAzureClient = Depends(get_vm_azure_client),
+):
+    """Get a specific vm."""
+    try:
+        vm = azure_client.get_vm(project_name)
+    except VMNotFound:
+        return JSONResponse(status_code=404, content={})
+    return {"provisioning_state": vm.provisioning_state}
 
 
 # pylint: disable=inconsistent-return-statements
@@ -40,15 +71,3 @@ def delete_vm(
         guacamole_client.delete_connection(project_name)
     except GuacamoleConnectionNotFound:
         pass
-
-
-@router.get(
-    "/image-definitions",
-    status_code=200,
-    dependencies=[Depends(verify_admin_permission)],
-)
-def list_image_definitions(
-    azure_client: VMAzureClient = Depends(get_vm_azure_client),
-):
-    """List all available image definitions."""
-    return {"image_definitions": azure_client.list_vm_image_definitions()}
