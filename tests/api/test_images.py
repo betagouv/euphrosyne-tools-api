@@ -35,6 +35,28 @@ def test_list_project_object_images(
 
     assert response.status_code == 200
     assert response.json() == {"images": ["image1.png", "image2.jpg"]}
+    image_storage_client.list_project_images.assert_called_once_with(
+        project_slug="test_project", object_id=1, with_sas_token=True
+    )
+
+
+def test_list_project_object_images_sas_token_param(
+    client: TestClient, image_storage_client, override_dependencies
+):
+    image_storage_client.list_project_images.return_value = AsyncMock()
+    image_storage_client.list_project_images.return_value.__aiter__.return_value = [
+        "image1.png",
+        "image2.jpg",
+    ]
+
+    response = client.get(
+        "/images/projects/test_project/object-groups/1?with_sas_token=false"
+    )
+
+    assert response.status_code == 200
+    image_storage_client.list_project_images.assert_called_once_with(
+        project_slug="test_project", object_id=1, with_sas_token=False
+    )
 
 
 def test_get_upload_signed_url_valid_extension(
