@@ -32,10 +32,13 @@ async def list_project_images(
     project_name: str,
     object_group_id: int | None = None,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
+    with_sas_token: bool = True,
 ):
     images: list[str] = []
     images_gen = azure_client.list_project_images(
-        project_slug=project_name, object_id=object_group_id, with_sas_token=True
+        project_slug=project_name,
+        object_id=object_group_id,
+        with_sas_token=with_sas_token,
     )
     async for image in images_gen:
         images.append(image)
