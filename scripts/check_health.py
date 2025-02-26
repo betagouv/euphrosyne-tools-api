@@ -60,12 +60,15 @@ def check_health():
         logger.error(error)
 
     # Check Guacamole authentication
-    try:
-        # pylint: disable=protected-access
-        GuacamoleClient()._get_admin_token()
-    except GuacamoleAuthenticationError as error:
-        status.guacamole = False
-        logger.error(error)
+    if os.get_env("GUACAMOLE_ENABLED", ""):
+        try:
+            # pylint: disable=protected-access
+            GuacamoleClient()._get_admin_token()
+        except GuacamoleAuthenticationError as error:
+            status.guacamole = False
+            logger.error(error)
+    else:
+        logger.warning("[check_health] Guacamole is disabled. Skipping.")
 
     if not status.ok:
         raise HealthCheckException(status)
