@@ -60,7 +60,7 @@ def check_health():
         logger.error(error)
 
     # Check Guacamole authentication
-    if os.get_env("GUACAMOLE_ENABLED", ""):
+    if os.getenv("GUACAMOLE_ENABLED", ""):
         try:
             # pylint: disable=protected-access
             GuacamoleClient()._get_admin_token()
