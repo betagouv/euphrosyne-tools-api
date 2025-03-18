@@ -49,7 +49,7 @@ class BlobAzureClient(BaseStorageAzureClient):
                 list=True,
                 read=True,
                 write=False,
-                delete=False,
+                delete=True,
             ),
             start=now,
             expiry=now + datetime.timedelta(minutes=60),

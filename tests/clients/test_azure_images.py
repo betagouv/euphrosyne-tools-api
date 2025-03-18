@@ -83,7 +83,7 @@ def test_generate_sas_token_for_container(client):
             )
             assert (
                 mock_generate_container_sas.call_args_list[0][1]["permission"].delete
-                is False
+                is True
             )
             assert mock_generate_container_sas.call_args_list[0][1]["start"] == now
             assert "expiry" in mock_generate_container_sas.call_args_list[0][1]
