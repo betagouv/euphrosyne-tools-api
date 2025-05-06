@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 PROJECT_TYPE_VM_SIZE: dict[VMSizes | None, str] = {
     None: "Standard_B8ms",  # default
     VMSizes.IMAGERY: "Standard_B20ms",
+    VMSizes.IMAGERY_LARGE: "Standard_E16s_v5",
 }
 
 DeploymentStatus = Literal[

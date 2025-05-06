@@ -23,7 +23,9 @@ load_dotenv()
 
 PARENT_IDENTIFIER_VM_SIZE: dict[VMSizes | None, str] = {
     None: "1",  # default
+    # IMAGERY VMs
     VMSizes.IMAGERY: "2",
+    VMSizes.IMAGERY_LARGE: "2",
 }
 
 
