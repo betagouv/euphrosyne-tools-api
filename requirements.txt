@@ -1,6 +1,6 @@
 aiohttp==3.11.18
 anyio[trio]==4.9.0
-azure-identity==1.21.0 
+azure-identity==1.22.0 
 azure-keyvault-secrets==4.9.0
 azure-mgmt-compute==34.1.0
 azure-mgmt-containerinstance==10.1.0 
