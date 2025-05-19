@@ -28,5 +28,5 @@ sentry-sdk[fastapi]==2.28.0
 stream-zip==0.0.83
 types-python-jose==3.4.0.20250516
 types-python-slugify==8.0.2.20240310 
-types-requests==2.32.0.20250328
+types-requests==2.32.0.20250515
 uvicorn[standard]==0.34.2
