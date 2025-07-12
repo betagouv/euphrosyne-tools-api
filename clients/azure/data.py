@@ -5,10 +5,10 @@ import functools
 import io
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import SEEK_CUR, SEEK_END, SEEK_SET
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional, TypedDict
 
 import sentry_sdk
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -16,12 +16,17 @@ from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 # pylint: disable=wrong-import-position
 from azure.storage.file.fileservice import FileService
 from azure.storage.file.models import FilePermissions
-from azure.storage.file.sharedaccesssignature import FileSharedAccessSignature
+from azure.storage.file.sharedaccesssignature import (
+    FileSharedAccessSignature,
+)
 from azure.storage.fileshare import (
     CorsRule,
     ShareDirectoryClient,
     ShareFileClient,
     ShareServiceClient,
+    generate_account_sas,
+    ResourceTypes,
+    AccountSasPermissions,
 )
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -76,6 +81,11 @@ class ProjectFileOrDirectory(BaseModel):
     size: int | None
     path: str
     type: Literal["file", "directory"]
+
+
+class SASCredentials(TypedDict):
+    url: str
+    token: str
 
 
 class AzureFileShareFile(io.BytesIO):
@@ -159,6 +169,7 @@ class DataAzureClient(BaseStorageAzureClient):
         self._file_shared_access_signature = FileSharedAccessSignature(
             account_name=self.storage_account_name, account_key=self._storage_key
         )
+
         self.share_name = os.environ["AZURE_STORAGE_FILESHARE"]
 
     def list_project_dirs(self) -> list[str]:
@@ -279,6 +290,23 @@ class DataAzureClient(BaseStorageAzureClient):
                 return False
         return False
 
+    def generate_run_data_upload_sas(
+        self,
+        project_name: str,
+        run_name: str,
+        data_type: RunDataTypeType | None = None,
+    ) -> SASCredentials:
+        """Generate URL with Shared Access Signature to upload run data to
+        file storage.
+        """
+        dir_path = _generate_base_dir_path(project_name, run_name, data_type)
+        permission = FilePermissions(read=False, create=True, write=True, delete=False)
+        token = self._generate_share_sas_token(permission)
+        return {
+            "url": f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{dir_path}/",
+            "token": token,
+        }
+
     def generate_run_data_sas_url(
         self,
         dir_path: str,
@@ -311,6 +339,18 @@ class DataAzureClient(BaseStorageAzureClient):
         """
         permission = FilePermissions(read=True, create=False, write=False, delete=True)
         return self._generate_sas_url(dir_path, file_name, permission)
+
+    def _generate_share_sas_token(self, permission: FilePermissions):
+        """Generate a Shared Access Signature (SAS) URL for the Azure Fileshare."""
+        return generate_account_sas(
+            account_name=self.storage_account_name,
+            account_key=self._storage_key,
+            resource_types=ResourceTypes(container=True, object=True),
+            permission=AccountSasPermissions(
+                add=True, write=True, create=True, update=True
+            ),
+            expiry=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
 
     def _generate_sas_url(
         self,
