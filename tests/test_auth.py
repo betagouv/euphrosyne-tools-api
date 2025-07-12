@@ -7,6 +7,7 @@ import auth
 from auth import (
     ALGORITHM,
     EUPHROSYNE_TOKEN_USER_ID_VALUE,
+    JWT_CREDENTIALS_EXCEPTION,
     Project,
     User,
     _decode_jwt,
@@ -15,6 +16,7 @@ from auth import (
     verify_admin_permission,
     verify_has_azure_permission,
     verify_is_euphrosyne_backend,
+    verify_is_euphrosyne_backend_or_admin,
     verify_project_membership,
     verify_path_permission,
     _generate_jwt_token,
@@ -257,3 +259,31 @@ def test_extra_payload_token_getter():
     getter = auth.ExtraPayloadTokenGetter("test")
 
     assert getter(token) == "value"
+
+
+def test_verify_is_euphrosyne_backend_or_admin_no_token():
+    with pytest.raises(HTTPException) as exc:
+        verify_is_euphrosyne_backend_or_admin(jwt_token=None)
+    assert exc.value.status_code == JWT_CREDENTIALS_EXCEPTION.status_code
+
+
+def test_verify_is_euphrosyne_backend_or_admin_backend(monkeypatch):
+    monkeypatch.setattr("auth._is_euphrosyne_backend", lambda token: True)
+    # Should not raise
+    verify_is_euphrosyne_backend_or_admin(jwt_token="token")
+
+
+def test_verify_is_euphrosyne_backend_or_admin_admin(monkeypatch):
+    monkeypatch.setattr("auth._is_euphrosyne_backend", lambda token: False)
+    monkeypatch.setattr("auth._decode_jwt", lambda token: {"is_admin": True})
+    # Should not raise
+    verify_is_euphrosyne_backend_or_admin(jwt_token="token")
+
+
+def test_verify_is_euphrosyne_backend_or_admin_not_admin(monkeypatch):
+    monkeypatch.setattr("auth._is_euphrosyne_backend", lambda token: False)
+    monkeypatch.setattr("auth._decode_jwt", lambda token: {"is_admin": False})
+    with pytest.raises(HTTPException) as exc:
+        verify_is_euphrosyne_backend_or_admin(jwt_token="token")
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "Not allowed"
