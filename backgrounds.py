@@ -12,7 +12,13 @@ def wait_for_deploy(
     deployment_information = wait_for_deployment_completeness(
         vm_deployment_properties.deployment_process
     )
-    if deployment_information and deployment_information.name:
+    if (
+        deployment_information
+        and deployment_information.name
+        and deployment_information.properties
+        and deployment_information.properties.outputs
+    ):
+
         guacamole_client.create_connection(
             name=vm_deployment_properties.project_name,
             ip_address=deployment_information.properties.outputs["privateIPVM"][
