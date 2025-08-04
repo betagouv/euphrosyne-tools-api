@@ -40,7 +40,7 @@ def _get_storage_key(
         resource_group_name, storage_account_name
     )
 
-    if keys is None:
+    if keys is None or not keys.keys:
         raise ValueError("missing key")
 
     key = keys.keys[0].value
