@@ -7,7 +7,11 @@ import datetime
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from auth import ExtraPayloadTokenGetter, get_current_user
+from auth import (
+    ExtraPayloadTokenGetter,
+    get_current_user,
+    verify_is_euphrosyne_backend_or_admin,
+)
 
 from auth import User, verify_is_euphrosyne_backend, verify_path_permission
 from clients.azure.data import (
@@ -24,6 +28,14 @@ from hooks.euphrosyne import post_data_access_event
 def authenticate_euphrosyne_backend(app: FastAPI):
     # pylint: disable=unnecessary-lambda
     app.dependency_overrides[verify_is_euphrosyne_backend] = lambda: MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def authenticate_euphrosyne_backend_or_admin(app: FastAPI):
+    # pylint: disable=unnecessary-lambda
+    app.dependency_overrides[verify_is_euphrosyne_backend_or_admin] = (
+        lambda: MagicMock()
+    )
 
 
 def test_init_project_data(app: FastAPI, client: TestClient):

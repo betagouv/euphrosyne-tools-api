@@ -2,13 +2,7 @@ from datetime import datetime
 import pathlib
 from typing import Annotated
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Path,
-    BackgroundTasks,
-)
+from fastapi import APIRouter, Depends, HTTPException, Path, BackgroundTasks, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 import pydantic
 from auth import (
@@ -18,6 +12,8 @@ from auth import (
     User,
     get_current_user,
     verify_is_euphrosyne_backend,
+    verify_is_euphrosyne_backend_or_admin,
+    verify_admin_permission,
     verify_project_membership,
 )
 from clients.azure import DataAzureClient
@@ -139,6 +135,30 @@ def list_run_data(
 
 
 @router.get(
+    "/{project_name}/runs/{run_name}/upload/shared_access_signature",
+    status_code=200,
+    dependencies=[Depends(verify_admin_permission)],
+)
+def generate_run_data_upload_shared_access_signature(
+    project_name: str,
+    run_name: str,
+    data_type: Annotated[
+        str | None, Query(pattern="^(raw_data|processed_data|HDF5)$")
+    ] = None,
+    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+):
+    """Return a token used to upload run data
+    to file storage.
+    """
+    credentials = azure_client.generate_run_data_upload_sas(
+        project_name=project_name,
+        run_name=run_name,
+        data_type=data_type,  # type: ignore
+    )
+    return credentials
+
+
+@router.get(
     "/runs/shared_access_signature",
     status_code=200,
 )
@@ -242,7 +262,7 @@ def generate_signed_url_for_path(
 @router.post(
     "/{project_name}/init",
     status_code=204,
-    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    dependencies=[Depends(verify_is_euphrosyne_backend_or_admin)],
 )
 def init_project_data(
     project_name: str,
@@ -257,7 +277,7 @@ def init_project_data(
 @router.post(
     "/{project_name}/runs/{run_name}/init",
     status_code=204,
-    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    dependencies=[Depends(verify_is_euphrosyne_backend_or_admin)],
 )
 def init_run_data(
     project_name: str,

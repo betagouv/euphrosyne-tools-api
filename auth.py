@@ -77,13 +77,36 @@ def verify_admin_permission(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Only admins are allowed")
 
 
+def _is_euphrosyne_backend(jwt_token: str):
+    """Check if the JWT token is for Euphrosyne backend."""
+    payload = _decode_jwt(jwt_token)
+    return payload.get("user_id") == EUPHROSYNE_TOKEN_USER_ID_VALUE
+
+
 def verify_is_euphrosyne_backend(jwt_token: Optional[str] = Depends(oauth2_scheme)):
     """For euphrosyne - euphro tools communication, verify JWT token."""
     if not jwt_token:
         raise JWT_CREDENTIALS_EXCEPTION
-    payload = _decode_jwt(jwt_token)
-    if payload.get("user_id") != EUPHROSYNE_TOKEN_USER_ID_VALUE:
+    if not _is_euphrosyne_backend(jwt_token):
         raise HTTPException(status_code=403, detail="Not allowed")
+
+
+def verify_is_euphrosyne_backend_or_admin(
+    jwt_token: Optional[str] = Depends(oauth2_scheme),
+):
+    """For euphrosyne - euphro tools communication, verify JWT token or admin user."""
+    if not jwt_token:
+        raise JWT_CREDENTIALS_EXCEPTION
+    is_euphrosyne_backend = _is_euphrosyne_backend(jwt_token)
+
+    if is_euphrosyne_backend:
+        return
+
+    payload = _decode_jwt(jwt_token)
+    if payload.get("is_admin"):
+        return
+
+    raise HTTPException(status_code=403, detail="Not allowed")
 
 
 def verify_has_azure_permission(api_key: Optional[str] = Depends(api_key_query_auth)):
