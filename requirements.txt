@@ -5,6 +5,7 @@ azure-keyvault-secrets==4.10.0
 azure-mgmt-compute==36.0.0
 azure-mgmt-containerinstance==10.1.0 
 azure-mgmt-resource==24.0.0
+azure-mgmt-resource-templatespecs==1.0.0b1
 azure-mgmt-storage==23.0.1
 azure-mgmt-web==10.0.0
 azure-storage-blob==12.26.0
