@@ -3,6 +3,9 @@
 # branches.
 name: update-caches
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
