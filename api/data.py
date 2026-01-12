@@ -21,12 +21,12 @@ from clients.azure.data import (
     FolderCreationError,
     IncorrectDataFilePath,
     ProjectDocumentsNotFound,
-    ProjectFileOrDirectory,
     RunDataNotFound,
+    extract_info_from_path,
     validate_project_document_file_path,
     validate_run_data_file_path,
-    extract_info_from_path,
 )
+from clients.data_models import ProjectFileOrDirectory
 from clients.azure.stream import stream_zip_from_azure_files_async
 from dependencies import get_storage_azure_client
 from hooks.euphrosyne import post_data_access_event
