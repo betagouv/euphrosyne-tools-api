@@ -14,11 +14,11 @@ from clients.azure import DataAzureClient
 from clients.azure.data import (
     FolderCreationError,
     IncorrectDataFilePath,
-    ProjectFile,
     extract_info_from_path,
     validate_project_document_file_path,
     validate_run_data_file_path,
 )
+from clients.data_models import ProjectFile
 from ..mocks.azure import factories as azure_factories
 
 

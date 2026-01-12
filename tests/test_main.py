@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from auth import User, get_current_user
 from backgrounds import wait_for_deploy
 from clients.azure import VMAzureClient
-from clients.azure.data import IncorrectDataFilePath, ProjectFileOrDirectory
+from clients.azure.data import IncorrectDataFilePath
+from clients.data_models import ProjectFileOrDirectory
 from clients.azure.vm import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
 from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
 from dependencies import (
