@@ -8,7 +8,7 @@ azure-mgmt-resource==24.0.0
 azure-mgmt-resource-templatespecs==1.0.0b1
 azure-mgmt-storage==23.1.0
 azure-mgmt-web==10.0.0
-azure-storage-blob==12.26.0
+azure-storage-blob==12.28.0
 azure-storage-file-share==12.21.0
 azure-storage-file==2.1.0
 black==25.9.0
