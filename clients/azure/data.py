@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from io import SEEK_CUR, SEEK_END, SEEK_SET
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional, TypedDict
+from typing import TYPE_CHECKING
 
 import sentry_sdk
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -29,7 +29,6 @@ from azure.storage.fileshare import (
     AccountSasPermissions,
 )
 from dotenv import load_dotenv
-from pydantic import BaseModel
 from slugify import slugify
 
 if TYPE_CHECKING:
@@ -37,11 +36,15 @@ if TYPE_CHECKING:
 
 # pylint: disable=wrong-import-position
 from ._storage import BaseStorageAzureClient
+from ..data_client import AbstractDataClient
+from ..data_models import (
+    ProjectFile,
+    ProjectFileOrDirectory,
+    RunDataTypeType,
+    SASCredentials,
+)
 
 load_dotenv()
-
-
-RunDataTypeType = Literal["processed_data", "raw_data", "HDF5"]
 
 
 class RunDataNotFound(Exception):
@@ -62,30 +65,6 @@ class IncorrectDataFilePath(Exception):
     def __init__(self, message: str, *args: object):
         self.message = message
         super().__init__(*args)
-
-
-class ProjectFolder(BaseModel):
-    name: str
-
-
-class ProjectFile(BaseModel):
-    name: str
-    last_modified: Optional[datetime] = None
-    size: int
-    path: str
-
-
-class ProjectFileOrDirectory(BaseModel):
-    name: str
-    last_modified: Optional[datetime] = None
-    size: int | None
-    path: str
-    type: Literal["file", "directory"]
-
-
-class SASCredentials(TypedDict):
-    url: str
-    token: str
 
 
 class AzureFileShareFile(io.BytesIO):
@@ -163,7 +142,7 @@ class AzureFileShareFile(io.BytesIO):
         return super().truncate(size)
 
 
-class DataAzureClient(BaseStorageAzureClient):
+class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
     def __init__(self):
         super().__init__()
         self._file_shared_access_signature = FileSharedAccessSignature(
@@ -198,7 +177,7 @@ class DataAzureClient(BaseStorageAzureClient):
         project_name: str,
         run_name: str,
         data_type: RunDataTypeType,
-        folder: str,
+        folder: str | None = None,
     ) -> list[ProjectFileOrDirectory]:
         """Fetches run data files from Fileshare.
         Specify `data_type` to get either 'raw_data' or 'processed_data'.
