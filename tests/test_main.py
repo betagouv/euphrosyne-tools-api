@@ -15,7 +15,7 @@ from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
 from dependencies import (
     get_config_azure_client,
     get_guacamole_client,
-    get_storage_azure_client,
+    get_project_data_client,
     get_vm_azure_client,
 )
 from tests.conftest import get_current_user_override
@@ -180,7 +180,7 @@ def test_list_run_data(app: FastAPI, client: TestClient, data_type: tuple[str]):
     get_run_files_folders_mock = MagicMock(
         get_run_files_folders=MagicMock(return_value=yield_project_files())
     )
-    app.dependency_overrides[get_storage_azure_client] = (
+    app.dependency_overrides[get_project_data_client] = (
         lambda: get_run_files_folders_mock
     )
 
@@ -205,7 +205,7 @@ def test_generate_project_documents_upload_sas_url_success(
     app: FastAPI, client: TestClient
 ):
     generate_project_documents_upload_sas_url_mock = MagicMock(return_value="url")
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         generate_project_documents_upload_sas_url=generate_project_documents_upload_sas_url_mock
     )
 
@@ -224,7 +224,7 @@ def test_generate_project_documents_upload_sas_url_success(
 @patch("api.data.validate_project_document_file_path", MagicMock())
 def test_generate_project_documents_sas_url_success(app: FastAPI, client: TestClient):
     generate_shared_access_signature_url_mock = MagicMock(return_value="url")
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         generate_project_documents_sas_url=generate_shared_access_signature_url_mock,
     )
     file_path = "file/path/to/document"
@@ -253,7 +253,7 @@ def test_generate_project_documents_sas_url_wrong_path(client: TestClient):
 @patch("api.data.validate_run_data_file_path", MagicMock())
 def test_generate_run_data_sas_url_success(app: FastAPI, client: TestClient):
     generate_shared_access_signature_url_mock = MagicMock(return_value="url")
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         generate_run_data_sas_url=generate_shared_access_signature_url_mock
     )
     file_path = "file/path/to/run"
