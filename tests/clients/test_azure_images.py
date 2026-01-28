@@ -1,7 +1,7 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
 import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from azure.core.exceptions import ResourceNotFoundError
