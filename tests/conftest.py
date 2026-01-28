@@ -10,7 +10,7 @@ from clients.azure import DataAzureClient, VMAzureClient
 from clients.guacamole import GuacamoleClient
 from dependencies import (
     get_guacamole_client,
-    get_storage_azure_client,
+    get_project_data_client,
     get_vm_azure_client,
 )
 from main import app as _app
@@ -28,7 +28,7 @@ def fixture_client(app: FastAPI):
     app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         spec=VMAzureClient
     )
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         spec=DataAzureClient
     )
     app.dependency_overrides[get_guacamole_client] = lambda: MagicMock(
