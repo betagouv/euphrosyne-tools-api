@@ -19,7 +19,7 @@ from clients.azure.data import (
     IncorrectDataFilePath,
     RunDataNotFound,
 )
-from dependencies import get_storage_azure_client
+from dependencies import get_project_data_client
 from api.data import _verify_can_set_token_expiration
 from hooks.euphrosyne import post_data_access_event
 
@@ -40,7 +40,7 @@ def authenticate_euphrosyne_backend_or_admin(app: FastAPI):
 
 def test_init_project_data(app: FastAPI, client: TestClient):
     init_project_directory_mock = MagicMock()
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         init_project_directory=init_project_directory_mock
     )
     response = client.post("/data/project_01/init")
@@ -53,7 +53,7 @@ def test_init_project_data_when_caught_error(app: FastAPI, client: TestClient):
     init_project_directory_mock = MagicMock(
         **{"side_effect": FolderCreationError("an error")}
     )
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         init_project_directory=init_project_directory_mock
     )
     response = client.post("/data/project_01/init")
@@ -65,7 +65,7 @@ def test_init_project_data_when_caught_error(app: FastAPI, client: TestClient):
 
 def test_init_run_data(app: FastAPI, client: TestClient):
     init_run_directory_mock = MagicMock()
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         init_run_directory=init_run_directory_mock
     )
     response = client.post("/data/project_01/runs/run1/init")
@@ -78,7 +78,7 @@ def test_init_run_data_when_caught_error(app: FastAPI, client: TestClient):
     init_run_directory_mock = MagicMock(
         **{"side_effect": FolderCreationError("an error")}
     )
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         init_run_directory=init_run_directory_mock
     )
     response = client.post("/data/project_01/runs/run1/init")
@@ -90,7 +90,7 @@ def test_init_run_data_when_caught_error(app: FastAPI, client: TestClient):
 
 def test_change_run_name(app: FastAPI, client: TestClient):
     rename_run_directory_mock = MagicMock()
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         rename_run_directory=rename_run_directory_mock
     )
     response = client.post("/data/project_01/runs/run1/rename/run2")
@@ -103,7 +103,7 @@ def test_change_run_name_when_caught_error(app: FastAPI, client: TestClient):
     rename_run_directory_mock = MagicMock(
         **{"side_effect": FolderCreationError("an error")}
     )
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         rename_run_directory=rename_run_directory_mock
     )
     response = client.post("/data/project_01/runs/run1/rename/run2")
@@ -115,7 +115,7 @@ def test_change_run_name_when_caught_error(app: FastAPI, client: TestClient):
 
 def test_change_project_name(app: FastAPI, client: TestClient):
     rename_project_directory_mock = MagicMock()
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         rename_project_directory=rename_project_directory_mock
     )
     response = client.post("/data/project_01/rename/project_02")
@@ -128,7 +128,7 @@ def test_change_project_name_when_caught_error(app: FastAPI, client: TestClient)
     rename_project_directory_mock = MagicMock(
         **{"side_effect": FolderCreationError("an error")}
     )
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         rename_project_directory=rename_project_directory_mock
     )
     response = client.post("/data/project_01/rename/project_02")
@@ -152,7 +152,7 @@ def test_zip_project_run_data_when_path_not_found_in_azure(
     app: FastAPI, client: TestClient
 ):
     iter_project_run_files_async_mock = MagicMock(side_effect=RunDataNotFound())
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         iter_project_run_files_async=iter_project_run_files_async_mock
     )
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
@@ -237,7 +237,7 @@ def test_generate_signed_url_for_path_with_expiration(
 
 def test_check_folders_sync(app: FastAPI, client: TestClient):
     app.dependency_overrides[verify_is_euphrosyne_backend] = lambda: MagicMock()
-    app.dependency_overrides[get_storage_azure_client] = lambda: MagicMock(
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         list_project_dirs=MagicMock(return_value=["project1", "project2"])
     )
     response = client.post(

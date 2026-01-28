@@ -1,6 +1,8 @@
 from functools import lru_cache
+import os
 
 from clients.azure import (
+    BlobDataAzureClient,
     ConfigAzureClient,
     DataAzureClient,
     InfraAzureClient,
@@ -16,7 +18,10 @@ def get_vm_azure_client():
 
 
 @lru_cache()
-def get_storage_azure_client():
+def get_project_data_client():
+    backend = os.getenv("PROJECT_STORAGE_BACKEND", "azure_fileshare").lower()
+    if backend == "azure_blob":
+        return BlobDataAzureClient()
     return DataAzureClient()
 
 
@@ -35,6 +40,5 @@ def get_guacamole_client():
     return GuacamoleClient()
 
 
-@lru_cache()
-def get_image_storage_client():
-    return ImageStorageClient()
+def get_image_storage_client(project_name: str) -> ImageStorageClient:
+    return ImageStorageClient(project_slug=project_name)

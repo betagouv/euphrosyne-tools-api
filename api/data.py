@@ -28,7 +28,7 @@ from clients.azure.data import (
 )
 from clients.data_models import ProjectFileOrDirectory
 from clients.azure.stream import stream_zip_from_azure_files_async
-from dependencies import get_storage_azure_client
+from dependencies import get_project_data_client
 from hooks.euphrosyne import post_data_access_event
 
 router = APIRouter(prefix="/data", tags=["data"])
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 )
 def check_project_data_available(
     project_name: str,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     return {"available": azure_client.is_project_data_available(project_name)}
 
@@ -53,7 +53,7 @@ def check_project_data_available(
 )
 def list_project_documents(
     project_name: str,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
         return azure_client.get_project_documents(project_name)
@@ -74,7 +74,7 @@ async def zip_project_run_data(
         str | None, Depends(ExtraPayloadTokenGetter(key="data_request"))
     ],
     background_tasks: BackgroundTasks,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     """
     Stream a zip file containing all the run data files. The path must point
@@ -122,7 +122,7 @@ def list_run_data(
     run_name: str,
     data_type: str = Path(regex="^(raw_data|processed_data|HDF5)$"),
     folder: str | None = None,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
         return azure_client.get_run_files_folders(project_name, run_name, data_type, folder)  # type: ignore # noqa: E501
@@ -145,7 +145,7 @@ def generate_run_data_upload_shared_access_signature(
     data_type: Annotated[
         str | None, Query(pattern="^(raw_data|processed_data|HDF5)$")
     ] = None,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     """Return a token used to upload run data
     to file storage.
@@ -165,7 +165,7 @@ def generate_run_data_upload_shared_access_signature(
 def generate_run_data_shared_access_signature(
     path: pathlib.Path,
     current_user: User = Depends(get_current_user),
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     """Return a token used to directly download run data
     from run file storage.
@@ -192,7 +192,7 @@ def generate_run_data_shared_access_signature(
 def generate_project_documents_shared_access_signature(
     path: pathlib.Path,
     current_user: User = Depends(get_current_user),
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     """Return a token used to directly download project documents
     from document file storage.
@@ -219,7 +219,7 @@ def generate_project_documents_shared_access_signature(
 def generate_project_documents_upload_shared_access_signature(
     project_name: str,
     file_name: str,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     """Return a token used to upload project documents
     to document file storage.
@@ -266,7 +266,7 @@ def generate_signed_url_for_path(
 )
 def init_project_data(
     project_name: str,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
         return azure_client.init_project_directory(project_name)
@@ -282,7 +282,7 @@ def init_project_data(
 def init_run_data(
     project_name: str,
     run_name: str,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
         return azure_client.init_run_directory(run_name, project_name)
@@ -298,7 +298,7 @@ def init_run_data(
 def rename_project_folder(
     project_name: str,
     new_project_name: str,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
         return azure_client.rename_project_directory(project_name, new_project_name)
@@ -315,7 +315,7 @@ def rename_run_folder(
     project_name: str,
     run_name: str,
     new_run_name: str,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
         return azure_client.rename_run_directory(run_name, project_name, new_run_name)
@@ -334,7 +334,7 @@ class CheckFoldersSyncBody(pydantic.BaseModel):
 )
 def check_folders_sync(
     body: CheckFoldersSyncBody,
-    azure_client: DataAzureClient = Depends(get_storage_azure_client),
+    azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     unsynced_dirs = []
     project_dirs = azure_client.list_project_dirs()
