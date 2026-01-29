@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create up CORS for Azure fileshare
+Create up CORS for Azure Blob Storage.
 """
 import argparse
 

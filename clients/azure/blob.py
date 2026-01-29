@@ -4,7 +4,6 @@ import datetime
 import os
 import posixpath
 import time
-from functools import lru_cache
 
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError

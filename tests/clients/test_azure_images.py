@@ -98,7 +98,7 @@ def test_set_cors_policy(client):
     cors_rule = {
         "allowed_origins": allowed_origins.split(","),
         "allowed_methods": ["DELETE", "GET", "HEAD", "POST", "OPTIONS", "PUT"],
-        "allowed_headers": ["*"],
+        "allowed_headers": ["authorization", "content-type", "x-ms-*"],
     }
     with patch.object(
         client.blob_service_client, "set_service_properties", new_callable=MagicMock
