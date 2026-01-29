@@ -55,6 +55,7 @@ class GetUploadSignedUrlResponse(pydantic.BaseModel):
     response_model=GetUploadSignedUrlResponse,
 )
 async def get_upload_signed_url(
+    projtect_name: str,
     file_name: str,
     object_group_id: int | None = None,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
