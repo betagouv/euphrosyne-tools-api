@@ -20,8 +20,6 @@ class ImageStorageClient(BlobAzureClient):
         return self._generate_sas_token_for_container()
 
     def get_project_container_base_url(self):
-        if self.container_client is None:
-            raise ValueError("container client is not configured")
         return f"https://{self.container_client.primary_hostname}"
 
     async def list_project_images(
@@ -31,8 +29,6 @@ class ImageStorageClient(BlobAzureClient):
     ):
         """List all URLs of project object group images stored in an Azure container. If with_sas_token is
         True, a SAS token will be appended to each URL."""
-        if self.container_client is None:
-            raise ValueError("container client is not configured")
         container_url = self.container_client.url
         sas_token: str | None = None
         if with_sas_token:
@@ -41,7 +37,7 @@ class ImageStorageClient(BlobAzureClient):
             blobs = self.container_client.list_blob_names(
                 name_starts_with=self._get_image_blob_name(object_id=object_id)
             )
-            for name in blobs:
+            async for name in self._iterate_blocking(blobs):
                 url = f"{container_url}/{name}"
                 if sas_token:
                     url = f"{url}?{sas_token}"
@@ -57,16 +53,13 @@ class ImageStorageClient(BlobAzureClient):
         """Returns a signed URL to upload an image in a project container. If object_id is passed it will
         return a signed URL to upload an image in the object group folder inside the project folder.
         """
-        if self.container_client is None:
-            raise ValueError("container client is not configured")
         container = self.container_client
 
-        try:
-            container.create_container()
-        except ResourceExistsError:
-            pass
+        # Run a task to create the container. We will await at the end of the fn.
+        create_container_task = asyncio.create_task(container.create_container())  # type: ignore
 
         blob_name = self._get_image_blob_name(object_id=object_id, file_name=file_name)
+
         token = generate_blob_sas(
             account_name=self.storage_account_name,
             container_name=container.container_name,
@@ -82,6 +75,10 @@ class ImageStorageClient(BlobAzureClient):
             + datetime.timedelta(minutes=2),
         )
 
+        try:
+            await create_container_task
+        except ResourceExistsError:
+            pass
         return os.path.join(container.url, blob_name) + "?" + token
 
     @staticmethod
