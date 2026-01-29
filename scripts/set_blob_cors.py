@@ -1,29 +1,28 @@
 #!/usr/bin/env python3
 """
-Create up CORS for Azure fileshare
+Create up CORS for Azure Blob Storage.
 """
 import argparse
-import asyncio
 
-from clients.azure.images import BlobAzureClient
+from clients.azure.blob import BlobAzureClient
 
 from . import get_logger
 
 logger = get_logger(__name__)
 
 
-async def set_file_share_cors():
+def set_blob_cors():
     parser = argparse.ArgumentParser()
     parser.add_argument("allowed_origins", help="Allowed origins.")
+    parser.add_argument("container_name", help="Azure Blob container name.")
     args = parser.parse_args()
 
-    azure_client = BlobAzureClient()
+    azure_client = BlobAzureClient(container_name=args.container_name)
 
     logger.info("Settings CORS allowed origins...")
-    await azure_client.set_cors_policy(args.allowed_origins)
+    azure_client.set_cors_policy(args.allowed_origins)
     logger.info("OK")
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(set_file_share_cors())
+    set_blob_cors()

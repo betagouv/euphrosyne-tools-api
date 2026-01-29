@@ -36,7 +36,6 @@ async def list_project_images(
 ):
     images: list[str] = []
     images_gen = azure_client.list_project_images(
-        project_slug=project_name,
         object_id=object_group_id,
         with_sas_token=with_sas_token,
     )
@@ -74,7 +73,6 @@ async def get_upload_signed_url(
     uiid_file_name = uuid.uuid4().hex + f".{file_ext}"
     url = await azure_client.generate_signed_upload_project_image_url(
         file_name=uiid_file_name,
-        project_slug=project_name,
         object_id=object_group_id,
     )
     return {"url": url}
@@ -96,6 +94,6 @@ def get_readonly_project_container_signed_url(
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
 ):
     """Returns a signed URL to read file in a project container."""
-    token = azure_client.get_project_container_sas_token(project_name)
-    base_url = azure_client.get_project_container_base_url(project_name)
+    token = azure_client.get_project_container_sas_token()
+    base_url = azure_client.get_project_container_base_url()
     return {"token": token, "base_url": base_url}

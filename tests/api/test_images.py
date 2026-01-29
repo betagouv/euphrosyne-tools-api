@@ -36,7 +36,7 @@ def test_list_project_object_images(
     assert response.status_code == 200
     assert response.json() == {"images": ["image1.png", "image2.jpg"]}
     image_storage_client.list_project_images.assert_called_once_with(
-        project_slug="test_project", object_id=1, with_sas_token=True
+        object_id=1, with_sas_token=True
     )
 
 
@@ -55,7 +55,7 @@ def test_list_project_object_images_sas_token_param(
 
     assert response.status_code == 200
     image_storage_client.list_project_images.assert_called_once_with(
-        project_slug="test_project", object_id=1, with_sas_token=False
+        object_id=1, with_sas_token=False
     )
 
 
