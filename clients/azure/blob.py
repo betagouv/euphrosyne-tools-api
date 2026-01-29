@@ -40,13 +40,6 @@ class BlobAzureClient(BaseStorageAzureClient):
     def _get_container_client(self, container_name: str) -> ContainerClient:
         return self.blob_service_client.get_container_client(container_name)
 
-    @lru_cache
-    def _get_project_container(self, project_slug: str) -> ContainerClient:
-        # Cache the result to avoid recreating clients.
-        return self.blob_service_client.get_container_client(
-            self._get_container_name_for_project(project_slug)
-        )
-
     def _generate_sas_token_for_container(self):
         now = datetime.datetime.now(datetime.timezone.utc)
         return generate_container_sas(
@@ -75,7 +68,7 @@ class BlobAzureClient(BaseStorageAzureClient):
             CorsRule(
                 allowed_origins=allowed_origins.split(","),
                 allowed_methods=["DELETE", "GET", "HEAD", "POST", "OPTIONS", "PUT"],
-                allowed_headers=["*"],
+                allowed_headers=["authorization", "content-type", "x-ms-*"],
             )
         ]
         self.blob_service_client.set_service_properties(cors=cors)

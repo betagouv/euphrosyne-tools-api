@@ -29,6 +29,7 @@ class ListProjectObjectImagesResponse(pydantic.BaseModel):
     response_model=ListProjectObjectImagesResponse,
 )
 async def list_project_images(
+    project_name: str,
     object_group_id: int | None = None,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
     with_sas_token: bool = True,
@@ -88,6 +89,7 @@ class GetReadonlyProjectContainerSignedUrlResponse(pydantic.BaseModel):
     response_model=GetReadonlyProjectContainerSignedUrlResponse,
 )
 def get_readonly_project_container_signed_url(
+    project_name: str,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
 ):
     """Returns a signed URL to read file in a project container."""

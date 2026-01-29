@@ -126,9 +126,9 @@ class AzureFileShareFile(io.BytesIO):
     def seek(self, offset: int, whence: int = SEEK_SET) -> int:
         if whence == SEEK_SET or whence is None:
             self._offset = offset
-        if whence == SEEK_CUR:
+        elif whence == SEEK_CUR:
             self._offset += offset
-        if whence == SEEK_END:
+        elif whence == SEEK_END:
             self._offset = self.content_length - offset
         return self._offset
 

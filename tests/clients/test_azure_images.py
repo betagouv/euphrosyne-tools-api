@@ -38,20 +38,6 @@ def test_get_container_name_for_project(client):
     )
 
 
-def test_get_project_container(client):
-    project_slug = "test-project"
-    container_client_mock = MagicMock(spec=ContainerClient)
-
-    client.blob_service_client.get_container_client.return_value = container_client_mock
-    client.blob_service_client.get_container_client.reset_mock()
-
-    container_client = client._get_project_container(project_slug)
-    assert container_client == container_client_mock
-    client.blob_service_client.get_container_client.assert_called_once_with(
-        f"project-{project_slug}"
-    )
-
-
 def test_generate_sas_token_for_container(client):
     now = datetime.datetime.now(datetime.timezone.utc)
     with patch("clients.azure.blob.datetime") as mock_datetime:
@@ -200,7 +186,7 @@ async def test_list_project_object_images_resource_not_found(
     async for url in client.list_project_images(object_id, with_sas_token):
         result.append(url)
 
-        assert result is None  # No URLs should be returned
+    assert result == []  # No URLs should be returned
 
 
 @pytest.mark.asyncio
