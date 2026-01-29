@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import os
 
@@ -5,6 +6,7 @@ from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 
 from .blob import BlobAzureClient
+from .utils import iterate_blocking
 
 
 class ImageStorageClient(BlobAzureClient):
@@ -37,7 +39,7 @@ class ImageStorageClient(BlobAzureClient):
             blobs = self.container_client.list_blob_names(
                 name_starts_with=self._get_image_blob_name(object_id=object_id)
             )
-            async for name in self._iterate_blocking(blobs):
+            async for name in iterate_blocking(blobs):
                 url = f"{container_url}/{name}"
                 if sas_token:
                     url = f"{url}?{sas_token}"
@@ -54,9 +56,6 @@ class ImageStorageClient(BlobAzureClient):
         return a signed URL to upload an image in the object group folder inside the project folder.
         """
         container = self.container_client
-
-        # Run a task to create the container. We will await at the end of the fn.
-        create_container_task = asyncio.create_task(container.create_container())  # type: ignore
 
         blob_name = self._get_image_blob_name(object_id=object_id, file_name=file_name)
 
@@ -76,7 +75,7 @@ class ImageStorageClient(BlobAzureClient):
         )
 
         try:
-            await create_container_task
+            await asyncio.to_thread(container.create_container)
         except ResourceExistsError:
             pass
         return os.path.join(container.url, blob_name) + "?" + token

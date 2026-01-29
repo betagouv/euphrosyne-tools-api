@@ -20,6 +20,7 @@ from azure.storage.blob import (
 )
 
 from .blob import BlobAzureClient
+from .utils import iterate_blocking
 from .data import (
     FolderCreationError,
     ProjectDocumentsNotFound,
@@ -165,7 +166,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
             raise RunDataNotFound()
         prefix = self._dir_prefix(dir_path)
         blobs = self.container_client.list_blobs(name_starts_with=prefix)
-        async for blob in self._iterate_blocking(blobs):
+        async for blob in iterate_blocking(blobs):
             if blob.name.endswith("/"):
                 continue
             blob_client = self.container_client.get_blob_client(blob.name)

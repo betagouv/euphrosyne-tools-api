@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import datetime
 import os
 import posixpath
 import time
 from functools import lru_cache
-from typing import AsyncIterator
+
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import (
@@ -184,15 +183,6 @@ class BlobAzureClient(BaseStorageAzureClient):
             )
 
         return results
-
-    async def _iterate_blocking(self, iterator) -> AsyncIterator[object]:
-        loop = asyncio.get_running_loop()
-        done = object()
-        while True:
-            item = await loop.run_in_executor(None, next, iterator, done)
-            if item is done:
-                break
-            yield item
 
     def _rename_directory(
         self,
