@@ -149,3 +149,24 @@ def test_restore_endpoint_accepts_operation_id(app: FastAPI, client: TestClient)
     assert response.status_code == 202
     assert response.json()["operation_id"] == str(operation_id)
     assert response.json()["type"] == "RESTORE"
+
+
+def test_operation_guard_is_cleared_after_execution(monkeypatch: pytest.MonkeyPatch):
+    operation_id = uuid4()
+    operation = lifecycle_operation.LifecycleOperation(
+        project_slug="project-1",
+        operation_id=operation_id,
+        type=LifecycleOperationType.COOL,
+    )
+
+    monkeypatch.setattr(
+        lifecycle_operation, "post_lifecycle_operation_callback", lambda _: True
+    )
+
+    assert (
+        lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    )
+    lifecycle_operation._execute_lifecycle_operation(operation=operation)
+    assert (
+        lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    )

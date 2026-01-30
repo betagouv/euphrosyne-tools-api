@@ -41,7 +41,13 @@ def post_lifecycle_operation_callback(
     operation_id = operation.operation_id
     project_slug = operation.project_slug
     operation_type = operation.type.value
-    payload = {**asdict(operation), "operation_id": str(operation.operation_id)}
+    payload = {
+        **asdict(operation),
+        "operation_id": str(operation.operation_id),
+        "finished_at": (
+            operation.finished_at.isoformat() if operation.finished_at else None
+        ),
+    }
 
     for attempt in range(1, max_attempts + 1):
         try:

@@ -65,6 +65,13 @@ def _reset_lifecycle_operation_guard() -> None:
         _LIFECYCLE_OPERATION_GUARD.clear()
 
 
+def _unregister_lifecycle_operation(operation: LifecycleOperation) -> None:
+    """Remove an operation from the in-memory guard after completion."""
+    key = operation.guard_key()
+    with _LIFECYCLE_OPERATION_GUARD_LOCK:
+        _LIFECYCLE_OPERATION_GUARD.discard(key)
+
+
 def _perform_lifecycle_operation(
     *,
     operation: LifecycleOperation,
@@ -102,22 +109,23 @@ def _execute_lifecycle_operation(
             operation.type.value,
             exc,
         )
+    finally:
+        operation.finished_at = datetime.now(timezone.utc)
 
-    operation.finished_at = datetime.now(timezone.utc)
+        delivered = post_lifecycle_operation_callback(operation)
+        if not delivered:
+            logger.error(
+                "Lifecycle callback delivery failed: operation_id=%s project_slug=%s type=%s",
+                operation.operation_id,
+                operation.project_slug,
+                operation.type.value,
+            )
 
-    delivered = post_lifecycle_operation_callback(operation)
-    if not delivered:
-        logger.error(
-            "Lifecycle callback delivery failed: operation_id=%s project_slug=%s type=%s",
+        logger.info(
+            "Lifecycle operation finished: operation_id=%s project_slug=%s type=%s status=%s",
             operation.operation_id,
             operation.project_slug,
             operation.type.value,
+            operation.status.value,
         )
-
-    logger.info(
-        "Lifecycle operation finished: operation_id=%s project_slug=%s type=%s status=%s",
-        operation.operation_id,
-        operation.project_slug,
-        operation.type.value,
-        operation.status.value,
-    )
+        _unregister_lifecycle_operation(operation)
