@@ -119,3 +119,6 @@ def post_lifecycle_operation_callback(
             response.status_code,
         )
         return True
+
+    # Ensure a boolean is returned on all code paths (e.g., if max_attempts == 0)
+    return False
