@@ -119,12 +119,3 @@ def post_lifecycle_operation_callback(
             response.status_code,
         )
         return True
-
-    logger.error(
-        "Lifecycle callback failed after %s attempts: operation_id=%s project_slug=%s type=%s",
-        max_attempts,
-        operation_id,
-        project_slug,
-        operation_type,
-    )
-    return False
