@@ -25,7 +25,6 @@ def schedule_lifecycle_operation(
     """Register a lifecycle operation and enqueue its execution if not duplicate."""
     accepted = _register_lifecycle_operation(operation=operation)
     if accepted:
-        operation.status = LifecycleOperationStatus.ACCEPTED
         background_tasks.add_task(
             _execute_lifecycle_operation,
             operation=operation,
@@ -43,6 +42,7 @@ def schedule_lifecycle_operation(
             operation.project_slug,
             operation.type.value,
         )
+    operation.status = LifecycleOperationStatus.ACCEPTED
     return operation
 
 
