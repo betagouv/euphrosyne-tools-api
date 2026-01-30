@@ -69,7 +69,8 @@ def test_post_lifecycle_operation_callback_retries_on_5xx(
     success_response.text = "ok"
 
     with mock.patch(
-        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend", return_value="token"
+        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
+        return_value="token",
     ):
         with mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
             post_mock.side_effect = [error_response, success_response]
