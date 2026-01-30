@@ -12,8 +12,7 @@ from auth import verify_is_euphrosyne_backend
 
 @pytest.fixture(autouse=True)
 def authenticate_euphrosyne_backend(app: FastAPI):
-    # pylint: disable=unnecessary-lambda
-    app.dependency_overrides[verify_is_euphrosyne_backend] = lambda: MagicMock()
+    app.dependency_overrides[verify_is_euphrosyne_backend] = MagicMock
     yield
     app.dependency_overrides.pop(verify_is_euphrosyne_backend, None)
 
