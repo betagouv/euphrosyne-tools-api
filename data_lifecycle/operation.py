@@ -126,6 +126,10 @@ def _execute_lifecycle_operation(
             operation.operation_id,
             operation.project_slug,
             operation.type.value,
-            operation.status.value,
+            (
+                operation.status.value
+                if operation.status
+                else LifecycleOperationStatus.SUCCEEDED.value
+            ),
         )
         _unregister_lifecycle_operation(operation)
