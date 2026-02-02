@@ -2,6 +2,7 @@
 """
 Delete an Azure image definition
 """
+
 import argparse
 import time
 

@@ -4,6 +4,7 @@ Check if there is VM without a connected user for more than 30min.
 If those VM are not in a group to indicate that it should be kept awake,
 shut it down and destroy the connection in Guacamole
 """
+
 import argparse
 import asyncio
 from typing import Any, Coroutine

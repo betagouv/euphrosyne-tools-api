@@ -3,6 +3,7 @@
 Healthcheck script. Check Azure & Guacamole services are up
 and correctly set up ; send an alert otherwise.
 """
+
 import dataclasses
 import os
 

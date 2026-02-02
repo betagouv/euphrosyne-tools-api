@@ -2,6 +2,7 @@
 """
 Create a Azure VM and a Guacamole connection
 """
+
 import argparse
 
 from clients.azure import DataAzureClient

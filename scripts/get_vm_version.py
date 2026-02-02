@@ -2,6 +2,7 @@
 """
 Get versions for the VM
 """
+
 from clients.azure import VMAzureClient
 from clients.version import Version
 
