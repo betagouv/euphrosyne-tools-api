@@ -2,6 +2,7 @@
 """
 Create up CORS for Azure Blob Storage.
 """
+
 import argparse
 
 from clients.azure.blob import BlobAzureClient

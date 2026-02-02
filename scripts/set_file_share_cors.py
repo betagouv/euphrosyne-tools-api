@@ -2,6 +2,7 @@
 """
 Create up CORS for Azure fileshare
 """
+
 import argparse
 
 from clients.azure import DataAzureClient

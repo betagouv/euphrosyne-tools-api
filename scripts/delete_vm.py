@@ -3,6 +3,7 @@
 Delete an Azure VM, its Guacamole connection, and its Azure deployment.
 VM & deployment won't raise if they don't exist on Azure. Guacamole connection will.
 """
+
 import argparse
 
 from clients.azure import VMAzureClient

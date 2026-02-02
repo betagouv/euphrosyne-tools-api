@@ -9,7 +9,6 @@ from api import config, connect, data, deployments, hdf5, images, infra, vms
 from exceptions import NoProjectMembershipException
 from api import eros
 
-
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN"),
     traces_sample_rate=0.1,
