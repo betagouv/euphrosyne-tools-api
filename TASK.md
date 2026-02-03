@@ -111,7 +111,7 @@ Project prefix must be **backend-agnostic**.
   * Base prefix for COOL data
 
 **Backward compatibility rule**:
-* No backward compatibility rule. Replace `AZURE_STORAGE_PROJECTS_LOCATION_PREFIX`with `DATA_PROJECTS_LOCATION_PREFIX`
+* No backward compatibility rule. Replace `AZURE_STORAGE_PROJECTS_LOCATION_PREFIX` with `DATA_PROJECTS_LOCATION_PREFIX`
 
 
 ---
