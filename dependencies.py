@@ -22,10 +22,14 @@ def get_project_data_client():
     backend = os.getenv("DATA_BACKEND")
     if not backend:
         raise ValueError("DATA_BACKEND environment variable is not set")
-    backend = backend.lower()
+    backend = backend.strip().lower()
     if backend == "azure_blob":
         return BlobDataAzureClient()
-    return DataAzureClient()
+    if backend == "azure_fileshare":
+        return DataAzureClient()
+    raise ValueError(
+        f"Invalid DATA_BACKEND value: {backend!r}. Allowed values are 'azure_blob' and 'azure_fileshare'."
+    )
 
 
 @lru_cache()
