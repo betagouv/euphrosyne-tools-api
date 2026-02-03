@@ -16,17 +16,15 @@ from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 # pylint: disable=wrong-import-position
 from azure.storage.file.fileservice import FileService
 from azure.storage.file.models import FilePermissions
-from azure.storage.file.sharedaccesssignature import (
-    FileSharedAccessSignature,
-)
+from azure.storage.file.sharedaccesssignature import FileSharedAccessSignature
 from azure.storage.fileshare import (
+    AccountSasPermissions,
     CorsRule,
+    ResourceTypes,
     ShareDirectoryClient,
     ShareFileClient,
     ShareServiceClient,
     generate_account_sas,
-    ResourceTypes,
-    AccountSasPermissions,
 )
 from dotenv import load_dotenv
 from slugify import slugify
@@ -35,7 +33,6 @@ if TYPE_CHECKING:
     from auth import User
 
 # pylint: disable=wrong-import-position
-from ._storage import BaseStorageAzureClient
 from ..data_client import AbstractDataClient
 from ..data_models import (
     ProjectFile,
@@ -43,6 +40,7 @@ from ..data_models import (
     RunDataTypeType,
     SASCredentials,
 )
+from ._storage import BaseStorageAzureClient
 
 load_dotenv()
 
@@ -572,7 +570,7 @@ def validate_project_document_file_path(path: Path, current_user: User):
 
 
 def _get_projects_path():
-    return os.getenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "")
+    return os.getenv("DATA_PROJECTS_LOCATION_PREFIX", "")
 
 
 def _validate_project_file_path(path: Path, current_user: User):
