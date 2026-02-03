@@ -29,14 +29,14 @@ def post_lifecycle_operation_callback(
     Posts lifecycle operation result to the Euphrosyne backend with retries.
     """
     try:
-        euphroyne_backend_url = os.environ["EUPHROSYNE_BACKEND_URL"]
+        euphrosyne_backend_url = os.environ["EUPHROSYNE_BACKEND_URL"]
     except KeyError:
         logger.error("EUPHROSYNE_BACKEND_URL environment variable is not set")
         return False
 
     token = generate_token_for_euphrosyne_backend()
     headers = {"Authorization": f"Bearer {token}"}
-    callback_url = f"{euphroyne_backend_url}{LIFECYCLE_CALLBACK_PATH}"
+    callback_url = f"{euphrosyne_backend_url}{LIFECYCLE_CALLBACK_PATH}"
 
     operation_id = operation.operation_id
     project_slug = operation.project_slug
