@@ -1,153 +1,255 @@
-## [TASK] Implement lifecycle operation execution (callback-based, no persistence)
+## [TASK] Implement deterministic HOT/COOL storage resolver for `project_slug` (URI-based)
 
 ### Context
 
-PRD – FR5 *Idempotency & retries*
-Architecture decision: **tools-api is stateless** for lifecycle operations.
-Euphrosyne is the **source of truth** and persists lifecycle operations.
+PRD – Storage path resolution
 
-euphrosyne-tools-api already posts to Euphrosyne and has an existing
-authenticated server-to-server communication mechanism; this must be reused.
+`euphrosyne-tools-api` must deterministically compute **where project data lives** for two logical storage roles:
 
----
+* **HOT** — workspace / active project data
+* **COOL** — immutable cooled project data
 
-### Goal
+The resolver must be **role-based**, not “Azure Files vs Azure Blob”-based, because HOT and COOL may both live on blob containers in the future.
 
-Enable euphrosyne-tools-api to:
-
-* accept project-level COOL / RESTORE requests referencing an `operation_id`
-* start an asynchronous operation
-* report completion back to Euphrosyne via callback
-* avoid duplicate execution *best-effort* during the same process lifetime
-
-This task establishes the **execution contract**; it does **not** implement
-physical data movement yet.
+This resolver is **foundational**: all later operations (AzCopy, listing, restore) must rely on it as the **single source of truth** for project storage locations.
 
 ---
 
-### Scope (what to implement)
+## Goal
 
-#### API endpoints
+Implement a deterministic resolver that returns a canonical `DataLocation` for:
 
-Implement the following endpoints:
+* HOT project data
+* COOL project data (when cooling is enabled)
 
-* `POST /data/projects/{project_slug}/cool?operation_id=<uuid>`
-* `POST /data/projects/{project_slug}/restore?operation_id=<uuid>`
+using only:
 
-**Request**
+* `project_slug`
+* environment configuration
 
-* Empty body
-* `operation_id` provided by Euphrosyne
-* Auth: reuse existing tools-api authentication
+No network calls. No Azure SDK usage.
 
-**Response**
+---
 
-* `202 Accepted`
+## Data model: `DataLocation`
 
-```json
-{
-  "operation_id": "<uuid>",
-  "project_slug": "<slug>",
-  "type": "COOL",
-  "status": "ACCEPTED"
-}
+Implement (or add) a minimal immutable dataclass:
+
+```python
+@dataclass(frozen=True)
+class DataLocation:
+    role: StorageRole               # HOT | COOL
+    backend: StorageBackend         # AZURE_FILESHARE | AZURE_BLOB
+    project_slug: str
+    uri: str                        # canonical URI for project root
 ```
 
----
+Notes:
 
-#### Execution model
+* Use `uri` (lowercase) for Python style.
+* `uri` must point to the **project root folder/prefix** (not to a file, not to a run subfolder).
+* `StorageBackend` enum values must be:
 
-* Start an asynchronous/background task for the operation.
-* Do **not** persist operation state in tools-api (no DB, no Redis).
-* Keep a **best-effort in-memory guard** to avoid starting duplicate operations
-  for the same `(project_slug, type, operation_id)` while the process is alive.
-
-If the service restarts, duplicate execution is acceptable; reconciliation is
-handled by Euphrosyne.
+  * `AZURE_FILESHARE`
+  * `AZURE_BLOB`
 
 ---
 
-#### Callback to Euphrosyne
+## Environment configuration
 
-On operation completion (success or failure), tools-api must POST back to
-Euphrosyne using the **existing authenticated posting mechanism**.
+### Backend selection (per role)
 
-Callback payload must include:
+* `DATA_BACKEND=azure_fileshare|azure_blob`
 
-* `operation_id`
-* `project_slug`
-* `type` (`COOL` or `RESTORE`)
-* `status` (`SUCCEEDED` or `FAILED`)
-* `finished_at`
-* `bytes_copied`, `files_copied` (nullable for now)
-* `error_message` (if failed)
-* optional `error_details`
+  * Used for **HOT** data
+  * Required
 
-Euphrosyne is responsible for:
+* `DATA_BACKEND_COOL=azure_fileshare|azure_blob`
 
-* persisting the result
-* enforcing idempotency
-* ignoring late or duplicate callbacks
+  * Used for **COOL** data
+  * **Optional**
+  * If **absent**, cooling is considered **disabled** and COOL resolution must not be allowed
+
+If `DATA_BACKEND_COOL` is set, **all required COOL-specific configuration must be present**; otherwise startup or resolution must fail with a clear configuration error.
 
 ---
 
-#### Callback retry policy
+### Backend-specific configuration
 
-* Retry callback delivery on transient failures (5xx, network errors)
-* Use a simple exponential backoff (limited number of attempts)
-* If delivery ultimately fails:
+#### Azure Fileshare
 
-  * log clearly with `operation_id`
-  * exit the task
-  * rely on Euphrosyne reconciliation cron to handle stuck operations
+* `AZURE_STORAGE_FILESHARE`
+
+  * Fileshare name for HOT data (existing config; keep as-is)
+
+* `AZURE_STORAGE_FILESHARE_COOL`
+
+  * Fileshare name for COOL data (required if `DATA_BACKEND_COOL=azure_fileshare`)
+
+#### Azure Blob
+
+* `AZURE_STORAGE_DATA_CONTAINER`
+
+  * Blob container for HOT data (existing config; keep as-is)
+
+* `AZURE_STORAGE_DATA_CONTAINER_COOL`
+
+  * Blob container for COOL data (required if `DATA_BACKEND_COOL=azure_blob`)
 
 ---
 
-### Explicit non-goals (out of scope)
+### Project prefix configuration
 
-* No AzCopy execution
-* No Azure access
-* No operation persistence in tools-api
-* No GET /operation status endpoint in tools-api
-* No lifecycle state machine logic (owned by Euphrosyne)
+Project prefix must be **backend-agnostic**.
+
+* `DATA_PROJECTS_LOCATION_PREFIX`
+
+  * Base prefix for HOT data
+
+* `DATA_PROJECTS_LOCATION_PREFIX_COOL`
+
+  * Base prefix for COOL data
+
+**Backward compatibility rule**:
+* No backward compatibility rule. Replace `AZURE_STORAGE_PROJECTS_LOCATION_PREFIX`with `DATA_PROJECTS_LOCATION_PREFIX`
+
 
 ---
 
-### Observability
+## Resolver behavior
 
-* Structured logs must include:
+### Resolver API
 
+Expose role-based resolver functions (names indicative):
+
+* `resolve_hot_location(project_slug: str) -> DataLocation`
+* `resolve_cool_location(project_slug: str) -> DataLocation`
+
+Optionally expose:
+
+* `resolve_location(role: StorageRole, project_slug: str) -> DataLocation`
+
+The resolver must:
+
+* validate `project_slug`
+* determine backend from env configuration
+* build a **canonical URI**
+* return `DataLocation(role, backend, project_slug, uri)`
+
+If `resolve_cool_location` is called while `DATA_BACKEND_COOL` is **unset**, raise a clear error indicating that cooling is disabled.
+
+---
+
+## Canonical URI formats
+
+Use **no trailing slash** policy.
+
+### Azure Fileshare
+
+```
+https://{account}.file.core.windows.net/{share}/{prefix}/{project_slug}
+```
+
+### Azure Blob
+
+```
+https://{account}.blob.core.windows.net/{container}/{prefix}/{project_slug}
+```
+
+### Prefix normalization rules
+
+* Strip leading/trailing `/` from prefixes before joining
+* Avoid double slashes in the resulting path
+* Empty prefix must be handled cleanly
+
+---
+
+## Validation requirements
+
+Reject invalid `project_slug` values:
+
+* empty string
+* leading or trailing whitespace
+* contains `/` or `\`
+* contains `..`
+* contains `//`
+
+Raise a clear, FastAPI-compatible error (HTTP 400–class).
+
+---
+
+## Determinism & stability requirements
+
+* Same inputs + same env config → **exact same `uri` string**
+* Must not depend on:
+
+  * timestamps
+  * randomness
   * operation_id
-  * project_slug
-  * operation type
-  * job start / end
-  * callback attempts and responses
+  * mutable metadata
+* All project storage URIs must be produced via this resolver; no ad-hoc concatenation elsewhere in the codebase.
 
 ---
 
-### Tests
+## Unit tests
 
-Add tests to cover:
+Add unit tests covering:
 
-* POST endpoint returns 202 and schedules background task
-* Duplicate POST with same identifiers does not start a second in-process task
-* Callback is sent with expected payload
-* Callback retry logic on transient failure
+1. **Determinism**
+
+   * same slug + same config → identical `DataLocation` (including `uri`)
+
+2. **Golden snapshots**
+
+   * exact URI assertion for:
+
+     * HOT (fileshare)
+     * COOL (blob)
+
+3. **Prefix joining**
+
+   * empty prefix
+   * non-empty prefix (no double slashes)
+
+4. **Validation**
+
+   * invalid slugs rejected:
+
+     * `""`
+     * `"../x"`
+     * `"a/b"`
+     * `"a\\b"`
+     * `"a..b"`
+     * `" a "`
+
+5. **Role backend selection**
+
+   * HOT backend driven by `DATA_BACKEND`
+   * COOL backend driven by `DATA_BACKEND_COOL`
+   * COOL resolution fails when `DATA_BACKEND_COOL` is unset
 
 ---
 
-### Acceptance criteria
+## Acceptance criteria
 
-* tools-api accepts COOL / RESTORE requests and returns 202 with operation_id
-* Completion callback is sent to Euphrosyne on success or failure
-* Duplicate execution is avoided while the process is running
-* Callback retries occur on transient errors
-* Tests cover happy path and failure path
+* `DataLocation` dataclass exists with:
+
+  * `role`, `backend`, `project_slug`, `uri`
+* HOT and COOL resolver functions exist and are the **single source of truth** for project storage URIs
+* HOT and COOL backends are configurable independently
+* Cooling is **disabled by default** when `DATA_BACKEND_COOL` is absent
+* URIs are canonical, stable, and validated
+* Unit tests validate mapping, validation, and backend selection
 
 ---
 
-### Notes
+## Notes
 
-* Strong idempotency and reconciliation are enforced in Euphrosyne.
-* tools-api is intentionally stateless to fit Scalingo constraints.
-* This task defines the execution contract used by later AzCopy tasks.
+* This task is **resolution only**:
+
+  * no Azure API calls
+  * no AzCopy
+  * no authentication or SAS logic
+* Keep implementation minimal, explicit, and well-documented.
+* This resolver defines a long-lived contract; correctness and stability matter more than flexibility.
+
