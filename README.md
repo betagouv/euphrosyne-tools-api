@@ -12,7 +12,8 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 
 | Nom de la variable                     | Description                                                                                                                                                                                        | Requis |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| PROJECT_STORAGE_BACKEND                | Optionnel. Backend de stockage des données projets. Valeurs : `azure_fileshare` (défaut) ou `azure_blob`.                                                                                           |
+| DATA_BACKEND                           | Requis. Backend de stockage des données projets HOT. Valeurs : `azure_fileshare` ou `azure_blob`.                                                                                                   |
+| DATA_BACKEND_COOL                      | Optionnel. Backend de stockage des données projets COOL. Valeurs : `azure_fileshare` ou `azure_blob`. Si absent, le refroidissement est désactivé.                                                  |
 | AZURE_SUBSCRIPTION_ID                  | ID de la souscription. Azure                                                                                                                                                                       |
 | AZURE_CLIENT_ID                        | ID de l'application Azure (voir section _Générer les clés pour s'authentifier auprès d'Azure_).                                                                                                    |
 | AZURE_CLIENT_SECRET                    | Secret de l'application Azure (voir section _Générer les clés pour s'authentifier auprès d'Azure_).                                                                                                |
@@ -21,9 +22,12 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 | AZURE_TEMPLATE_SPECS_NAME              | Nom du _Template specs_ utilisé pour déployer les machines virtuelles. Voir le projet `euphrosyne-tools-infra`.                                                                                    |
 | AZURE_RESOURCE_PREFIX                  | Optionnel. Préfixe utilisé pour éviter les collisions de nom lors de la création de ressources sur Azure. Doit être le même que dans la configuration Terraform (projet `euphrosyne-tools-infra`). |
 | AZURE_STORAGE_ACCOUNT                  | Nom du _Storage account_ Azure.                                                                                                                                                                    |
-| AZURE_STORAGE_FILESHARE                | Nom du _Fileshare_ contenant les fichiers de données sur le _Storage account_ Azure. Requis si `PROJECT_STORAGE_BACKEND=azure_fileshare` (valeur par défaut).                                        |
-| AZURE_STORAGE_PROJECTS_LOCATION_PREFIX | Optionnel. Prefixe lorsque le dossier contenant les fichiers de données sur le _Fileshare_ Azure n'est pas à la racine.                                                                            |
-| AZURE_STORAGE_DATA_CONTAINER           | Nom du container Blob utilisé pour les données projets (requis si `PROJECT_STORAGE_BACKEND=azure_blob`).                                                                                           |
+| AZURE_STORAGE_FILESHARE                | Nom du _Fileshare_ contenant les fichiers de données sur le _Storage account_ Azure. Requis si `DATA_BACKEND=azure_fileshare`.                                                                      |
+| AZURE_STORAGE_FILESHARE_COOL           | Nom du _Fileshare_ contenant les données projets COOL. Requis si `DATA_BACKEND_COOL=azure_fileshare`.                                                                                              |
+| DATA_PROJECTS_LOCATION_PREFIX          | Optionnel. Préfixe du chemin de base des projets pour HOT.                                                                                                                                        |
+| DATA_PROJECTS_LOCATION_PREFIX_COOL     | Optionnel. Préfixe du chemin de base des projets pour COOL.                                                                                                                                       |
+| AZURE_STORAGE_DATA_CONTAINER           | Nom du container Blob utilisé pour les données projets (requis si `DATA_BACKEND=azure_blob`).                                                                                                      |
+| AZURE_STORAGE_DATA_CONTAINER_COOL      | Nom du container Blob utilisé pour les données projets COOL (requis si `DATA_BACKEND_COOL=azure_blob`).                                                                                            |
 | AZURE_IMAGE_GALLERY                    | Nom de la _Azure compute gallery_ qui stock les différentes images                                                                                                                                 |
 | AZURE_IMAGE_DEFINITION                 | Nom de la _VM image definition_ qui est l'image pré-configurée pour les VM Euphrosyne                                                                                                              |
 | CORS_ALLOWED_ORIGIN                    | Origines des frontends autorisées à utiliser l'API. Séparer les origines par des espaces.                                                                                                          |
@@ -37,12 +41,14 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 
 ## Stockage des données projets
 
-Les données projets peuvent être stockées soit dans un Fileshare Azure, soit dans un container Blob.
+Le backend HOT est défini par `DATA_BACKEND`. Le backend COOL est défini par `DATA_BACKEND_COOL` (si absent, le refroidissement est désactivé).
 
-- **Fileshare (par défaut)** : `PROJECT_STORAGE_BACKEND=azure_fileshare` et `AZURE_STORAGE_FILESHARE` doit être renseigné.
-- **Blob** : définir `PROJECT_STORAGE_BACKEND=azure_blob` et renseigner `AZURE_STORAGE_DATA_CONTAINER`.
+- **HOT Fileshare** : `DATA_BACKEND=azure_fileshare` et `AZURE_STORAGE_FILESHARE` doit être renseigné.
+- **HOT Blob** : `DATA_BACKEND=azure_blob` et `AZURE_STORAGE_DATA_CONTAINER` doit être renseigné.
+- **COOL Fileshare** : `DATA_BACKEND_COOL=azure_fileshare` et `AZURE_STORAGE_FILESHARE_COOL` doit être renseigné.
+- **COOL Blob** : `DATA_BACKEND_COOL=azure_blob` et `AZURE_STORAGE_DATA_CONTAINER_COOL` doit être renseigné.
 
-Le préfixe `AZURE_STORAGE_PROJECTS_LOCATION_PREFIX` continue de s'appliquer (chemin de base des projets) pour les deux backends.
+Les préfixes `DATA_PROJECTS_LOCATION_PREFIX` (HOT) et `DATA_PROJECTS_LOCATION_PREFIX_COOL` (COOL) s'appliquent au chemin de base des projets.
 
 ## Configurer le CORS (Blob / Fileshare)
 
