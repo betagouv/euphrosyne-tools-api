@@ -2,25 +2,28 @@
 Some routes may be tested in tests.main
 (older tests that haven't been migrated to this module)"""
 
-from unittest.mock import MagicMock, patch
 import datetime
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+
+from api.data import _verify_can_set_token_expiration
 from auth import (
     ExtraPayloadTokenGetter,
+    User,
     get_current_user,
+    verify_is_euphrosyne_backend,
     verify_is_euphrosyne_backend_or_admin,
+    verify_path_permission,
 )
-
-from auth import User, verify_is_euphrosyne_backend, verify_path_permission
 from clients.azure.data import (
     FolderCreationError,
     IncorrectDataFilePath,
     RunDataNotFound,
 )
 from dependencies import get_project_data_client
-from api.data import _verify_can_set_token_expiration
 from hooks.euphrosyne import post_data_access_event
 
 
@@ -165,7 +168,7 @@ def test_zip_project_run_data_when_path_not_found_in_azure(
 def test_zip_project_run_data(
     app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
 
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
     app.dependency_overrides[ExtraPayloadTokenGetter] = lambda: MagicMock()
@@ -195,7 +198,7 @@ def test_zip_project_run_data_with_data_request(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
 
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
     with patch("fastapi.BackgroundTasks.add_task") as add_background_task_mock:

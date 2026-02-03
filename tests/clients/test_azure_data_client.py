@@ -1,7 +1,7 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 import asyncio
-from datetime import datetime
 import pathlib
+from datetime import datetime
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -19,6 +19,7 @@ from clients.azure.data import (
     validate_run_data_file_path,
 )
 from clients.data_models import ProjectFile
+
 from ..mocks.azure import factories as azure_factories
 
 
@@ -40,7 +41,7 @@ def setenv(monkeypatch: MonkeyPatch):
 def test_get_project_documents_with_prefix(
     client: DataAzureClient, monkeypatch: MonkeyPatch
 ):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "/prefix")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "/prefix")
     _list_files_recursive_mock = MagicMock(
         return_value=(
             p
@@ -330,7 +331,7 @@ def test_validate_document_file_path(path, is_valid):
 
 
 def test_init_project_directory(client: DataAzureClient, monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
     with patch(
         "clients.azure.data.ShareDirectoryClient",
@@ -373,7 +374,7 @@ def test_init_project_directory_raise_error(
 
 
 def test_init_run_directory(client: DataAzureClient, monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
     with patch(
         "clients.azure.data.ShareDirectoryClient",
@@ -416,7 +417,7 @@ def test_init_run_directory_raise_error(
 
 
 def test_change_run_name(client: DataAzureClient, monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     with patch.object(client, "_rename_directory") as mock:
         client.rename_run_directory("myrun", "My Project", "myrun2")
         mock.assert_called_once_with(
@@ -426,7 +427,7 @@ def test_change_run_name(client: DataAzureClient, monkeypatch: MonkeyPatch):
 
 
 def test_change_project_name(client: DataAzureClient, monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     with patch.object(client, "_rename_directory") as mock:
         client.rename_project_directory("Old project", "New project")
         mock.assert_called_once_with(
@@ -547,7 +548,7 @@ def test_is_project_data_available_when_run_dir_not_exists(
 
 @patch("clients.azure.data._validate_run_data_file_path_regex", MagicMock())
 def test_extract_info_from_path(monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("AZURE_STORAGE_PROJECTS_LOCATION_PREFIX", "projects")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
 
     path1 = pathlib.Path("projects/project1/runs/run1/data")
     path2 = pathlib.Path("projects/project2/runs/run2")
