@@ -1,6 +1,7 @@
 from datetime import datetime
 import pathlib
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, BackgroundTasks, Query
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -30,6 +31,8 @@ from clients.data_models import ProjectFileOrDirectory
 from clients.azure.stream import stream_zip_from_azure_files_async
 from dependencies import get_project_data_client
 from hooks.euphrosyne import post_data_access_event
+from data_lifecycle.operation import schedule_lifecycle_operation
+from data_lifecycle import models
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -343,6 +346,52 @@ def check_folders_sync(
             unsynced_dirs.append(slug)
     orphans_dirs = [dir for dir in project_dirs if dir not in body.project_slugs]
     return {"unsynced_dirs": unsynced_dirs, "orphan_dirs": orphans_dirs}
+
+
+@router.post(
+    "/projects/{project_slug}/cool",
+    status_code=202,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    response_model=models.LifecycleOperation,
+    response_model_exclude_none=True,
+)
+def cool_project_data(
+    project_slug: str,
+    background_tasks: BackgroundTasks,
+    operation_id: UUID = Query(...),
+):
+    operation = models.LifecycleOperation(
+        project_slug=project_slug,
+        operation_id=operation_id,
+        type=models.LifecycleOperationType.COOL,
+    )
+    return schedule_lifecycle_operation(
+        operation=operation,
+        background_tasks=background_tasks,
+    )
+
+
+@router.post(
+    "/projects/{project_slug}/restore",
+    status_code=202,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    response_model=models.LifecycleOperation,
+    response_model_exclude_none=True,
+)
+def restore_project_data(
+    project_slug: str,
+    background_tasks: BackgroundTasks,
+    operation_id: UUID = Query(...),
+):
+    operation = models.LifecycleOperation(
+        project_slug=project_slug,
+        operation_id=operation_id,
+        type=models.LifecycleOperationType.RESTORE,
+    )
+    return schedule_lifecycle_operation(
+        operation=operation,
+        background_tasks=background_tasks,
+    )
 
 
 def _verify_can_set_token_expiration(user: User):
