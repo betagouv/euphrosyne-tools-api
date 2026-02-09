@@ -37,7 +37,7 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("VM_PASSWORD", "password")
     with patch.multiple(
         "clients.azure.vm",
-        ResourceManagementClient=DEFAULT,
+        DeploymentsMgmtClient=DEFAULT,
         ComputeManagementClient=DEFAULT,
         TemplateSpecsClient=DEFAULT,
     ):

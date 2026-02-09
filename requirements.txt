@@ -4,7 +4,7 @@ azure-identity==1.25.1
 azure-keyvault-secrets==4.10.0
 azure-mgmt-compute==37.2.0
 azure-mgmt-containerinstance==10.1.0 
-azure-mgmt-resource==25.0.0
+azure-mgmt-resource-deployments==1.0.0b1
 azure-mgmt-resource-templatespecs==1.0.0b1
 azure-mgmt-storage==24.0.0
 azure-mgmt-web==10.1.0

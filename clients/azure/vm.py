@@ -12,8 +12,8 @@ from azure.core.polling import LROPoller
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import VirtualMachine
-from azure.mgmt.resource import ResourceManagementClient
-from azure.mgmt.resource.resources.models import DeploymentExtended
+from azure.mgmt.resource.deployments import DeploymentsMgmtClient
+from azure.mgmt.resource.deployments.models import DeploymentExtended
 from azure.mgmt.resource.templatespecs import TemplateSpecsClient
 from dotenv import load_dotenv
 from slugify import slugify
@@ -84,7 +84,7 @@ class VMAzureClient:
         self.template_specs_image_definition = os.environ["AZURE_IMAGE_DEFINITION"]
         self.resource_prefix = os.environ["AZURE_RESOURCE_PREFIX"]
 
-        self._resource_mgmt_client = ResourceManagementClient(
+        self._resource_mgmt_client = DeploymentsMgmtClient(
             credentials, os.environ["AZURE_SUBSCRIPTION_ID"]
         )
         self._compute_mgmt_client = ComputeManagementClient(
