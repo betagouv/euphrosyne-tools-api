@@ -62,13 +62,13 @@ def main():
 
     job = start_copy(source_uri=source_url, dest_uri=dest_url)
 
-    logger.info(f"Started job: {job}")
+    logger.info("Started job: %s", job)
 
     time.sleep(5)
 
     while True:
         status = poll(job.job_id)
-        logger.info(f"Job status: {status.state}")
+        logger.info("Job status: %s", status.state)
         if status.state in {"SUCCEEDED", "FAILED", "CANCELED"}:
             break
         time.sleep(5)
