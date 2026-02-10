@@ -29,6 +29,8 @@ from azure.storage.fileshare import (
 from dotenv import load_dotenv
 from slugify import slugify
 
+from data_lifecycle.storage_resolver import StorageRole
+
 if TYPE_CHECKING:
     from auth import User
 
@@ -142,13 +144,18 @@ class AzureFileShareFile(io.BytesIO):
 
 
 class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
-    def __init__(self):
+    def __init__(self, storage_role: StorageRole = StorageRole.HOT):
         super().__init__()
         self._file_shared_access_signature = FileSharedAccessSignature(
             account_name=self.storage_account_name, account_key=self._storage_key
         )
 
-        self.share_name = os.environ["AZURE_STORAGE_FILESHARE"]
+        if storage_role == StorageRole.HOT:
+            self.share_name = os.environ.get("AZURE_STORAGE_FILESHARE")
+        elif storage_role == StorageRole.COOL:
+            self.share_name = os.environ.get("AZURE_STORAGE_FILESHARE_COOL")
+        else:
+            raise ValueError(f"Unsupported storage role: {storage_role}")
 
     def list_project_dirs(self) -> list[str]:
         """Returns all directory names in project folder"""
