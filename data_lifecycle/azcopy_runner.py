@@ -667,11 +667,7 @@ def _read_tail_lines(
 def _is_job_not_found(stdout: str, stderr: str) -> bool:
     combined = f"{stdout}\n{stderr}".lower()
     patterns = [
-        "not found",
-        "does not exist",
-        "no such job",
-        "job plan file",
-        "cannot find the job",
+        "no job with jobid",
     ]
     return any(pattern in combined for pattern in patterns)
 
