@@ -1,255 +1,300 @@
-## [TASK] Implement deterministic HOT/COOL storage resolver for `project_slug` (URI-based)
+# [TASK] Implement AzCopy runner abstraction (start, poll, parse summary)
 
-### Context
+## Context
 
-PRD – Storage path resolution
-
-`euphrosyne-tools-api` must deterministically compute **where project data lives** for two logical storage roles:
-
-* **HOT** — workspace / active project data
-* **COOL** — immutable cooled project data
-
-The resolver must be **role-based**, not “Azure Files vs Azure Blob”-based, because HOT and COOL may both live on blob containers in the future.
-
-This resolver is **foundational**: all later operations (AzCopy, listing, restore) must rely on it as the **single source of truth** for project storage locations.
+PRD – FR1/FR2 require **verification via AzCopy job results** (bytes + files).
+`euphrosyne-tools-api` must run AzCopy as a **long-running, monitorable** copy job and expose **reliable summary stats** for Euphrosyne verification.
 
 ---
 
 ## Goal
 
-Implement a deterministic resolver that returns a canonical `DataLocation` for:
+Provide a single abstraction that can:
 
-* HOT project data
-* COOL project data (when cooling is enabled)
+1. **Start** an AzCopy copy job (Files ↔ Blob)
+2. **Poll** job status until terminal state
+3. **Parse** final job summary into structured stats:
+   - bytes copied
+   - files transferred
+   - plus any relevant errors/warnings
 
-using only:
-
-* `project_slug`
-* environment configuration
-
-No network calls. No Azure SDK usage.
+This runner is an internal building block used by COOL/RESTORE operations.
 
 ---
 
-## Data model: `DataLocation`
+## Non-goals (v1)
 
-Implement (or add) a minimal immutable dataclass:
+- No “delete source” (`remove` / sync) behavior
+- No partial verification logic here (runner only reports stats; higher layer compares vs expected)
+- No multi-job orchestration (one operation = one AzCopy job)
 
-```python
-@dataclass(frozen=True)
-class DataLocation:
-    role: StorageRole               # HOT | COOL
-    backend: StorageBackend         # AZURE_FILESHARE | AZURE_BLOB
-    project_slug: str
-    uri: str                        # canonical URI for project root
+---
+
+## Public API (internal module interface)
+
+### Types
+
+```text
+AzCopyJobState = "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED" | "UNKNOWN"
+
+AzCopyJobRef:
+- job_id: str
+- started_at: datetime
+- command: list[str]              # for audit/debug (redact secrets)
+- environment: dict[str, str]     # safe subset (no secrets)
+- log_dir: str                    # path where logs live
+
+AzCopyProgress:
+- state: AzCopyJobState
+- last_updated_at: datetime
+- raw_status: str                 # raw azcopy status string, if available
+
+AzCopySummary:
+- state: AzCopyJobState           # terminal only for summary
+- files_transferred: int
+- bytes_transferred: int
+- failed_transfers: int           # if available
+- skipped_transfers: int          # if available
+- warnings: int                   # if available
+- errors: int                     # if available
+- started_at: datetime | null
+- finished_at: datetime | null
+- raw_summary: dict | str         # store minimally; size-bounded
 ```
 
-Notes:
+### Functions
 
-* Use `uri` (lowercase) for Python style.
-* `uri` must point to the **project root folder/prefix** (not to a file, not to a run subfolder).
-* `StorageBackend` enum values must be:
+#### `start_copy(source_uri, dest_uri, *, options) -> AzCopyJobRef`
 
-  * `AZURE_FILESHARE`
-  * `AZURE_BLOB`
+Starts AzCopy and returns the job reference (including `job_id`).
 
----
+Options (v1):
 
-## Environment configuration
+- `recursive: bool = True`
+- `overwrite: str = "true"` (or `"ifSourceNewer"` depending on your restore strategy)
+- `from_to: str | null` (optional explicit AzCopy FromTo)
+- `log_level: str = "INFO"`
+- `output_type: "json" | "text" = "json"` (prefer json if stable)
+- `extra_args: list[str] = []`
 
-### Backend selection (per role)
+**Requirements**
 
-* `DATA_BACKEND=azure_fileshare|azure_blob`
-
-  * Used for **HOT** data
-  * Required
-
-* `DATA_BACKEND_COOL=azure_fileshare|azure_blob`
-
-  * Used for **COOL** data
-  * **Optional**
-  * If **absent**, cooling is considered **disabled** and COOL resolution must not be allowed
-
-If `DATA_BACKEND_COOL` is set, **all required COOL-specific configuration must be present**; otherwise startup or resolution must fail with a clear configuration error.
+- Must capture and return the **AzCopy job id**.
+- Must persist stdout/stderr to per-job log files.
 
 ---
 
-### Backend-specific configuration
+#### `poll(job_id) -> AzCopyProgress`
 
-#### Azure Fileshare
+Returns current job state, without blocking.
 
-* `AZURE_STORAGE_FILESHARE`
+**Requirements**
 
-  * Fileshare name for HOT data (existing config; keep as-is)
-
-* `AZURE_STORAGE_FILESHARE_COOL`
-
-  * Fileshare name for COOL data (required if `DATA_BACKEND_COOL=azure_fileshare`)
-
-#### Azure Blob
-
-* `AZURE_STORAGE_DATA_CONTAINER`
-
-  * Blob container for HOT data (existing config; keep as-is)
-
-* `AZURE_STORAGE_DATA_CONTAINER_COOL`
-
-  * Blob container for COOL data (required if `DATA_BACKEND_COOL=azure_blob`)
+- Must be safe to call frequently (polling).
+- Must not parse full logs each time if avoidable.
 
 ---
 
-### Project prefix configuration
+#### `get_summary(job_id) -> AzCopySummary`
 
-Project prefix must be **backend-agnostic**.
+Returns final stats when job is terminal.
 
-* `DATA_PROJECTS_LOCATION_PREFIX`
+**Requirements**
 
-  * Base prefix for HOT data
-
-* `DATA_PROJECTS_LOCATION_PREFIX_COOL`
-
-  * Base prefix for COOL data
-
-**Backward compatibility rule**:
-* No backward compatibility rule. Replace `AZURE_STORAGE_PROJECTS_LOCATION_PREFIX` with `DATA_PROJECTS_LOCATION_PREFIX`
-
+- If job is still running, return current-known summary with `state=RUNNING`. Return progress only from `poll`, and require terminal state for `get_summary`.
+- Must return **bytes/files transferred** in a stable structure.
 
 ---
 
-## Resolver behavior
+## AzCopy invocation requirements
 
-### Resolver API
+### Command shape (recommended)
 
-Expose role-based resolver functions (names indicative):
+Use AzCopy jobs so we can poll:
 
-* `resolve_hot_location(project_slug: str) -> DataLocation`
-* `resolve_cool_location(project_slug: str) -> DataLocation`
+- Start:
+  - `azcopy copy "<source>" "<dest>" --recursive=true ...`
 
-Optionally expose:
+- Poll:
+  - `azcopy jobs show <jobId> --output-type=json` (or text)
 
-* `resolve_location(role: StorageRole, project_slug: str) -> DataLocation`
+- Summary:
+  - Prefer JSON output if supported; otherwise parse the final summary text.
 
-The resolver must:
+### Job id extraction
 
-* validate `project_slug`
-* determine backend from env configuration
-* build a **canonical URI**
-* return `DataLocation(role, backend, project_slug, uri)`
+AzCopy typically prints the JobID on start output. The runner must:
 
-If `resolve_cool_location` is called while `DATA_BACKEND_COOL` is **unset**, raise a clear error indicating that cooling is disabled.
-
----
-
-## Canonical URI formats
-
-Use **no trailing slash** policy.
-
-### Azure Fileshare
-
-```
-https://{account}.file.core.windows.net/{share}/{prefix}/{project_slug}
-```
-
-### Azure Blob
-
-```
-https://{account}.blob.core.windows.net/{container}/{prefix}/{project_slug}
-```
-
-### Prefix normalization rules
-
-* Strip leading/trailing `/` from prefixes before joining
-* Avoid double slashes in the resulting path
-* Empty prefix must be handled cleanly
+- read stdout/stderr from the start process
+- extract the job id deterministically (regex fallback allowed)
+- if job id cannot be found:
+  - mark the operation as failed at a higher layer (runner returns error)
 
 ---
 
-## Validation requirements
+## Output & log storage
 
-Reject invalid `project_slug` values:
+The AzCopy runner produces job artifacts (stdout/stderr snapshots, optional status/summary dumps) primarily for:
 
-* empty string
-* leading or trailing whitespace
-* contains `/` or `\`
-* contains `..`
-* contains `//`
+debugging failures
 
-Raise a clear, FastAPI-compatible error (HTTP 400–class).
+inspecting what AzCopy reported
 
----
+keeping a final “summary snapshot” when available
 
-## Determinism & stability requirements
+Important: these artifacts are best-effort only.
+They must not be required for correctness, because the filesystem may be ephemeral (e.g., Scalingo) and artifacts may disappear on restart/redeploy.
 
-* Same inputs + same env config → **exact same `uri` string**
-* Must not depend on:
+Correctness requirements (job tracking, polling, final status) must rely on:
 
-  * timestamps
-  * randomness
-  * operation_id
-  * mutable metadata
-* All project storage URIs must be produced via this resolver; no ad-hoc concatenation elsewhere in the codebase.
+persisted job_id + operation state in the database
 
----
+re-polling AzCopy via azcopy jobs show <jobId>
 
-## Unit tests
+### Log directory layout
 
-Add unit tests covering:
+👍 Totally fair. Let’s strip it down to **the minimum that still works everywhere (including Scalingo)**.
 
-1. **Determinism**
-
-   * same slug + same config → identical `DataLocation` (including `uri`)
-
-2. **Golden snapshots**
-
-   * exact URI assertion for:
-
-     * HOT (fileshare)
-     * COOL (blob)
-
-3. **Prefix joining**
-
-   * empty prefix
-   * non-empty prefix (no double slashes)
-
-4. **Validation**
-
-   * invalid slugs rejected:
-
-     * `""`
-     * `"../x"`
-     * `"a/b"`
-     * `"a\\b"`
-     * `"a..b"`
-     * `" a "`
-
-5. **Role backend selection**
-
-   * HOT backend driven by `DATA_BACKEND`
-   * COOL backend driven by `DATA_BACKEND_COOL`
-   * COOL resolution fails when `DATA_BACKEND_COOL` is unset
+Here’s the **simplified, final spec** for the AzCopy runner **log / directory handling**.
 
 ---
 
-## Acceptance criteria
+## AzCopy log & job plan handling (simple version)
 
-* `DataLocation` dataclass exists with:
+### Principle
 
-  * `role`, `backend`, `project_slug`, `uri`
-* HOT and COOL resolver functions exist and are the **single source of truth** for project storage URIs
-* HOT and COOL backends are configurable independently
-* Cooling is **disabled by default** when `DATA_BACKEND_COOL` is absent
-* URIs are canonical, stable, and validated
-* Unit tests validate mapping, validation, and backend selection
+- **AzCopy manages its own logs and job plans.**
+- tools-api does **not** define or depend on any directory layout.
+- Local files are **best-effort debugging aids only**.
+- Correctness must rely **only on `job_id` + `azcopy jobs show`**.
 
 ---
 
-## Notes
+### Configuration
 
-* This task is **resolution only**:
+tools-api sets **one optional directory** for AzCopy:
 
-  * no Azure API calls
-  * no AzCopy
-  * no authentication or SAS logic
-* Keep implementation minimal, explicit, and well-documented.
-* This resolver defines a long-lived contract; correctness and stability matter more than flexibility.
+- `AZCOPY_WORK_DIR` (env var)
+  - Default: `/app/.azcopy` (Scalingo-compatible)
+  - Alternative: `/tmp/.azcopy`
 
+At runtime, tools-api maps this to AzCopy’s native env vars:
+
+- `AZCOPY_LOG_LOCATION = AZCOPY_WORK_DIR`
+- `AZCOPY_JOB_PLAN_LOCATION = AZCOPY_WORK_DIR`
+
+If the directory:
+
+- does not exist → create it
+- is not writable → **do not fail** (AzCopy will fall back to defaults)
+
+---
+
+## State mapping
+
+Map AzCopy job status to our `AzCopyJobState`:
+
+- Running-like statuses → `RUNNING`
+- Completed successfully → `SUCCEEDED`
+- Completed with failures / canceled → `FAILED` or `CANCELED` (depending on AzCopy status)
+- Unknown/unparseable → `UNKNOWN`
+
+**Rule**
+
+- If AzCopy reports any **failed transfers > 0**, runner should set `state=FAILED` even if process exit code is 0, unless AzCopy explicitly indicates success with failures (in which case we still treat as failed for v1).
+
+---
+
+## Summary parsing contract
+
+The runner must output, at minimum:
+
+- `files_transferred` (int)
+- `bytes_transferred` (int)
+
+Preferred additional fields if available from AzCopy:
+
+- failed transfers count
+- skipped transfers count
+- warnings/errors count
+- started/finished timestamps
+
+### Parsing precedence
+
+1. **JSON output** from `azcopy jobs show --output-type=json` (preferred)
+2. Fallback: parse the summary text block in logs (robust parsing, not brittle line offsets)
+
+### Robustness requirements
+
+- Must handle large numbers (use int64)
+- Must handle missing fields gracefully (default 0 or null)
+- Must produce deterministic results for a given job output
+
+---
+
+## Error handling
+
+Define explicit exceptions (or error result types) for:
+
+- `AzCopyNotInstalledError`
+- `AzCopyStartError` (process failed to start / non-zero exit)
+- `AzCopyJobIdNotFoundError`
+- `AzCopyJobNotFoundError` (polling unknown job)
+- `AzCopyParseError` (could not parse status/summary)
+- `AzCopyNotFinishedError` (if `get_summary` called before terminal)
+
+All errors must include:
+
+- job_id (if available)
+- pointer to log directory
+- safe excerpt of stderr/stdout (bounded)
+
+---
+
+## Configuration
+
+Environment variables (tools-api):
+
+- `AZCOPY_PATH` (default: `azcopy`)
+- `AZCOPY_LOG_DIR` (default: app data dir)
+- `AZCOPY_POLL_INTERVAL_SECONDS` (default used by higher-level loops, not necessarily runner)
+- `AZCOPY_DEFAULT_LOG_LEVEL` (optional)
+
+---
+
+## Security considerations
+
+- Never log full URIs if they contain SAS tokens; redact query strings.
+- Ensure files written to log dir have restricted permissions.
+- If running in containers, ensure log dir is on persistent storage if needed for later inspection.
+
+---
+
+## Testing strategy
+
+### Unit tests (no real AzCopy)
+
+- Mock subprocess calls:
+  - start output includes a job id → extracted correctly
+  - missing job id → error
+  - poll JSON parsing → correct state mapping
+  - summary JSON parsing → bytes/files parsed correctly
+  - failure conditions (failed transfers > 0) → `FAILED`
+  - unknown statuses → `UNKNOWN`
+
+### Integration tests (optional, gated)
+
+- Run AzCopy against a local/emulated environment only if available.
+- Otherwise keep as manual QA checklist.
+
+---
+
+## Acceptance criteria mapping
+
+- **Job can be executed and monitored**
+  - `start_copy()` returns `job_id`
+  - `poll()` returns non-terminal and terminal states correctly
+
+- **Summary stats available for verification**
+  - `get_summary()` returns `files_transferred` + `bytes_transferred` reliably for SUCCEEDED jobs
+  - Failure jobs produce a terminal summary or a clear error with logs

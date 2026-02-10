@@ -6,6 +6,8 @@ from enum import Enum
 
 from fastapi import HTTPException, status
 
+from clients.data_client import AbstractDataClient
+
 
 class StorageRole(str, Enum):
     HOT = "HOT"
@@ -76,6 +78,18 @@ def resolve_location(role: StorageRole, project_slug: str) -> DataLocation:
         project_slug=project_slug,
         uri=uri,
     )
+
+
+def resolve_backend_client(role: StorageRole) -> AbstractDataClient:
+    backend = _resolve_backend(role)
+    if backend == StorageBackend.AZURE_FILESHARE:
+        from clients.azure.data import DataAzureClient
+
+        return DataAzureClient()
+    else:
+        from clients.azure.blob_data import BlobDataAzureClient
+
+        return BlobDataAzureClient()
 
 
 def _resolve_backend(role: StorageRole) -> StorageBackend:

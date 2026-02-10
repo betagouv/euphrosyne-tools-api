@@ -19,8 +19,14 @@ from azure.storage.blob import (
     generate_container_sas,
 )
 
+from ..data_client import AbstractDataClient
+from ..data_models import (
+    ProjectFileOrDirectory,
+    RunDataTypeType,
+    SASCredentials,
+    TokenPermissions,
+)
 from .blob import BlobAzureClient
-from .utils import iterate_blocking
 from .data import (
     FolderCreationError,
     ProjectDocumentsNotFound,
@@ -28,8 +34,7 @@ from .data import (
     _generate_base_dir_path,
     _get_projects_path,
 )
-from ..data_client import AbstractDataClient
-from ..data_models import ProjectFileOrDirectory, RunDataTypeType, SASCredentials
+from .utils import iterate_blocking
 
 
 class AzureBlobFile(io.BytesIO):
@@ -340,6 +345,32 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         return (
             f"https://{self.storage_account_name}.blob.core.windows.net/"
             f"{self.container_name}/{blob_name}?{token}"
+        )
+
+    def generate_project_directory_token(
+        self, project_name: str, permission: TokenPermissions
+    ) -> str:
+        """Generate a token with permissions to manage project directory
+        in an Azure Fileshare."""
+        now = datetime.now(timezone.utc)
+        container_permission = ContainerSasPermissions(
+            read=permission.get("read", False),
+            write=permission.get("write", False),
+            delete=permission.get("delete", False),
+            list=permission.get("list", False),
+            delete_previous_version=permission.get("delete_previous_version", False),
+            add=permission.get("add", False),
+            create=permission.get("create", False),
+            update=permission.get("update", False),
+            process=permission.get("process", False),
+        )
+        return generate_container_sas(
+            account_name=self.storage_account_name,
+            container_name=self.container_name,
+            account_key=self._storage_key,
+            permission=container_permission,
+            expiry=now + timedelta(hours=1),
+            start=now,
         )
 
     def init_project_directory(self, project_name: str):
