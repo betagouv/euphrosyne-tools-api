@@ -71,7 +71,8 @@ def test_start_copy_missing_job_id_raises(monkeypatch, tmp_path):
     monkeypatch.setenv("AZCOPY_WORK_DIR", str(tmp_path))
     monkeypatch.setenv("AZCOPY_LOG_DIR", str(tmp_path))
     monkeypatch.setattr(azcopy_runner.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(azcopy_runner, "_JOB_ID_TIMEOUT_SECONDS", 0)
+    monkeypatch.setattr(azcopy_runner, "_JOB_ID_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(azcopy_runner, "_JOB_ID_RETRY_TIMES", 1)
 
     with pytest.raises(azcopy_runner.AzCopyJobIdNotFoundError):
         azcopy_runner.start_copy("source", "dest")

@@ -350,8 +350,8 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
     def generate_project_directory_token(
         self, project_name: str, permission: TokenPermissions
     ) -> str:
-        """Generate a token with permissions to manage project directory
-        in an Azure Fileshare."""
+        """Generate a SAS token with permissions to manage the project directory
+        within the Azure Blob Storage container."""
         now = datetime.now(timezone.utc)
         container_permission = ContainerSasPermissions(
             read=permission.get("read", False),

@@ -34,7 +34,7 @@ class TokenPermissions(TypedDict):
     delete: NotRequired[bool]
     list: NotRequired[bool]
     delete_previous_version: NotRequired[bool]
-    list: NotRequired[bool]
+
     add: NotRequired[bool]
     create: NotRequired[bool]
     update: NotRequired[bool]
