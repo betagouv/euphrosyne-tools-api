@@ -557,7 +557,7 @@ def _extract_job_id(text: str) -> str | None:
 def _extract_failed_transfers(summary_data: dict[str, Any] | str) -> int | None:
     if isinstance(summary_data, dict):
         transfers_failed = summary_data.get("TransfersFailed")
-        if not transfers_failed:
+        if transfers_failed is None:
             raise ValueError("Expected 'TransfersFailed' key in summary data")
         return int(transfers_failed)
     raise TypeError(
