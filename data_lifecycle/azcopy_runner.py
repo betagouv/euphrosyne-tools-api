@@ -542,6 +542,7 @@ def _drain_stream(
         try:
             stream.close()
         except Exception:
+            # Best-effort cleanup: errors on closing the stream are non-fatal and can be safely ignored.
             pass
 
 
