@@ -85,11 +85,11 @@ def resolve_backend_client(role: StorageRole) -> AbstractDataClient:
     if backend == StorageBackend.AZURE_FILESHARE:
         from clients.azure.data import DataAzureClient
 
-        return DataAzureClient()
+        return DataAzureClient(role)
     else:
         from clients.azure.blob_data import BlobDataAzureClient
 
-        return BlobDataAzureClient()
+        return BlobDataAzureClient(role)
 
 
 def _resolve_backend(role: StorageRole) -> StorageBackend:
