@@ -1,5 +1,6 @@
 import io
 from subprocess import CompletedProcess
+from unittest import mock
 
 import pytest
 
@@ -27,15 +28,30 @@ class FakePopen:
         self.returncode = -9
 
 
-def test_start_copy_extracts_job_id(monkeypatch, tmp_path):
-    stdout_text = "INFO: JobID: 123e4567-e89b-12d3-a456-426614174000\n"
+def _azcopy_json_line(
+    message_content: dict[str, object], message_type: str = "Info"
+) -> str:
+    return (
+        azcopy_runner.json.dumps(
+            {
+                "TimeStamp": "2026-02-05T17:53:31Z",
+                "MessageType": message_type,
+                "MessageContent": azcopy_runner.json.dumps(message_content),
+            }
+        )
+        + "\n"
+    )
 
-    def fake_popen(*_args, **_kwargs):
-        return FakePopen(stdout_text)
+
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.Popen")
+def test_start_copy_extracts_job_id(mock_popen: mock.MagicMock, monkeypatch, tmp_path):
+    stdout_text = _azcopy_json_line(
+        {"JobID": "123e4567-e89b-12d3-a456-426614174000", "JobStatus": "InProgress"}
+    )
+    mock_popen.return_value = FakePopen(stdout_text)
 
     monkeypatch.setenv("AZCOPY_WORK_DIR", str(tmp_path))
     monkeypatch.setenv("AZCOPY_LOG_DIR", str(tmp_path))
-    monkeypatch.setattr(azcopy_runner.subprocess, "Popen", fake_popen)
 
     job_ref = azcopy_runner.start_copy("source", "dest")
 
@@ -44,33 +60,36 @@ def test_start_copy_extracts_job_id(monkeypatch, tmp_path):
     assert job_ref.command[0].endswith("azcopy")
 
 
-def test_start_copy_extracts_job_id_from_json_message(monkeypatch, tmp_path):
-    stdout_text = (
-        '{"TimeStamp":"2026-02-05T17:53:31Z","MessageType":"Info",'
-        '"MessageContent":"INFO: Job 123e4567-e89b-12d3-a456-426614174001 has started"}\n'
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.Popen")
+def test_start_copy_extracts_job_id_from_json_message(
+    mock_popen: mock.MagicMock, monkeypatch, tmp_path
+):
+    stdout_text = _azcopy_json_line(
+        {
+            "JobID": "123e4567-e89b-12d3-a456-426614174001",
+            "JobStatus": "InProgress",
+            "LogLevel": "INFO",
+        }
     )
-
-    def fake_popen(*_args, **_kwargs):
-        return FakePopen(stdout_text)
+    mock_popen.return_value = FakePopen(stdout_text)
 
     monkeypatch.setenv("AZCOPY_WORK_DIR", str(tmp_path))
     monkeypatch.setenv("AZCOPY_LOG_DIR", str(tmp_path))
-    monkeypatch.setattr(azcopy_runner.subprocess, "Popen", fake_popen)
 
     job_ref = azcopy_runner.start_copy("source", "dest")
 
     assert job_ref.job_id == "123e4567-e89b-12d3-a456-426614174001"
 
 
-def test_start_copy_missing_job_id_raises(monkeypatch, tmp_path):
-    stdout_text = "INFO: starting\n"
-
-    def fake_popen(*_args, **_kwargs):
-        return FakePopen(stdout_text)
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.Popen")
+def test_start_copy_missing_job_id_raises(
+    mock_popen: mock.MagicMock, monkeypatch, tmp_path
+):
+    stdout_text = _azcopy_json_line({"JobStatus": "InProgress"})
+    mock_popen.return_value = FakePopen(stdout_text)
 
     monkeypatch.setenv("AZCOPY_WORK_DIR", str(tmp_path))
     monkeypatch.setenv("AZCOPY_LOG_DIR", str(tmp_path))
-    monkeypatch.setattr(azcopy_runner.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(azcopy_runner, "_JOB_ID_INTERVAL_SECONDS", 0)
     monkeypatch.setattr(azcopy_runner, "_JOB_ID_RETRY_TIMES", 1)
 
@@ -78,18 +97,15 @@ def test_start_copy_missing_job_id_raises(monkeypatch, tmp_path):
         azcopy_runner.start_copy("source", "dest")
 
 
-def test_poll_parses_json_state(monkeypatch):
-    payload = {
-        "JobID": "job-1",
-        "JobStatus": "InProgress",
-    }
-
-    def fake_run(*_args, **_kwargs):
-        return CompletedProcess(
-            _args, 0, stdout=azcopy_runner.json.dumps(payload), stderr=""
-        )
-
-    monkeypatch.setattr(azcopy_runner.subprocess, "run", fake_run)
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
+def test_poll_parses_json_state(mock_run: mock.MagicMock):
+    payload = {"JobID": "job-1", "JobStatus": "InProgress", "TransfersFailed": 0}
+    mock_run.return_value = CompletedProcess(
+        args=["azcopy", "jobs", "show", "job-1"],
+        returncode=0,
+        stdout=_azcopy_json_line(payload),
+        stderr="",
+    )
 
     progress = azcopy_runner.poll("job-1")
 
@@ -97,61 +113,52 @@ def test_poll_parses_json_state(monkeypatch):
     assert progress.raw_status == "InProgress"
 
 
-def test_poll_failed_transfers_marks_failed(monkeypatch):
-    payload = {
-        "JobID": "job-2",
-        "JobStatus": "Completed",
-        "Summary": {"TotalFilesFailed": 2},
-    }
-
-    def fake_run(*_args, **_kwargs):
-        return CompletedProcess(
-            _args, 0, stdout=azcopy_runner.json.dumps(payload), stderr=""
-        )
-
-    monkeypatch.setattr(azcopy_runner.subprocess, "run", fake_run)
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
+def test_poll_failed_transfers_marks_failed(mock_run: mock.MagicMock):
+    payload = {"JobID": "job-2", "JobStatus": "Completed", "TransfersFailed": 2}
+    mock_run.return_value = CompletedProcess(
+        args=["azcopy", "jobs", "show", "job-2"],
+        returncode=0,
+        stdout=_azcopy_json_line(payload),
+        stderr="",
+    )
 
     progress = azcopy_runner.poll("job-2")
 
     assert progress.state == "FAILED"
 
 
-def test_poll_unknown_status(monkeypatch):
-    payload = {
-        "JobID": "job-3",
-        "JobStatus": "Mystery",
-    }
-
-    def fake_run(*_args, **_kwargs):
-        return CompletedProcess(
-            _args, 0, stdout=azcopy_runner.json.dumps(payload), stderr=""
-        )
-
-    monkeypatch.setattr(azcopy_runner.subprocess, "run", fake_run)
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
+def test_poll_unknown_status(mock_run: mock.MagicMock):
+    payload = {"JobID": "job-3", "JobStatus": "Mystery", "TransfersFailed": 0}
+    mock_run.return_value = CompletedProcess(
+        args=["azcopy", "jobs", "show", "job-3"],
+        returncode=0,
+        stdout=_azcopy_json_line(payload),
+        stderr="",
+    )
 
     progress = azcopy_runner.poll("job-3")
 
     assert progress.state == "UNKNOWN"
 
 
-def test_get_summary_parses_bytes_and_files(monkeypatch):
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
+def test_get_summary_parses_bytes_and_files(mock_run: mock.MagicMock):
     payload = {
         "JobID": "job-4",
         "JobStatus": "Completed",
-        "Summary": {
-            "TotalFilesTransferred": 10,
-            "TotalBytesTransferred": 2048,
-            "TotalFilesFailed": 0,
-            "TotalFilesSkipped": 1,
-        },
+        "FileTransfers": 10,
+        "TotalBytesTransferred": 2048,
+        "TransfersFailed": 0,
+        "TransfersSkipped": 1,
     }
-
-    def fake_run(*_args, **_kwargs):
-        return CompletedProcess(
-            _args, 0, stdout=azcopy_runner.json.dumps(payload), stderr=""
-        )
-
-    monkeypatch.setattr(azcopy_runner.subprocess, "run", fake_run)
+    mock_run.return_value = CompletedProcess(
+        args=["azcopy", "jobs", "show", "job-4"],
+        returncode=0,
+        stdout=_azcopy_json_line(payload),
+        stderr="",
+    )
 
     summary = azcopy_runner.get_summary("job-4")
 
@@ -161,18 +168,22 @@ def test_get_summary_parses_bytes_and_files(monkeypatch):
     assert summary.skipped_transfers == 1
 
 
-def test_get_summary_running_returns(monkeypatch):
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
+def test_get_summary_running_returns(mock_run: mock.MagicMock):
     payload = {
         "JobID": "job-5",
         "JobStatus": "InProgress",
+        "FileTransfers": 0,
+        "TotalBytesTransferred": 0,
+        "TransfersFailed": 0,
+        "TransfersSkipped": 0,
     }
-
-    def fake_run(*_args, **_kwargs):
-        return CompletedProcess(
-            _args, 0, stdout=azcopy_runner.json.dumps(payload), stderr=""
-        )
-
-    monkeypatch.setattr(azcopy_runner.subprocess, "run", fake_run)
+    mock_run.return_value = CompletedProcess(
+        args=["azcopy", "jobs", "show", "job-5"],
+        returncode=0,
+        stdout=_azcopy_json_line(payload),
+        stderr="",
+    )
 
     summary = azcopy_runner.get_summary("job-5")
 
