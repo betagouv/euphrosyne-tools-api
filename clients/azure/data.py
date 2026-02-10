@@ -39,6 +39,7 @@ from ..data_models import (
     ProjectFileOrDirectory,
     RunDataTypeType,
     SASCredentials,
+    TokenPermissions,
 )
 from ._storage import BaseStorageAzureClient
 
@@ -277,7 +278,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         file storage.
         """
         dir_path = _generate_base_dir_path(project_name, run_name, data_type)
-        permission = FilePermissions(read=False, create=True, write=True, delete=False)
+        permission = AccountSasPermissions(
+            add=True, write=True, create=True, update=True
+        )
         token = self._generate_share_sas_token(permission)
         return {
             "url": f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{dir_path}/",
@@ -317,15 +320,31 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         permission = FilePermissions(read=True, create=False, write=False, delete=True)
         return self._generate_sas_url(dir_path, file_name, permission)
 
-    def _generate_share_sas_token(self, permission: FilePermissions):
+    def generate_project_directory_token(
+        self, project_name: str, permission: TokenPermissions
+    ) -> str:
+        """Generate a token with permissions to manage project directory
+        in an Azure Fileshare."""
+        account_permission = AccountSasPermissions(
+            read=permission.get("read", False),
+            write=permission.get("write", False),
+            delete=permission.get("delete", False),
+            list=permission.get("list", False),
+            delete_previous_version=permission.get("delete_previous_version", False),
+            add=permission.get("add", False),
+            create=permission.get("create", False),
+            update=permission.get("update", False),
+            process=permission.get("process", False),
+        )
+        return self._generate_share_sas_token(account_permission)
+
+    def _generate_share_sas_token(self, permission: AccountSasPermissions):
         """Generate a Shared Access Signature (SAS) URL for the Azure Fileshare."""
         return generate_account_sas(
             account_name=self.storage_account_name,
             account_key=self._storage_key,
             resource_types=ResourceTypes(container=True, object=True),
-            permission=AccountSasPermissions(
-                add=True, write=True, create=True, update=True
-            ),
+            permission=permission,
             expiry=datetime.now(timezone.utc) + timedelta(hours=1),
         )
 
