@@ -4,7 +4,12 @@ import abc
 import io
 from typing import AsyncIterator
 
-from .data_models import ProjectFileOrDirectory, RunDataTypeType, SASCredentials
+from .data_models import (
+    ProjectFileOrDirectory,
+    RunDataTypeType,
+    SASCredentials,
+    TokenPermissions,
+)
 
 
 class AbstractDataClient(abc.ABC):
@@ -78,6 +83,12 @@ class AbstractDataClient(abc.ABC):
     @abc.abstractmethod
     def generate_project_documents_sas_url(self, dir_path: str, file_name: str) -> str:
         """Generate a signed URL to download/delete project documents."""
+
+    @abc.abstractmethod
+    def generate_project_directory_token(
+        self, project_name: str, permission: TokenPermissions
+    ) -> str:
+        """Generate credentials used to manage project directory."""
 
     @abc.abstractmethod
     def init_project_directory(self, project_name: str):
