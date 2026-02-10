@@ -19,6 +19,7 @@ from clients.azure.data import (
     validate_run_data_file_path,
 )
 from clients.data_models import ProjectFile
+from data_lifecycle.storage_resolver import StorageRole
 
 from ..mocks.azure import factories as azure_factories
 
@@ -36,6 +37,43 @@ def client(monkeypatch: MonkeyPatch):
 @pytest.fixture(autouse=True)
 def setenv(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "fileshare")
+
+
+def _mock_base_storage_init(self):
+    self.storage_account_name = "storageaccount"
+    self._storage_key = "storage-key"
+
+
+def test_init_uses_hot_fileshare(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "hot-fileshare")
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE_COOL", "cool-fileshare")
+    with patch(
+        "clients.azure.data.BaseStorageAzureClient.__init__", autospec=True
+    ) as base_init_mock, patch("clients.azure.data.FileSharedAccessSignature"):
+        base_init_mock.side_effect = _mock_base_storage_init
+        client = DataAzureClient()
+    assert client.share_name == "hot-fileshare"
+
+
+def test_init_uses_cool_fileshare(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "hot-fileshare")
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE_COOL", "cool-fileshare")
+    with patch(
+        "clients.azure.data.BaseStorageAzureClient.__init__", autospec=True
+    ) as base_init_mock, patch("clients.azure.data.FileSharedAccessSignature"):
+        base_init_mock.side_effect = _mock_base_storage_init
+        client = DataAzureClient(storage_role=StorageRole.COOL)
+    assert client.share_name == "cool-fileshare"
+
+
+def test_init_raises_for_unsupported_storage_role(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "hot-fileshare")
+    with patch(
+        "clients.azure.data.BaseStorageAzureClient.__init__", autospec=True
+    ) as base_init_mock, patch("clients.azure.data.FileSharedAccessSignature"):
+        base_init_mock.side_effect = _mock_base_storage_init
+        with pytest.raises(ValueError, match="Unsupported storage role"):
+            DataAzureClient(storage_role="WARM")  # type: ignore[arg-type]
 
 
 def test_get_project_documents_with_prefix(

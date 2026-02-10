@@ -19,6 +19,8 @@ from azure.storage.blob import (
     generate_container_sas,
 )
 
+from data_lifecycle.storage_resolver import StorageRole
+
 from ..data_client import AbstractDataClient
 from ..data_models import (
     ProjectFileOrDirectory,
@@ -103,8 +105,14 @@ class AzureBlobFile(io.BytesIO):
 class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
     """Client to read / write data on Azure Blob Storage."""
 
-    def __init__(self):
-        container_name = os.environ.get("AZURE_STORAGE_DATA_CONTAINER")
+    def __init__(self, storage_role: StorageRole = StorageRole.HOT):
+        if storage_role == StorageRole.HOT:
+            container_name = os.environ.get("AZURE_STORAGE_DATA_CONTAINER")
+        elif storage_role == StorageRole.COOL:
+            container_name = os.environ.get("AZURE_STORAGE_DATA_CONTAINER_COOL")
+        else:
+            raise ValueError(f"Unsupported storage role: {storage_role}")
+
         if not container_name:
             raise ValueError(
                 "AZURE_STORAGE_DATA_CONTAINER environment variable is not set"
