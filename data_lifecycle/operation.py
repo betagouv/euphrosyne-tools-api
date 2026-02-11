@@ -1,11 +1,25 @@
 import logging
 import threading
+import time
+from typing import Any
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import BackgroundTasks
 
+from clients.data_models import TokenPermissions
+from data_lifecycle import azcopy_runner
 from data_lifecycle.hooks import post_lifecycle_operation_callback
-from data_lifecycle.models import LifecycleOperation, LifecycleOperationStatus
+from data_lifecycle.models import (
+    LifecycleOperation,
+    LifecycleOperationStatus,
+    LifecycleOperationType,
+)
+from data_lifecycle.storage_resolver import (
+    StorageRole,
+    resolve_backend_client,
+    resolve_location,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +29,35 @@ logger = logging.getLogger(__name__)
 # Per-process only: no persistence, no cross-worker coordination.
 _LIFECYCLE_OPERATION_GUARD: set[tuple[str, str, str]] = set()
 _LIFECYCLE_OPERATION_GUARD_LOCK = threading.Lock()
+_LIFECYCLE_OPERATION_JOB_ID: dict[UUID, str] = {}
+_LIFECYCLE_OPERATION_JOB_ID_LOCK = threading.Lock()
+
+_TERMINAL_JOB_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN"}
+_AZCOPY_POLL_INTERVAL_SECONDS = 5.0
+_AZCOPY_POLL_JOB_NOT_FOUND_MAX_RETRIES = 3
+
+_COOL_SOURCE_TOKEN_PERMISSIONS: TokenPermissions = {
+    "list": True,
+    "read": True,
+    "add": False,
+    "create": False,
+    "write": False,
+    "delete": False,
+}
+
+_COOL_DEST_TOKEN_PERMISSIONS: TokenPermissions = {
+    "read": True,
+    "add": True,
+    "create": True,
+    "write": True,
+    "delete": True,
+}
+
+
+class LifecycleOperationExecutionError(Exception):
+    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.details = details or {}
 
 
 def schedule_lifecycle_operation(
@@ -63,23 +106,147 @@ def _reset_lifecycle_operation_guard() -> None:
     """Clear the in-memory guard; intended for tests to keep state isolated."""
     with _LIFECYCLE_OPERATION_GUARD_LOCK:
         _LIFECYCLE_OPERATION_GUARD.clear()
-
-
-def _unregister_lifecycle_operation(operation: LifecycleOperation) -> None:
-    """Remove an operation from the in-memory guard after completion."""
-    key = operation.guard_key()
-    with _LIFECYCLE_OPERATION_GUARD_LOCK:
-        _LIFECYCLE_OPERATION_GUARD.discard(key)
+    with _LIFECYCLE_OPERATION_JOB_ID_LOCK:
+        _LIFECYCLE_OPERATION_JOB_ID.clear()
 
 
 def _perform_lifecycle_operation(
     *,
     operation: LifecycleOperation,
 ) -> tuple[int | None, int | None]:
-    """Execute the lifecycle operation (placeholder for future data movement)."""
-    # TODO: Return real bytes/files counts once data movement is implemented.
-    _ = operation
+    """Execute lifecycle data movement and return bytes/files copied."""
+    if operation.type == LifecycleOperationType.COOL:
+        source_uri, destination_uri = _build_signed_cool_copy_urls(
+            project_slug=operation.project_slug
+        )
+        return _perform_azcopy_lifecycle_operation(
+            operation=operation,
+            source_uri=source_uri,
+            destination_uri=destination_uri,
+        )
     return None, None
+
+
+def _build_signed_cool_copy_urls(*, project_slug: str) -> tuple[str, str]:
+    hot_location = resolve_location(StorageRole.HOT, project_slug)
+    cool_location = resolve_location(StorageRole.COOL, project_slug)
+
+    hot_client = resolve_backend_client(StorageRole.HOT)
+    cool_client = resolve_backend_client(StorageRole.COOL)
+
+    source_uri = (
+        f"{hot_location.uri}/*?"
+        f"{hot_client.generate_project_directory_token(project_name=project_slug, permission=_COOL_SOURCE_TOKEN_PERMISSIONS)}"
+    )
+    destination_uri = (
+        f"{cool_location.uri}?"
+        f"{cool_client.generate_project_directory_token(project_name=project_slug, permission=_COOL_DEST_TOKEN_PERMISSIONS)}"
+    )
+    return source_uri, destination_uri
+
+
+def _perform_azcopy_lifecycle_operation(
+    *,
+    operation: LifecycleOperation,
+    source_uri: str,
+    destination_uri: str,
+) -> tuple[int, int]:
+    job = azcopy_runner.start_copy(source_uri, destination_uri)
+    _set_lifecycle_operation_job_id(
+        operation_id=operation.operation_id,
+        job_id=job.job_id,
+    )
+    logger.info(
+        "Lifecycle operation mapped to AzCopy job: operation_id=%s project_slug=%s type=%s azcopy_job_id=%s",
+        operation.operation_id,
+        operation.project_slug,
+        operation.type.value,
+        job.job_id,
+    )
+
+    summary = _await_terminal_azcopy_summary(job_id=job.job_id)
+    if summary.state != "SUCCEEDED":
+        raise LifecycleOperationExecutionError(
+            "AzCopy COOL job did not succeed",
+            details={
+                "job_id": job.job_id,
+                "azcopy_state": summary.state,
+                "failed_transfers": summary.failed_transfers,
+                "skipped_transfers": summary.skipped_transfers,
+                "stdout_log_path": summary.stdout_log_path,
+                "stderr_log_path": summary.stderr_log_path,
+            },
+        )
+
+    return summary.bytes_transferred, summary.files_transferred
+
+
+def _await_terminal_azcopy_summary(
+    *,
+    job_id: str,
+    poll_interval_seconds: float = _AZCOPY_POLL_INTERVAL_SECONDS,
+    poll_job_not_found_max_retries: int = _AZCOPY_POLL_JOB_NOT_FOUND_MAX_RETRIES,
+) -> azcopy_runner.AzCopySummary:
+    job_not_found_retries = 0
+    while True:
+        try:
+            progress = azcopy_runner.poll(job_id)
+        except azcopy_runner.AzCopyJobNotFoundError:
+            if job_not_found_retries >= poll_job_not_found_max_retries:
+                raise
+            job_not_found_retries += 1
+            logger.warning(
+                "AzCopy job not found while polling, retrying: job_id=%s retry=%s/%s",
+                job_id,
+                job_not_found_retries,
+                poll_job_not_found_max_retries,
+            )
+            time.sleep(poll_interval_seconds)
+            continue
+        if progress.state in _TERMINAL_JOB_STATES:
+            summary = azcopy_runner.get_summary(job_id)
+            if summary.state == "RUNNING":
+                time.sleep(poll_interval_seconds)
+                continue
+            return summary
+        time.sleep(poll_interval_seconds)
+
+
+def _set_lifecycle_operation_job_id(*, operation_id: UUID, job_id: str) -> None:
+    with _LIFECYCLE_OPERATION_JOB_ID_LOCK:
+        _LIFECYCLE_OPERATION_JOB_ID[operation_id] = job_id
+
+
+def _get_lifecycle_operation_job_id(*, operation_id: UUID) -> str | None:
+    with _LIFECYCLE_OPERATION_JOB_ID_LOCK:
+        return _LIFECYCLE_OPERATION_JOB_ID.get(operation_id)
+
+
+def _build_error_details(
+    *,
+    operation: LifecycleOperation,
+    exc: Exception,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {"type": exc.__class__.__name__}
+
+    job_id = _get_lifecycle_operation_job_id(operation_id=operation.operation_id)
+    if job_id is not None:
+        details["job_id"] = job_id
+
+    if isinstance(exc, LifecycleOperationExecutionError):
+        details.update(exc.details)
+
+    if isinstance(exc, azcopy_runner.AzCopyRunnerError):
+        if exc.job_id:
+            details["job_id"] = exc.job_id
+        if exc.log_dir:
+            details["log_dir"] = exc.log_dir
+        if exc.stdout_path:
+            details["stdout_path"] = exc.stdout_path
+        if exc.stderr_path:
+            details["stderr_path"] = exc.stderr_path
+
+    return details
 
 
 def _execute_lifecycle_operation(
@@ -101,7 +268,10 @@ def _execute_lifecycle_operation(
     except Exception as exc:  # pylint: disable=broad-except
         operation.status = LifecycleOperationStatus.FAILED
         operation.error_message = str(exc)
-        operation.error_details = {"type": exc.__class__.__name__}
+        operation.error_details = _build_error_details(
+            operation=operation,
+            exc=exc,
+        )
         logger.error(
             "Lifecycle operation failed: operation_id=%s project_slug=%s type=%s error=%s",
             operation.operation_id,
@@ -132,4 +302,3 @@ def _execute_lifecycle_operation(
                 else LifecycleOperationStatus.SUCCEEDED.value
             ),
         )
-        _unregister_lifecycle_operation(operation)
