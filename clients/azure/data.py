@@ -150,12 +150,21 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
             account_name=self.storage_account_name, account_key=self._storage_key
         )
 
+        share_name = None
+
         if storage_role == StorageRole.HOT:
-            self.share_name = os.environ.get("AZURE_STORAGE_FILESHARE")
+            share_name = os.environ.get("AZURE_STORAGE_FILESHARE")
         elif storage_role == StorageRole.COOL:
-            self.share_name = os.environ.get("AZURE_STORAGE_FILESHARE_COOL")
+            share_name = os.environ.get("AZURE_STORAGE_FILESHARE_COOL")
         else:
             raise ValueError(f"Unsupported storage role: {storage_role}")
+
+        if not share_name:
+            raise ValueError(
+                f"Share name for storage role {storage_role} is not set in environment variables."
+            )
+
+        self.share_name = share_name
 
     def list_project_dirs(self) -> list[str]:
         """Returns all directory names in project folder"""
