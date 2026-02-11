@@ -188,3 +188,29 @@ def test_get_summary_running_returns(mock_run: mock.MagicMock):
     summary = azcopy_runner.get_summary("job-5")
 
     assert summary.state == "RUNNING"
+
+
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
+def test_poll_job_not_found_error_detection(mock_run: mock.MagicMock):
+    mock_run.return_value = CompletedProcess(
+        args=["azcopy", "jobs", "show", "job-6"],
+        returncode=1,
+        stdout="",
+        stderr="No job with JobId abc-def",
+    )
+
+    with pytest.raises(azcopy_runner.AzCopyJobNotFoundError):
+        azcopy_runner.poll("job-6")
+
+
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
+def test_poll_generic_not_found_is_parse_error(mock_run: mock.MagicMock):
+    mock_run.return_value = CompletedProcess(
+        args=["azcopy", "jobs", "show", "job-7"],
+        returncode=1,
+        stdout="",
+        stderr="Resource not found",
+    )
+
+    with pytest.raises(azcopy_runner.AzCopyParseError):
+        azcopy_runner.poll("job-7")

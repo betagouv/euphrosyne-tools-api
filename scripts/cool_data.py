@@ -2,12 +2,19 @@ import argparse
 import logging
 import time
 
-from data_lifecycle.azcopy_runner import get_summary, poll, start_copy
+from data_lifecycle.azcopy_runner import (
+    AzCopyJobNotFoundError,
+    get_summary,
+    poll,
+    start_copy,
+)
 from data_lifecycle.storage_resolver import (
     StorageRole,
     resolve_backend_client,
     resolve_location,
 )
+
+POLL_MAX_RETRIES = 3
 
 logger = logging.getLogger("scripts.cool_data")
 logging.basicConfig(level=logging.INFO)
@@ -66,8 +73,19 @@ def main():
 
     time.sleep(5)
 
+    job_id_not_found_retries = 0
+
     while True:
-        status = poll(job.job_id)
+        try:
+            status = poll(job.job_id)
+        except AzCopyJobNotFoundError as e:
+            if job_id_not_found_retries >= POLL_MAX_RETRIES:
+                raise e
+            logger.warning("Job not found during polling. Retrying...")
+            job_id_not_found_retries += 1
+            time.sleep(5)
+            continue
+
         logger.info("Job status: %s", status.state)
         if status.state in {"SUCCEEDED", "FAILED", "CANCELED"}:
             break
