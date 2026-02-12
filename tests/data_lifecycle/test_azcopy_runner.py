@@ -122,7 +122,7 @@ def test_poll_parses_json_state(mock_run: mock.MagicMock):
     assert summary.state == "RUNNING"
     assert summary.files_total == 10
     assert summary.bytes_total == 100
-    assert summary.percent_complete == 10.0
+    assert summary.progress_percent == 10.0
 
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
@@ -203,7 +203,7 @@ def test_get_summary_parses_bytes_and_files(mock_run: mock.MagicMock):
     assert summary.skipped_transfers == 1
     assert summary.files_total == 10
     assert summary.bytes_total == 2048
-    assert summary.percent_complete == 100.0
+    assert summary.progress_percent == 100.0
 
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
@@ -260,7 +260,7 @@ def test_poll_parses_progress_and_totals(mock_run: mock.MagicMock):
     assert summary.bytes_transferred == 250
     assert summary.failed_transfers == 0
     assert summary.skipped_transfers == 1
-    assert summary.percent_complete == 25.0
+    assert summary.progress_percent == 25.0
 
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
