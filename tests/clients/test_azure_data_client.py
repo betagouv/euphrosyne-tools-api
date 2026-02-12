@@ -19,7 +19,7 @@ from clients.azure.data import (
     validate_run_data_file_path,
 )
 from clients.data_models import ProjectFile
-from data_lifecycle.storage_resolver import StorageRole
+from data_lifecycle.storage_types import StorageRole
 
 from ..mocks.azure import factories as azure_factories
 

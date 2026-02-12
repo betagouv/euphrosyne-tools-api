@@ -4,7 +4,7 @@ import pytest
 from pytest import MonkeyPatch
 
 from clients.azure.blob_data import BlobDataAzureClient
-from data_lifecycle.storage_resolver import StorageRole
+from data_lifecycle.storage_types import StorageRole
 
 
 def test_init_uses_hot_container(monkeypatch: MonkeyPatch):

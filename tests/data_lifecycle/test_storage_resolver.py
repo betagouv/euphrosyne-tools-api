@@ -4,11 +4,10 @@ from fastapi import HTTPException
 from data_lifecycle.storage_resolver import (
     CoolingDisabledError,
     DataLocation,
-    StorageBackend,
-    StorageRole,
     resolve_cool_location,
     resolve_hot_location,
 )
+from data_lifecycle.storage_types import StorageRole, StorageBackend
 
 
 @pytest.fixture(autouse=True)
