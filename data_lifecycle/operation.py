@@ -136,7 +136,7 @@ def get_lifecycle_operation_status(
 
     status = _map_azcopy_status(azcopy_status.state)
     error_details = None
-    if azcopy_status.state == "FAILED":
+    if status == LifecycleOperationProgressStatus.FAILED:
         error_details = {
             "message": _build_failed_message(
                 azcopy_state=azcopy_status.state,

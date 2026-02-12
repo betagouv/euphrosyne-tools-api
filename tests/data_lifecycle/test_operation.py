@@ -716,6 +716,46 @@ def test_status_endpoint_returns_failed_with_error_details(
     assert json["error_details"]["raw"]["azcopy_state"] == "FAILED"
 
 
+def test_status_endpoint_returns_error_details_for_canceled_job(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    operation_id = uuid4()
+    operation = lifecycle_operation.LifecycleOperation(
+        project_slug="project-4",
+        operation_id=operation_id,
+        type=LifecycleOperationType.COOL,
+    )
+    assert lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    lifecycle_operation._set_lifecycle_operation_job_id(
+        operation_id=operation_id, job_id="job-canceled"
+    )
+    monkeypatch.setattr(
+        lifecycle_operation.azcopy_runner,
+        "poll",
+        lambda _job_id: AzCopySummary(
+            state="CANCELED",
+            files_transferred=4,
+            bytes_transferred=400,
+            failed_transfers=0,
+            skipped_transfers=0,
+            files_total=10,
+            bytes_total=1000,
+            percent_complete=40.0,
+            stdout_log_path="/tmp/stdout.log",
+            stderr_log_path="/tmp/stderr.log",
+        ),
+    )
+
+    response = client.get(f"/data/projects/project-4/cool/{operation_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "FAILED"
+    assert body["error_details"]["message"] == "AzCopy job was canceled"
+    assert body["error_details"]["raw"]["job_id"] == "job-canceled"
+    assert body["error_details"]["raw"]["azcopy_state"] == "CANCELED"
+
+
 def test_status_endpoint_returns_404_when_operation_unknown_for_project_or_type(
     app: FastAPI, client: TestClient
 ):
