@@ -53,5 +53,5 @@ class LifecycleOperationStatusView:
     files_total: int
     bytes_copied: int
     files_copied: int
-    percent_complete: float
+    progress_percent: float
     error_details: dict[str, Any] | None = None

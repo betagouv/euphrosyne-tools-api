@@ -96,7 +96,7 @@ def get_lifecycle_operation_status(
             files_total=0,
             bytes_copied=0,
             files_copied=0,
-            percent_complete=0.0,
+            progress_percent=0.0,
             error_details=None,
         )
 
@@ -120,7 +120,7 @@ def get_lifecycle_operation_status(
             files_total=0,
             bytes_copied=0,
             files_copied=0,
-            percent_complete=0.0,
+            progress_percent=0.0,
             error_details={
                 "message": "Failed to query AzCopy job status",
                 "raw": {
@@ -161,7 +161,7 @@ def get_lifecycle_operation_status(
         files_total=azcopy_status.files_total,
         bytes_copied=azcopy_status.bytes_transferred,
         files_copied=azcopy_status.files_transferred,
-        percent_complete=azcopy_status.percent_complete,
+        progress_percent=azcopy_status.progress_percent,
         error_details=error_details,
     )
 

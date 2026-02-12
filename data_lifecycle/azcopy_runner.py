@@ -88,7 +88,7 @@ class AzCopySummary:
     skipped_transfers: int
     files_total: int
     bytes_total: int
-    percent_complete: float
+    progress_percent: float
     stdout_log_path: str
     stderr_log_path: str
 
@@ -331,7 +331,7 @@ def get_summary(job_id: str) -> AzCopySummary:
         skipped_transfers=parsed["skipped_transfers"],
         files_total=parsed["files_total"],
         bytes_total=parsed["bytes_total"],
-        percent_complete=parsed["percent_complete"],
+        progress_percent=parsed["progress_percent"],
         stdout_log_path=stdout_log_path,
         stderr_log_path=stderr_log_path,
     )
@@ -586,7 +586,7 @@ def _parse_summary_data(summary_data: dict[str, Any] | str) -> dict[str, Any]:
             "skipped_transfers": int(summary_data["TransfersSkipped"]),
             "files_total": int(summary_data["TotalTransfers"]),
             "bytes_total": int(summary_data["TotalBytesExpected"]),
-            "percent_complete": float(summary_data["PercentComplete"]),
+            "progress_percent": float(summary_data["PercentComplete"]),
         }
     raise TypeError("Expected summary data to be a dict for parsing summary details")
 

@@ -166,7 +166,7 @@ def test_execute_cool_operation_sets_job_id_and_sends_success_callback(
             skipped_transfers=0,
             files_total=7,
             bytes_total=1024,
-            percent_complete=100.0,
+            progress_percent=100.0,
             stdout_log_path="/tmp/.azcopy/azcopy-job-1-stdout.log",
             stderr_log_path="/tmp/.azcopy/azcopy-job-1-stderr.log",
         ),
@@ -182,7 +182,7 @@ def test_execute_cool_operation_sets_job_id_and_sends_success_callback(
             skipped_transfers=0,
             files_total=7,
             bytes_total=1024,
-            percent_complete=100.0,
+            progress_percent=100.0,
             stdout_log_path="/tmp/.azcopy/azcopy-job-1-stdout.log",
             stderr_log_path="/tmp/.azcopy/azcopy-job-1-stderr.log",
         ),
@@ -299,7 +299,7 @@ def test_execute_cool_operation_failure_after_job_id_contains_diagnostics(
             skipped_transfers=0,
             files_total=3,
             bytes_total=30,
-            percent_complete=33.3,
+            progress_percent=33.3,
             stdout_log_path="/tmp/.azcopy/azcopy-job-2-stdout.log",
             stderr_log_path="/tmp/.azcopy/azcopy-job-2-stderr.log",
         ),
@@ -315,7 +315,7 @@ def test_execute_cool_operation_failure_after_job_id_contains_diagnostics(
             skipped_transfers=0,
             files_total=3,
             bytes_total=30,
-            percent_complete=33.3,
+            progress_percent=33.3,
             stdout_log_path="/tmp/.azcopy/azcopy-job-2-stdout.log",
             stderr_log_path="/tmp/.azcopy/azcopy-job-2-stderr.log",
         ),
@@ -511,7 +511,7 @@ def test_await_terminal_azcopy_summary_retries_when_job_not_found(
         skipped_transfers=0,
         files_total=3,
         bytes_total=11,
-        percent_complete=100.0,
+        progress_percent=100.0,
         stdout_log_path="/tmp/stdout.log",
         stderr_log_path="/tmp/stderr.log",
     )
@@ -533,7 +533,7 @@ def test_await_terminal_azcopy_summary_retries_when_job_not_found(
                 skipped_transfers=0,
                 files_total=3,
                 bytes_total=11,
-                percent_complete=100.0,
+                progress_percent=100.0,
                 stdout_log_path="/tmp/stdout.log",
                 stderr_log_path="/tmp/stderr.log",
             ),
@@ -621,7 +621,7 @@ def test_cool_status_endpoint_returns_pending_when_job_not_assigned(
         "files_total": 0,
         "bytes_copied": 0,
         "files_copied": 0,
-        "percent_complete": 0.0,
+        "progress_percent": 0.0,
     }
 
 
@@ -651,7 +651,7 @@ def test_restore_status_endpoint_returns_running_with_progress_fallback(
             skipped_transfers=0,
             files_total=20,
             bytes_total=200,
-            percent_complete=50.0,
+            progress_percent=50.0,
             stdout_log_path="/tmp/stdout.log",
             stderr_log_path="/tmp/stderr.log",
         ),
@@ -669,7 +669,7 @@ def test_restore_status_endpoint_returns_running_with_progress_fallback(
         "files_total": 20,
         "bytes_copied": 100,
         "files_copied": 5,
-        "percent_complete": 50.0,
+        "progress_percent": 50.0,
     }
 
 
@@ -699,7 +699,7 @@ def test_status_endpoint_returns_failed_with_error_details(
             skipped_transfers=0,
             files_total=10,
             bytes_total=1000,
-            percent_complete=87.5,
+            progress_percent=87.5,
             stdout_log_path="/tmp/stdout.log",
             stderr_log_path="/tmp/stderr.log",
         ),
@@ -710,7 +710,7 @@ def test_status_endpoint_returns_failed_with_error_details(
     assert response.status_code == 200
     json = response.json()
     assert json["status"] == "FAILED"
-    assert json["percent_complete"] == 87.5
+    assert json["progress_percent"] == 87.5
     assert json["error_details"]["message"] == "AzCopy reported 2 failed transfer(s)"
     assert json["error_details"]["raw"]["job_id"] == "job-failed"
     assert json["error_details"]["raw"]["azcopy_state"] == "FAILED"
@@ -725,7 +725,9 @@ def test_status_endpoint_returns_error_details_for_canceled_job(
         operation_id=operation_id,
         type=LifecycleOperationType.COOL,
     )
-    assert lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    assert (
+        lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    )
     lifecycle_operation._set_lifecycle_operation_job_id(
         operation_id=operation_id, job_id="job-canceled"
     )
@@ -740,7 +742,7 @@ def test_status_endpoint_returns_error_details_for_canceled_job(
             skipped_transfers=0,
             files_total=10,
             bytes_total=1000,
-            percent_complete=40.0,
+            progress_percent=40.0,
             stdout_log_path="/tmp/stdout.log",
             stderr_log_path="/tmp/stderr.log",
         ),
