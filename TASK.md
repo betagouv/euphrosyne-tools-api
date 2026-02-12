@@ -1,133 +1,85 @@
-## [TASK] Implement `POST /data/projects/{project_slug}/cool` (enqueue fast) + guard + job-id map + callback
+# Implement the **tools-api GET status endpoints** for COOL and RESTORE operations
 
-### Context
+## Context
 
-- AzCopy COOL copy logic is already implemented
-- Endpoint must return quickly (202) **before** AzCopy starts / before job id exists
-- tools-api uses in-memory structures to ensure best-effort idempotency
-- Completion is reported via `post_lifecycle_operation_callback(...)` (already implemented)
-- Endpoint must be protected using the same auth mechanism as other backend-only views
+PRD “Hot → Cool Project Data Management (Immutable Cool)” defines the **tools-api** surface for lifecycle operations, including **status endpoints** per project + operation_id:
 
----
+- `GET /data/projects/{project_slug}/cool/{operation_id}`
+- `GET /data/projects/{project_slug}/restore/{operation_id}`
 
-## Goal
+Admin visibility (FR4) requires surfacing **operation status + bytes/files moved + error details**. The tools-api is the natural place to expose **live progress** (AzCopy job status) because it owns the job execution.
 
-Accept COOL operations idempotently and run the existing AzCopy job asynchronously, while:
-
-- preventing duplicate runs per `operation_id`
-- recording `operation_id → azcopy_job_id` once available
-- reporting terminal result via existing callback hook
+So the “/data/operations/{operation_id}” endpoint we discussed earlier does **not** match the PRD API specs.
 
 ---
 
-## Authorization
+## Description
 
-This endpoint is **backend-only**:
+Implement the **tools-api GET status endpoints** for COOL and RESTORE operations:
 
-- Only requests authenticated with the existing **Euphrosyne backend token** (already implemented and used in other views) are authorized.
-- Unauthorized requests return `401/403` consistent with current auth behavior.
+- `GET /data/projects/{project_slug}/cool/{operation_id}`
+- `GET /data/projects/{project_slug}/restore/{operation_id}`
 
----
+### Access control
 
-## Endpoint
+- Protect endpoints using the same **backend-only auth** mechanism as other tools-api backend views (Euphrosyne backend token).
+- Unauthorized requests return `401/403` consistently.
 
-`POST /data/projects/{project_slug}/cool?operation_id=<uuid>`
-Empty body.
+### Operation lookup
 
-### Immediate response
+- Identify the operation using `operation_id` (provided by Euphrosyne).
+- Use the in-memory structures already in tools-api:
+  - lifecycle guard entry keyed by `operation_id`
+  - mapping `operation_id → azcopy_job_id` (may be missing early)
 
-Return `202 Accepted` with:
+### Status resolution (including “early” phase)
 
-- `operation_id`
-- `project_slug`
-- `type: "COOL"`
-- `status: "ACCEPTED"`
+Return a status even if the AzCopy job id is not yet known:
 
----
+- If `operation_id` unknown → `404`
+- If known but `azcopy_job_id` not set yet → `status = PENDING` (or equivalent) with 0 progress
+- If job id known → query AzCopy (`azcopy jobs show <job_id>`) and map to:
+  - `RUNNING` when `InProgress`
+  - `SUCCEEDED` when `Completed` (or equivalent AzCopy terminal success)
+  - `FAILED` when `Failed/Cancelled` (terminal failure)
 
-## In-memory structures
+### Progress & stats
 
-### 1) `_LIFECYCLE_OPERATION_GUARD`
+Expose:
 
-A set-like structure containing only:
+- `bytes_total`, `files_total` (from AzCopy “Total Number of Bytes Transferred” / “Number of File Transfers” or the best available “total” values AzCopy provides)
+- `bytes_copied`, `files_copied` (completed so far)
+- `progress_percent` (AzCopy “Percent Complete (approx)” if available; otherwise compute from bytes/files)
 
-- `operation_id`
+### Errors
 
-Purpose:
+If the job failed:
 
-- ensure idempotency (do not launch duplicate background jobs)
+- return `error_details` populated from AzCopy job output (summary fields + any available failure reason)
+- keep it structured enough for the caller to display (message + optional raw details)
 
-### 2) `_LIFECYCLE_OPERATION_JOB_ID`
-
-A mapping/dict:
-
-- `operation_id → azcopy_job_id` (string)
-
-Purpose:
-
-- store job id when it becomes available
-
-> No other state/timestamps are tracked in tools-api; lifecycle state is owned by Euphrosyne.
-
----
-
-## Request handling flow
-
-1. Validate `operation_id` is present and a UUID; else `400`.
-2. If `operation_id` is already in `_LIFECYCLE_OPERATION_GUARD`:
-   - return `202` immediately (idempotent accept)
-   - do **not** schedule another background job
-
-3. Otherwise:
-   - add `operation_id` to `_LIFECYCLE_OPERATION_GUARD`
-   - return `202` immediately
-   - schedule background execution
-
----
-
-## Background execution flow
-
-1. Resolve HOT source + COOL destination (existing resolver)
-2. Invoke existing AzCopy COOL runner
-3. When AzCopy job id is known:
-   - set `_LIFECYCLE_OPERATION_JOB_ID[operation_id] = job_id`
-
-4. Await completion using existing AzCopy job monitoring/summary parsing code
-5. Determine terminal `status` (`SUCCEEDED` / `FAILED`)
-6. Collect stats (as available in existing implementation):
-   - `bytes_copied`
-   - `files_copied`
-
-7. Call `post_lifecycle_operation_callback(...)` with:
-   - `operation_id`
-   - `project_slug`
-   - `type="COOL"`
-   - `status`
-   - `bytes_copied`, `files_copied`
-   - error details on failure
-
-Notes:
-
-- tools-api does **not** enforce expected-vs-actual verification; it reports stats only.
-
----
-
-## Error handling
-
-- If failure occurs before a job id exists:
-  - no entry is added to `_LIFECYCLE_OPERATION_JOB_ID`
-  - callback with `FAILED` + error details
-
-- If failure occurs after job id exists:
-  - callback with `FAILED` + job-related diagnostics as supported
+> Note: verification gating (bytes/files match expected totals) is handled on the **Euphrosyne callback side** per PRD; these GET endpoints are about reporting tools-api’s view of the operation/job progress and terminal result.
 
 ---
 
 ## Acceptance criteria
 
-- Endpoint is protected: only authenticated backend token can call it.
-- Endpoint returns `202` immediately, before AzCopy starts and before job id exists.
-- `_LIFECYCLE_OPERATION_GUARD` stores only operation ids.
-- `_LIFECYCLE_OPERATION_JOB_ID` is populated once AzCopy job id is known.
-- Duplicate calls with same `operation_id` do not start another job.
-- On completion, `post_lifecycle_operation_callback(...)` is invoked with terminal status + stats.
+- Implements:
+  - `GET /data/projects/{project_slug}/cool/{operation_id}`
+  - `GET /data/projects/{project_slug}/restore/{operation_id}`
+
+- Each endpoint returns (at minimum):
+  - `operation_id`, `project_slug`, `type` (COOL/RESTORE)
+  - `status` in `{PENDING, RUNNING, SUCCEEDED, FAILED}`
+  - `progress_percent`
+  - `bytes_total`, `files_total`
+  - `bytes_copied`, `files_copied`
+  - `error_details` when `FAILED`
+
+- Works in the “fast enqueue” timeline:
+  - if `operation_id` exists but job id not yet assigned, endpoint still returns `PENDING` without error
+
+- Access control enforced with backend-only token; unauthorized access returns `401/403`
+- Returns `404` when `operation_id` is unknown for the given project/type
+
+If you want, I can also propose a concrete JSON response schema (including exact field names) that matches what you already send in `post_lifecycle_operation_callback(...)` so both sides stay consistent.

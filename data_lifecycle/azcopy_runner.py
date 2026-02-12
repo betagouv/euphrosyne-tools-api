@@ -86,6 +86,9 @@ class AzCopySummary:
     bytes_transferred: int
     failed_transfers: int
     skipped_transfers: int
+    files_total: int
+    bytes_total: int
+    percent_complete: float
     stdout_log_path: str
     stderr_log_path: str
 
@@ -304,21 +307,6 @@ def start_copy(
     )
 
 
-def poll(job_id: str) -> AzCopyProgress:
-    """Poll an AzCopy job without blocking."""
-    result = _run_azcopy_jobs_show(job_id, output_type="json")
-    raw_status, summary_data = _parse_jobs_show_output(
-        job_id, result.stdout, result.stderr
-    )
-    failed_transfers = _extract_failed_transfers(summary_data)
-    state = _map_status(raw_status, failed_transfers)
-    return AzCopyProgress(
-        state=state,
-        last_updated_at=datetime.now(timezone.utc),
-        raw_status=raw_status or "UNKNOWN",
-    )
-
-
 def get_summary(job_id: str) -> AzCopySummary:
     """Return the final summary for a completed AzCopy job."""
     result = _run_azcopy_jobs_show(job_id, output_type="json")
@@ -331,26 +319,23 @@ def get_summary(job_id: str) -> AzCopySummary:
     stdout_log_path, stderr_log_path = _resolve_log_files(job_id)
 
     parsed = _parse_summary_data(summary_data)
-    if state not in _TERMINAL_STATES:
-        return AzCopySummary(
-            state="RUNNING",
-            files_transferred=parsed["files_transferred"],
-            bytes_transferred=parsed["bytes_transferred"],
-            failed_transfers=parsed["failed_transfers"],
-            skipped_transfers=parsed["skipped_transfers"],
-            stdout_log_path=stdout_log_path,
-            stderr_log_path=stderr_log_path,
-        )
-
     return AzCopySummary(
-        state=state,
+        state="RUNNING" if state not in _TERMINAL_STATES else state,
         files_transferred=parsed["files_transferred"],
         bytes_transferred=parsed["bytes_transferred"],
         failed_transfers=parsed["failed_transfers"],
         skipped_transfers=parsed["skipped_transfers"],
+        files_total=parsed["files_total"],
+        bytes_total=parsed["bytes_total"],
+        percent_complete=parsed["percent_complete"],
         stdout_log_path=stdout_log_path,
         stderr_log_path=stderr_log_path,
     )
+
+
+def poll(job_id: str) -> AzCopySummary:
+    """Poll an AzCopy job without blocking."""
+    return get_summary(job_id)
 
 
 def _run_azcopy_jobs_show(
@@ -588,10 +573,13 @@ def _map_status(raw_status: str | None, failed_transfers: int | None) -> AzCopyJ
 def _parse_summary_data(summary_data: dict[str, Any] | str) -> dict[str, Any]:
     if isinstance(summary_data, dict):
         return {
-            "files_transferred": summary_data["FileTransfers"],
-            "bytes_transferred": summary_data["TotalBytesTransferred"],
-            "failed_transfers": summary_data["TransfersFailed"],
-            "skipped_transfers": summary_data["TransfersSkipped"],
+            "files_transferred": int(summary_data["TransfersCompleted"]),
+            "bytes_transferred": int(summary_data["TotalBytesTransferred"]),
+            "failed_transfers": int(summary_data["TransfersFailed"]),
+            "skipped_transfers": int(summary_data["TransfersSkipped"]),
+            "files_total": int(summary_data["TotalTransfers"]),
+            "bytes_total": int(summary_data["TotalBytesExpected"]),
+            "percent_complete": float(summary_data["PercentComplete"]),
         }
     raise TypeError("Expected summary data to be a dict for parsing summary details")
 
