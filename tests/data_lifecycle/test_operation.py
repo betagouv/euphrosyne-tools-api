@@ -673,6 +673,51 @@ def test_restore_status_endpoint_returns_running_with_progress_fallback(
     }
 
 
+def test_status_endpoint_treats_job_not_found_as_pending(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    operation_id = uuid4()
+    operation = lifecycle_operation.LifecycleOperation(
+        project_slug="project-pending",
+        operation_id=operation_id,
+        type=LifecycleOperationType.COOL,
+    )
+    assert (
+        lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    )
+    lifecycle_operation._set_lifecycle_operation_job_id(
+        operation_id=operation_id, job_id="job-not-found-yet"
+    )
+    monkeypatch.setattr(
+        lifecycle_operation.azcopy_runner,
+        "poll",
+        lambda _job_id: (_ for _ in ()).throw(
+            AzCopyJobNotFoundError(
+                "not found",
+                job_id="job-not-found-yet",
+                log_dir="/tmp/.azcopy",
+                stdout_excerpt=None,
+                stderr_excerpt=None,
+            )
+        ),
+    )
+
+    response = client.get(f"/data/projects/project-pending/cool/{operation_id}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "operation_id": str(operation_id),
+        "project_slug": "project-pending",
+        "type": "COOL",
+        "status": "PENDING",
+        "bytes_total": 0,
+        "files_total": 0,
+        "bytes_copied": 0,
+        "files_copied": 0,
+        "progress_percent": 0.0,
+    }
+
+
 def test_status_endpoint_returns_failed_with_error_details(
     app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):

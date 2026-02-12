@@ -102,6 +102,26 @@ def get_lifecycle_operation_status(
 
     try:
         azcopy_status = azcopy_runner.poll(azcopy_job_id)
+    except azcopy_runner.AzCopyJobNotFoundError:
+        logger.warning(
+            "Lifecycle status query returned job-not-found, treating as pending: operation_id=%s project_slug=%s type=%s azcopy_job_id=%s",
+            operation_id,
+            project_slug,
+            operation_type.value,
+            azcopy_job_id,
+        )
+        return LifecycleOperationStatusView(
+            operation_id=operation_id,
+            project_slug=project_slug,
+            type=operation_type,
+            status=LifecycleOperationProgressStatus.PENDING,
+            bytes_total=0,
+            files_total=0,
+            bytes_copied=0,
+            files_copied=0,
+            progress_percent=0.0,
+            error_details=None,
+        )
     except azcopy_runner.AzCopyRunnerError as exc:
         logger.error(
             "Lifecycle status query failed: operation_id=%s project_slug=%s type=%s azcopy_job_id=%s error=%s",
