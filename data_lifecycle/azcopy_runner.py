@@ -308,7 +308,11 @@ def start_copy(
 
 
 def get_summary(job_id: str) -> AzCopySummary:
-    """Return the final summary for a completed AzCopy job."""
+    """Return the current AzCopy summary.
+
+    For non-terminal jobs, the returned summary uses ``state="RUNNING"``.
+    For terminal jobs, the returned state reflects the terminal AzCopy state.
+    """
     result = _run_azcopy_jobs_show(job_id, output_type="json")
     raw_status, summary_data = _parse_jobs_show_output(
         job_id, result.stdout, result.stderr
@@ -334,7 +338,10 @@ def get_summary(job_id: str) -> AzCopySummary:
 
 
 def poll(job_id: str) -> AzCopySummary:
-    """Poll an AzCopy job without blocking."""
+    """Poll an AzCopy job without blocking.
+
+    This is a thin alias over ``get_summary``.
+    """
     return get_summary(job_id)
 
 
