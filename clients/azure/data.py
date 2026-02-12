@@ -29,7 +29,7 @@ from azure.storage.fileshare import (
 from dotenv import load_dotenv
 from slugify import slugify
 
-from data_lifecycle.storage_resolver import StorageRole
+from data_lifecycle.storage_types import StorageRole
 
 if TYPE_CHECKING:
     from auth import User
@@ -145,6 +145,7 @@ class AzureFileShareFile(io.BytesIO):
 
 class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
     def __init__(self, storage_role: StorageRole = StorageRole.HOT):
+        self.storage_role = storage_role
         super().__init__()
         self._file_shared_access_signature = FileSharedAccessSignature(
             account_name=self.storage_account_name, account_key=self._storage_key

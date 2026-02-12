@@ -2,21 +2,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import Enum
 
 from fastapi import HTTPException, status
 
 from clients.data_client import AbstractDataClient
-
-
-class StorageRole(str, Enum):
-    HOT = "HOT"
-    COOL = "COOL"
-
-
-class StorageBackend(str, Enum):
-    AZURE_FILESHARE = "AZURE_FILESHARE"
-    AZURE_BLOB = "AZURE_BLOB"
+from .storage_types import StorageRole, StorageBackend
 
 
 @dataclass(frozen=True)

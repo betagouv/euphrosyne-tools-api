@@ -9,10 +9,10 @@ from data_lifecycle.azcopy_runner import (
     start_copy,
 )
 from data_lifecycle.storage_resolver import (
-    StorageRole,
     resolve_backend_client,
     resolve_location,
 )
+from data_lifecycle.storage_types import StorageRole
 
 POLL_MAX_RETRIES = 3
 

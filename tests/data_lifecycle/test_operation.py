@@ -14,7 +14,7 @@ from data_lifecycle.azcopy_runner import (
 )
 from data_lifecycle import operation as lifecycle_operation
 from data_lifecycle.models import LifecycleOperation, LifecycleOperationType
-from data_lifecycle.storage_resolver import StorageRole
+from data_lifecycle.storage_types import StorageRole
 from auth import verify_is_euphrosyne_backend
 
 

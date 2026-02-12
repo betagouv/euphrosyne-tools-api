@@ -19,7 +19,7 @@ from azure.storage.blob import (
     generate_container_sas,
 )
 
-from data_lifecycle.storage_resolver import StorageRole
+from data_lifecycle.storage_types import StorageRole
 
 from ..data_client import AbstractDataClient
 from ..data_models import (
@@ -106,6 +106,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
     """Client to read / write data on Azure Blob Storage."""
 
     def __init__(self, storage_role: StorageRole = StorageRole.HOT):
+        self.storage_role = storage_role
         if storage_role == StorageRole.HOT:
             container_name = os.environ.get("AZURE_STORAGE_DATA_CONTAINER")
         elif storage_role == StorageRole.COOL:
