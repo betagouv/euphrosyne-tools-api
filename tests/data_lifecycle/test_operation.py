@@ -312,6 +312,83 @@ def test_execute_cool_operation_failure_after_job_id_contains_diagnostics(
     assert operation.error_details["failed_transfers"] == 2
 
 
+def test_execute_restore_operation_sets_job_id_and_sends_success_callback(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    operation_id = uuid4()
+    captured: dict[str, LifecycleOperation] = {}
+
+    def fake_post(operation: LifecycleOperation) -> bool:
+        captured["operation"] = operation
+        return True
+
+    monkeypatch.setattr(
+        lifecycle_operation, "post_lifecycle_operation_callback", fake_post
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "_build_signed_restore_copy_urls",
+        lambda **_kwargs: (
+            "https://cool.example/project-1/*?source-token",
+            "https://hot.example/project-1?dest-token",
+        ),
+    )
+    monkeypatch.setattr(
+        lifecycle_operation.azcopy_runner,
+        "start_copy",
+        lambda _source, _dest: AzCopyJobRef(
+            job_id="job-restore-1",
+            started_at=datetime.now(timezone.utc),
+            command=["azcopy", "copy"],
+            environment={},
+            log_dir="/tmp/.azcopy",
+        ),
+    )
+    monkeypatch.setattr(
+        lifecycle_operation.azcopy_runner,
+        "poll",
+        lambda _job_id: AzCopyProgress(
+            state="SUCCEEDED",
+            last_updated_at=datetime.now(timezone.utc),
+            raw_status="Completed",
+        ),
+    )
+    monkeypatch.setattr(
+        lifecycle_operation.azcopy_runner,
+        "get_summary",
+        lambda _job_id: AzCopySummary(
+            state="SUCCEEDED",
+            files_transferred=4,
+            bytes_transferred=2048,
+            failed_transfers=0,
+            skipped_transfers=0,
+            stdout_log_path="/tmp/.azcopy/azcopy-job-restore-1-stdout.log",
+            stderr_log_path="/tmp/.azcopy/azcopy-job-restore-1-stderr.log",
+        ),
+    )
+
+    lifecycle_operation._execute_lifecycle_operation(
+        operation=lifecycle_operation.LifecycleOperation(
+            project_slug="project-1",
+            operation_id=operation_id,
+            type=LifecycleOperationType.RESTORE,
+        )
+    )
+
+    operation = captured["operation"]
+    assert operation.operation_id == operation_id
+    assert operation.project_slug == "project-1"
+    assert operation.type == LifecycleOperationType.RESTORE
+    assert operation.status == lifecycle_operation.LifecycleOperationStatus.SUCCEEDED
+    assert operation.bytes_copied == 2048
+    assert operation.files_copied == 4
+    assert operation.error_message is None
+    assert operation.finished_at is not None
+    assert (
+        lifecycle_operation._LIFECYCLE_OPERATION_JOB_ID[operation_id] == "job-restore-1"
+    )
+
+
 def test_build_signed_cool_copy_urls_matches_script_pattern(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -346,11 +423,53 @@ def test_build_signed_cool_copy_urls_matches_script_pattern(
     assert destination_uri == "https://cool.example/project-1?cool-token"
     hot_client.generate_project_directory_token.assert_called_once_with(
         project_name="project-1",
-        permission=lifecycle_operation._COOL_SOURCE_TOKEN_PERMISSIONS,
+        permission=lifecycle_operation._COPY_SOURCE_TOKEN_PERMISSIONS,
     )
     cool_client.generate_project_directory_token.assert_called_once_with(
         project_name="project-1",
-        permission=lifecycle_operation._COOL_DEST_TOKEN_PERMISSIONS,
+        permission=lifecycle_operation._COPY_DEST_TOKEN_PERMISSIONS,
+    )
+
+
+def test_build_signed_restore_copy_urls_matches_script_pattern(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    hot_client = MagicMock()
+    hot_client.generate_project_directory_token.return_value = "hot-token"
+    cool_client = MagicMock()
+    cool_client.generate_project_directory_token.return_value = "cool-token"
+
+    def fake_resolve_location(role: StorageRole, project_slug: str):
+        assert project_slug == "project-1"
+        if role == StorageRole.COOL:
+            return MagicMock(uri="https://cool.example/project-1")
+        return MagicMock(uri="https://hot.example/project-1")
+
+    def fake_resolve_backend_client(role: StorageRole):
+        if role == StorageRole.COOL:
+            return cool_client
+        return hot_client
+
+    monkeypatch.setattr(lifecycle_operation, "resolve_location", fake_resolve_location)
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "resolve_backend_client",
+        fake_resolve_backend_client,
+    )
+
+    source_uri, destination_uri = lifecycle_operation._build_signed_restore_copy_urls(
+        project_slug="project-1"
+    )
+
+    assert source_uri == "https://cool.example/project-1/*?cool-token"
+    assert destination_uri == "https://hot.example/project-1?hot-token"
+    cool_client.generate_project_directory_token.assert_called_once_with(
+        project_name="project-1",
+        permission=lifecycle_operation._COPY_SOURCE_TOKEN_PERMISSIONS,
+    )
+    hot_client.generate_project_directory_token.assert_called_once_with(
+        project_name="project-1",
+        permission=lifecycle_operation._COPY_DEST_TOKEN_PERMISSIONS,
     )
 
 
@@ -424,6 +543,11 @@ def test_operation_guard_is_not_cleared_after_execution(
 
     monkeypatch.setattr(
         lifecycle_operation, "post_lifecycle_operation_callback", lambda _: True
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "_perform_lifecycle_operation",
+        lambda **_kwargs: (None, None),
     )
 
     assert (

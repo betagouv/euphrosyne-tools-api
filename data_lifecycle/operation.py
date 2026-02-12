@@ -36,7 +36,7 @@ _TERMINAL_JOB_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN"}
 _AZCOPY_POLL_INTERVAL_SECONDS = 5.0
 _AZCOPY_POLL_JOB_NOT_FOUND_MAX_RETRIES = 3
 
-_COOL_SOURCE_TOKEN_PERMISSIONS: TokenPermissions = {
+_COPY_SOURCE_TOKEN_PERMISSIONS: TokenPermissions = {
     "list": True,
     "read": True,
     "add": False,
@@ -45,7 +45,7 @@ _COOL_SOURCE_TOKEN_PERMISSIONS: TokenPermissions = {
     "delete": False,
 }
 
-_COOL_DEST_TOKEN_PERMISSIONS: TokenPermissions = {
+_COPY_DEST_TOKEN_PERMISSIONS: TokenPermissions = {
     "read": True,
     "add": True,
     "create": True,
@@ -124,23 +124,53 @@ def _perform_lifecycle_operation(
             source_uri=source_uri,
             destination_uri=destination_uri,
         )
+    if operation.type == LifecycleOperationType.RESTORE:
+        source_uri, destination_uri = _build_signed_restore_copy_urls(
+            project_slug=operation.project_slug
+        )
+        return _perform_azcopy_lifecycle_operation(
+            operation=operation,
+            source_uri=source_uri,
+            destination_uri=destination_uri,
+        )
     return None, None
 
 
 def _build_signed_cool_copy_urls(*, project_slug: str) -> tuple[str, str]:
-    hot_location = resolve_location(StorageRole.HOT, project_slug)
-    cool_location = resolve_location(StorageRole.COOL, project_slug)
+    return _build_signed_copy_urls(
+        source_role=StorageRole.HOT,
+        destination_role=StorageRole.COOL,
+        project_slug=project_slug,
+    )
 
-    hot_client = resolve_backend_client(StorageRole.HOT)
-    cool_client = resolve_backend_client(StorageRole.COOL)
+
+def _build_signed_restore_copy_urls(*, project_slug: str) -> tuple[str, str]:
+    return _build_signed_copy_urls(
+        source_role=StorageRole.COOL,
+        destination_role=StorageRole.HOT,
+        project_slug=project_slug,
+    )
+
+
+def _build_signed_copy_urls(
+    *,
+    source_role: StorageRole,
+    destination_role: StorageRole,
+    project_slug: str,
+) -> tuple[str, str]:
+    source_location = resolve_location(source_role, project_slug)
+    destination_location = resolve_location(destination_role, project_slug)
+
+    source_client = resolve_backend_client(source_role)
+    destination_client = resolve_backend_client(destination_role)
 
     source_uri = (
-        f"{hot_location.uri}/*?"
-        f"{hot_client.generate_project_directory_token(project_name=project_slug, permission=_COOL_SOURCE_TOKEN_PERMISSIONS)}"
+        f"{source_location.uri}/*?"
+        f"{source_client.generate_project_directory_token(project_name=project_slug, permission=_COPY_SOURCE_TOKEN_PERMISSIONS)}"
     )
     destination_uri = (
-        f"{cool_location.uri}?"
-        f"{cool_client.generate_project_directory_token(project_name=project_slug, permission=_COOL_DEST_TOKEN_PERMISSIONS)}"
+        f"{destination_location.uri}?"
+        f"{destination_client.generate_project_directory_token(project_name=project_slug, permission=_COPY_DEST_TOKEN_PERMISSIONS)}"
     )
     return source_uri, destination_uri
 
@@ -167,7 +197,7 @@ def _perform_azcopy_lifecycle_operation(
     summary = _await_terminal_azcopy_summary(job_id=job.job_id)
     if summary.state != "SUCCEEDED":
         raise LifecycleOperationExecutionError(
-            "AzCopy COOL job did not succeed",
+            f"AzCopy {operation.type.value} job did not succeed",
             details={
                 "job_id": job.job_id,
                 "azcopy_state": summary.state,
