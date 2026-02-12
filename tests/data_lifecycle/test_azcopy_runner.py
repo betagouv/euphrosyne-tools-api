@@ -99,7 +99,17 @@ def test_start_copy_missing_job_id_raises(
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
 def test_poll_parses_json_state(mock_run: mock.MagicMock):
-    payload = {"JobID": "job-1", "JobStatus": "InProgress", "TransfersFailed": 0}
+    payload = {
+        "JobID": "job-1",
+        "JobStatus": "InProgress",
+        "TransfersCompleted": 1,
+        "TotalBytesTransferred": 10,
+        "TransfersFailed": 0,
+        "TransfersSkipped": 0,
+        "TotalTransfers": 10,
+        "TotalBytesExpected": 100,
+        "PercentComplete": 10.0,
+    }
     mock_run.return_value = CompletedProcess(
         args=["azcopy", "jobs", "show", "job-1"],
         returncode=0,
@@ -107,15 +117,27 @@ def test_poll_parses_json_state(mock_run: mock.MagicMock):
         stderr="",
     )
 
-    progress = azcopy_runner.poll("job-1")
+    summary = azcopy_runner.poll("job-1")
 
-    assert progress.state == "RUNNING"
-    assert progress.raw_status == "InProgress"
+    assert summary.state == "RUNNING"
+    assert summary.files_total == 10
+    assert summary.bytes_total == 100
+    assert summary.percent_complete == 10.0
 
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
 def test_poll_failed_transfers_marks_failed(mock_run: mock.MagicMock):
-    payload = {"JobID": "job-2", "JobStatus": "Completed", "TransfersFailed": 2}
+    payload = {
+        "JobID": "job-2",
+        "JobStatus": "Completed",
+        "TransfersCompleted": 8,
+        "TotalBytesTransferred": 80,
+        "TransfersFailed": 2,
+        "TransfersSkipped": 0,
+        "TotalTransfers": 10,
+        "TotalBytesExpected": 100,
+        "PercentComplete": 80.0,
+    }
     mock_run.return_value = CompletedProcess(
         args=["azcopy", "jobs", "show", "job-2"],
         returncode=0,
@@ -123,14 +145,24 @@ def test_poll_failed_transfers_marks_failed(mock_run: mock.MagicMock):
         stderr="",
     )
 
-    progress = azcopy_runner.poll("job-2")
+    summary = azcopy_runner.poll("job-2")
 
-    assert progress.state == "FAILED"
+    assert summary.state == "FAILED"
 
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
 def test_poll_unknown_status(mock_run: mock.MagicMock):
-    payload = {"JobID": "job-3", "JobStatus": "Mystery", "TransfersFailed": 0}
+    payload = {
+        "JobID": "job-3",
+        "JobStatus": "Mystery",
+        "TransfersCompleted": 0,
+        "TotalBytesTransferred": 0,
+        "TransfersFailed": 0,
+        "TransfersSkipped": 0,
+        "TotalTransfers": 10,
+        "TotalBytesExpected": 100,
+        "PercentComplete": 0.0,
+    }
     mock_run.return_value = CompletedProcess(
         args=["azcopy", "jobs", "show", "job-3"],
         returncode=0,
@@ -138,9 +170,9 @@ def test_poll_unknown_status(mock_run: mock.MagicMock):
         stderr="",
     )
 
-    progress = azcopy_runner.poll("job-3")
+    summary = azcopy_runner.poll("job-3")
 
-    assert progress.state == "UNKNOWN"
+    assert summary.state == "UNKNOWN"
 
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
@@ -148,10 +180,13 @@ def test_get_summary_parses_bytes_and_files(mock_run: mock.MagicMock):
     payload = {
         "JobID": "job-4",
         "JobStatus": "Completed",
-        "FileTransfers": 10,
+        "TransfersCompleted": 10,
         "TotalBytesTransferred": 2048,
         "TransfersFailed": 0,
         "TransfersSkipped": 1,
+        "TotalTransfers": 10,
+        "TotalBytesExpected": 2048,
+        "PercentComplete": 100.0,
     }
     mock_run.return_value = CompletedProcess(
         args=["azcopy", "jobs", "show", "job-4"],
@@ -166,6 +201,9 @@ def test_get_summary_parses_bytes_and_files(mock_run: mock.MagicMock):
     assert summary.files_transferred == 10
     assert summary.bytes_transferred == 2048
     assert summary.skipped_transfers == 1
+    assert summary.files_total == 10
+    assert summary.bytes_total == 2048
+    assert summary.percent_complete == 100.0
 
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
@@ -173,10 +211,13 @@ def test_get_summary_running_returns(mock_run: mock.MagicMock):
     payload = {
         "JobID": "job-5",
         "JobStatus": "InProgress",
-        "FileTransfers": 0,
+        "TransfersCompleted": 0,
         "TotalBytesTransferred": 0,
         "TransfersFailed": 0,
         "TransfersSkipped": 0,
+        "TotalTransfers": 3,
+        "TotalBytesExpected": 9,
+        "PercentComplete": 0.0,
     }
     mock_run.return_value = CompletedProcess(
         args=["azcopy", "jobs", "show", "job-5"],
@@ -188,6 +229,38 @@ def test_get_summary_running_returns(mock_run: mock.MagicMock):
     summary = azcopy_runner.get_summary("job-5")
 
     assert summary.state == "RUNNING"
+
+
+@mock.patch("data_lifecycle.azcopy_runner.subprocess.run")
+def test_poll_parses_progress_and_totals(mock_run: mock.MagicMock):
+    payload = {
+        "JobID": "job-8",
+        "JobStatus": "InProgress",
+        "TransfersCompleted": 4,
+        "TotalBytesTransferred": 250,
+        "TransfersFailed": 0,
+        "TransfersSkipped": 1,
+        "TotalTransfers": 10,
+        "TotalBytesExpected": 1000,
+        "PercentComplete": 25.0,
+    }
+    mock_run.return_value = CompletedProcess(
+        args=["azcopy", "jobs", "show", "job-8"],
+        returncode=0,
+        stdout=_azcopy_json_line(payload),
+        stderr="",
+    )
+
+    summary = azcopy_runner.poll("job-8")
+
+    assert summary.state == "RUNNING"
+    assert summary.files_total == 10
+    assert summary.files_transferred == 4
+    assert summary.bytes_total == 1000
+    assert summary.bytes_transferred == 250
+    assert summary.failed_transfers == 0
+    assert summary.skipped_transfers == 1
+    assert summary.percent_complete == 25.0
 
 
 @mock.patch("data_lifecycle.azcopy_runner.subprocess.run")

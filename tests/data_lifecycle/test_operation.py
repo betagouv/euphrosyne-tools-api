@@ -6,15 +6,20 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import auth
 from auth import verify_is_euphrosyne_backend
 from data_lifecycle import operation as lifecycle_operation
 from data_lifecycle.azcopy_runner import (
     AzCopyJobNotFoundError,
     AzCopyJobRef,
-    AzCopyProgress,
     AzCopySummary,
 )
-from data_lifecycle.models import LifecycleOperation, LifecycleOperationType
+from data_lifecycle.models import (
+    LifecycleOperation,
+    LifecycleOperationProgressStatus,
+    LifecycleOperationType,
+)
+from data_lifecycle.storage_resolver import StorageRole
 from data_lifecycle.storage_types import StorageRole
 
 
@@ -153,10 +158,17 @@ def test_execute_cool_operation_sets_job_id_and_sends_success_callback(
     monkeypatch.setattr(
         lifecycle_operation.azcopy_runner,
         "poll",
-        lambda _job_id: AzCopyProgress(
+        lambda _job_id: AzCopySummary(
             state="SUCCEEDED",
-            last_updated_at=datetime.now(timezone.utc),
-            raw_status="Completed",
+            files_transferred=7,
+            bytes_transferred=1024,
+            failed_transfers=0,
+            skipped_transfers=0,
+            files_total=7,
+            bytes_total=1024,
+            percent_complete=100.0,
+            stdout_log_path="/tmp/.azcopy/azcopy-job-1-stdout.log",
+            stderr_log_path="/tmp/.azcopy/azcopy-job-1-stderr.log",
         ),
     )
     monkeypatch.setattr(
@@ -168,6 +180,9 @@ def test_execute_cool_operation_sets_job_id_and_sends_success_callback(
             bytes_transferred=1024,
             failed_transfers=0,
             skipped_transfers=0,
+            files_total=7,
+            bytes_total=1024,
+            percent_complete=100.0,
             stdout_log_path="/tmp/.azcopy/azcopy-job-1-stdout.log",
             stderr_log_path="/tmp/.azcopy/azcopy-job-1-stderr.log",
         ),
@@ -276,10 +291,17 @@ def test_execute_cool_operation_failure_after_job_id_contains_diagnostics(
     monkeypatch.setattr(
         lifecycle_operation.azcopy_runner,
         "poll",
-        lambda _job_id: AzCopyProgress(
+        lambda _job_id: AzCopySummary(
             state="FAILED",
-            last_updated_at=datetime.now(timezone.utc),
-            raw_status="CompletedWithErrors",
+            files_transferred=1,
+            bytes_transferred=10,
+            failed_transfers=2,
+            skipped_transfers=0,
+            files_total=3,
+            bytes_total=30,
+            percent_complete=33.3,
+            stdout_log_path="/tmp/.azcopy/azcopy-job-2-stdout.log",
+            stderr_log_path="/tmp/.azcopy/azcopy-job-2-stderr.log",
         ),
     )
     monkeypatch.setattr(
@@ -291,6 +313,9 @@ def test_execute_cool_operation_failure_after_job_id_contains_diagnostics(
             bytes_transferred=10,
             failed_transfers=2,
             skipped_transfers=0,
+            files_total=3,
+            bytes_total=30,
+            percent_complete=33.3,
             stdout_log_path="/tmp/.azcopy/azcopy-job-2-stdout.log",
             stderr_log_path="/tmp/.azcopy/azcopy-job-2-stderr.log",
         ),
@@ -484,6 +509,9 @@ def test_await_terminal_azcopy_summary_retries_when_job_not_found(
         bytes_transferred=11,
         failed_transfers=0,
         skipped_transfers=0,
+        files_total=3,
+        bytes_total=11,
+        percent_complete=100.0,
         stdout_log_path="/tmp/stdout.log",
         stderr_log_path="/tmp/stderr.log",
     )
@@ -497,10 +525,17 @@ def test_await_terminal_azcopy_summary_retries_when_job_not_found(
     poll_mock = MagicMock(
         side_effect=[
             job_not_found,
-            AzCopyProgress(
+            AzCopySummary(
                 state="SUCCEEDED",
-                last_updated_at=datetime.now(timezone.utc),
-                raw_status="Completed",
+                files_transferred=3,
+                bytes_transferred=11,
+                failed_transfers=0,
+                skipped_transfers=0,
+                files_total=3,
+                bytes_total=11,
+                percent_complete=100.0,
+                stdout_log_path="/tmp/stdout.log",
+                stderr_log_path="/tmp/stderr.log",
             ),
         ]
     )
@@ -558,4 +593,183 @@ def test_operation_guard_is_not_cleared_after_execution(
     lifecycle_operation._execute_lifecycle_operation(operation=operation)
     assert (
         lifecycle_operation._register_lifecycle_operation(operation=operation) is False
+    )
+
+
+def test_cool_status_endpoint_returns_pending_when_job_not_assigned(
+    app: FastAPI, client: TestClient
+):
+    operation_id = uuid4()
+    operation = lifecycle_operation.LifecycleOperation(
+        project_slug="project-1",
+        operation_id=operation_id,
+        type=LifecycleOperationType.COOL,
+    )
+    assert (
+        lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    )
+
+    response = client.get(f"/data/projects/project-1/cool/{operation_id}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "operation_id": str(operation_id),
+        "project_slug": "project-1",
+        "type": "COOL",
+        "status": "PENDING",
+        "bytes_total": 0,
+        "files_total": 0,
+        "bytes_copied": 0,
+        "files_copied": 0,
+        "percent_complete": 0.0,
+    }
+
+
+def test_restore_status_endpoint_returns_running_with_progress_fallback(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    operation_id = uuid4()
+    operation = lifecycle_operation.LifecycleOperation(
+        project_slug="project-2",
+        operation_id=operation_id,
+        type=LifecycleOperationType.RESTORE,
+    )
+    assert (
+        lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    )
+    lifecycle_operation._set_lifecycle_operation_job_id(
+        operation_id=operation_id, job_id="job-restore"
+    )
+    monkeypatch.setattr(
+        lifecycle_operation.azcopy_runner,
+        "poll",
+        lambda _job_id: AzCopySummary(
+            state="RUNNING",
+            files_transferred=5,
+            bytes_transferred=100,
+            failed_transfers=0,
+            skipped_transfers=0,
+            files_total=20,
+            bytes_total=200,
+            percent_complete=50.0,
+            stdout_log_path="/tmp/stdout.log",
+            stderr_log_path="/tmp/stderr.log",
+        ),
+    )
+
+    response = client.get(f"/data/projects/project-2/restore/{operation_id}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "operation_id": str(operation_id),
+        "project_slug": "project-2",
+        "type": "RESTORE",
+        "status": "RUNNING",
+        "bytes_total": 200,
+        "files_total": 20,
+        "bytes_copied": 100,
+        "files_copied": 5,
+        "percent_complete": 50.0,
+    }
+
+
+def test_status_endpoint_returns_failed_with_error_details(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    operation_id = uuid4()
+    operation = lifecycle_operation.LifecycleOperation(
+        project_slug="project-3",
+        operation_id=operation_id,
+        type=LifecycleOperationType.COOL,
+    )
+    assert (
+        lifecycle_operation._register_lifecycle_operation(operation=operation) is True
+    )
+    lifecycle_operation._set_lifecycle_operation_job_id(
+        operation_id=operation_id, job_id="job-failed"
+    )
+    monkeypatch.setattr(
+        lifecycle_operation.azcopy_runner,
+        "poll",
+        lambda _job_id: AzCopySummary(
+            state="FAILED",
+            files_transferred=8,
+            bytes_transferred=875,
+            failed_transfers=2,
+            skipped_transfers=0,
+            files_total=10,
+            bytes_total=1000,
+            percent_complete=87.5,
+            stdout_log_path="/tmp/stdout.log",
+            stderr_log_path="/tmp/stderr.log",
+        ),
+    )
+
+    response = client.get(f"/data/projects/project-3/cool/{operation_id}")
+
+    assert response.status_code == 200
+    json = response.json()
+    assert json["status"] == "FAILED"
+    assert json["percent_complete"] == 87.5
+    assert json["error_details"]["message"] == "AzCopy reported 2 failed transfer(s)"
+    assert json["error_details"]["raw"]["job_id"] == "job-failed"
+    assert json["error_details"]["raw"]["azcopy_state"] == "FAILED"
+
+
+def test_status_endpoint_returns_404_when_operation_unknown_for_project_or_type(
+    app: FastAPI, client: TestClient
+):
+    operation_id = uuid4()
+    tracked = lifecycle_operation.LifecycleOperation(
+        project_slug="project-a",
+        operation_id=operation_id,
+        type=LifecycleOperationType.COOL,
+    )
+    assert lifecycle_operation._register_lifecycle_operation(operation=tracked) is True
+
+    wrong_project = client.get(f"/data/projects/project-b/cool/{operation_id}")
+    wrong_type = client.get(f"/data/projects/project-a/restore/{operation_id}")
+
+    assert wrong_project.status_code == 404
+    assert wrong_type.status_code == 404
+
+
+def test_status_endpoint_requires_backend_token_returns_401(
+    app: FastAPI, client: TestClient
+):
+    app.dependency_overrides.pop(verify_is_euphrosyne_backend, None)
+    response = client.get(f"/data/projects/project-1/cool/{uuid4()}")
+    assert response.status_code == 401
+
+
+def test_status_endpoint_rejects_non_backend_token_with_403(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    app.dependency_overrides.pop(verify_is_euphrosyne_backend, None)
+    monkeypatch.setattr(auth, "_is_euphrosyne_backend", lambda _token: False)
+
+    response = client.get(
+        f"/data/projects/project-1/cool/{uuid4()}",
+        headers={"Authorization": "Bearer not-backend"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_map_azcopy_status_to_lifecycle_status():
+    assert (
+        lifecycle_operation._map_azcopy_status("PENDING")
+        == LifecycleOperationProgressStatus.PENDING
+    )
+    assert (
+        lifecycle_operation._map_azcopy_status("RUNNING")
+        == LifecycleOperationProgressStatus.RUNNING
+    )
+    assert (
+        lifecycle_operation._map_azcopy_status("SUCCEEDED")
+        == LifecycleOperationProgressStatus.SUCCEEDED
+    )
+    assert (
+        lifecycle_operation._map_azcopy_status("CANCELED")
+        == LifecycleOperationProgressStatus.FAILED
     )

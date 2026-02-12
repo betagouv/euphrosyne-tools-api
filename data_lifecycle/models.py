@@ -16,6 +16,13 @@ class LifecycleOperationStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class LifecycleOperationProgressStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+
 @dataclass
 class LifecycleOperation:
     project_slug: str
@@ -34,3 +41,17 @@ class LifecycleOperation:
             self.type.value,
             str(self.operation_id),
         )
+
+
+@dataclass
+class LifecycleOperationStatusView:
+    operation_id: UUID
+    project_slug: str
+    type: LifecycleOperationType
+    status: LifecycleOperationProgressStatus
+    bytes_total: int
+    files_total: int
+    bytes_copied: int
+    files_copied: int
+    percent_complete: float
+    error_details: dict[str, Any] | None = None
