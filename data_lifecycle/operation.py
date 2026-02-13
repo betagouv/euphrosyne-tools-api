@@ -8,24 +8,16 @@ from uuid import UUID
 from fastapi import BackgroundTasks
 
 from clients.data_models import TokenPermissions
-from data_lifecycle import azcopy_runner
-from data_lifecycle.hooks import post_lifecycle_operation_callback
-from data_lifecycle.models import (
+
+from . import azcopy_runner
+from .hooks import post_lifecycle_operation_callback
+from .models import (
     LifecycleOperation,
     LifecycleOperationProgressStatus,
     LifecycleOperationStatus,
     LifecycleOperationStatusView,
     LifecycleOperationType,
 )
-from data_lifecycle.storage_resolver import (
-    StorageRole,
-    resolve_backend_client,
-    resolve_location,
-)
-
-from . import azcopy_runner
-from .hooks import post_lifecycle_operation_callback
-from .models import LifecycleOperation, LifecycleOperationStatus, LifecycleOperationType
 from .storage_resolver import resolve_backend_client, resolve_location
 from .storage_types import StorageRole
 

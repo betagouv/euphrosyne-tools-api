@@ -73,13 +73,6 @@ class AzCopyJobRef:
 
 
 @dataclass(frozen=True)
-class AzCopyProgress:
-    state: AzCopyJobState
-    last_updated_at: datetime
-    raw_status: str
-
-
-@dataclass(frozen=True)
 class AzCopySummary:
     state: AzCopyJobState
     files_transferred: int
