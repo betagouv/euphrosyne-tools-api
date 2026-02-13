@@ -19,7 +19,7 @@ from clients.azure.data import (
     validate_run_data_file_path,
 )
 from clients.data_models import ProjectFile
-from data_lifecycle.storage_resolver import StorageRole
+from data_lifecycle.storage_types import StorageRole
 
 from ..mocks.azure import factories as azure_factories
 
@@ -32,6 +32,17 @@ def client(monkeypatch: MonkeyPatch):
     with patch("clients.azure._storage.StorageManagementClient"):
         with patch("clients.azure.data.FileSharedAccessSignature"):
             return DataAzureClient()
+
+
+@pytest.fixture
+def cool_client(monkeypatch: MonkeyPatch):
+    monkeypatch.setenv("AZURE_RESOURCE_GROUP_NAME", "resource_group_name")
+    monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
+    monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
+    monkeypatch.setenv("AZURE_STORAGE_FILESHARE_COOL", "cool-fileshare")
+    with patch("clients.azure._storage.StorageManagementClient"):
+        with patch("clients.azure.data.FileSharedAccessSignature"):
+            return DataAzureClient(storage_role=StorageRole.COOL)
 
 
 @pytest.fixture(autouse=True)
@@ -53,6 +64,7 @@ def test_init_uses_hot_fileshare(monkeypatch: MonkeyPatch):
         base_init_mock.side_effect = _mock_base_storage_init
         client = DataAzureClient()
     assert client.share_name == "hot-fileshare"
+    assert client.storage_role == StorageRole.HOT
 
 
 def test_init_uses_cool_fileshare(monkeypatch: MonkeyPatch):
@@ -64,6 +76,7 @@ def test_init_uses_cool_fileshare(monkeypatch: MonkeyPatch):
         base_init_mock.side_effect = _mock_base_storage_init
         client = DataAzureClient(storage_role=StorageRole.COOL)
     assert client.share_name == "cool-fileshare"
+    assert client.storage_role == StorageRole.COOL
 
 
 def test_init_raises_for_unsupported_storage_role(monkeypatch: MonkeyPatch):
@@ -131,6 +144,25 @@ def test_generate_project_documents_sas_url(
     assert mock_kwargs["permission"].write is False
 
 
+def test_generate_project_documents_sas_url_disables_delete_for_cool_storage(
+    cool_client: DataAzureClient,
+):
+    with patch.object(
+        cool_client, "_file_shared_access_signature"
+    ) as file_shared_access_signature_mock:
+        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+        cool_client.generate_project_documents_sas_url(
+            dir_path="dir_path",
+            file_name="hello.txt",
+        )
+
+    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    assert mock_kwargs["permission"].read is True
+    assert mock_kwargs["permission"].delete is False
+    assert mock_kwargs["permission"].create is False
+    assert mock_kwargs["permission"].write is False
+
+
 @patch("clients.azure.data._get_projects_path")
 def test_generate_project_documents_upload_sas_url(
     _get_projects_path_mock: MagicMock,
@@ -162,6 +194,26 @@ def test_generate_project_documents_upload_sas_url(
     assert mock_kwargs["permission"].delete is False
     assert mock_kwargs["permission"].create is True
     assert mock_kwargs["permission"].write is True
+
+
+@patch("clients.azure.data._get_projects_path")
+def test_generate_project_documents_upload_sas_url_raises_for_cool_storage(
+    _get_projects_path_mock: MagicMock,
+    cool_client: DataAzureClient,
+):
+    with patch.object(
+        cool_client, "_file_shared_access_signature"
+    ) as file_shared_access_signature_mock:
+        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+        _get_projects_path_mock.return_value = "projects"
+
+        with pytest.raises(PermissionError):
+            cool_client.generate_project_documents_upload_sas_url(
+                project_name="project",
+                file_name="hello.txt",
+            )
+
+    file_shared_access_signature_mock.generate_file.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -197,6 +249,93 @@ def test_generate_run_data_sas_url(
     assert mock_kwargs["permission"].create == is_admin
     assert mock_kwargs["permission"].delete == is_admin
     assert mock_kwargs["permission"].write == is_admin
+
+
+def test_generate_run_data_sas_url_disables_write_for_cool_storage(
+    cool_client: DataAzureClient,
+):
+    with patch.object(
+        cool_client, "_file_shared_access_signature"
+    ) as file_shared_access_signature_mock:
+        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+        cool_client.generate_run_data_sas_url(
+            dir_path="dir_path",
+            file_name="hello.txt",
+            is_admin=True,
+        )
+
+    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    assert mock_kwargs["permission"].read is True
+    assert mock_kwargs["permission"].create is False
+    assert mock_kwargs["permission"].delete is False
+    assert mock_kwargs["permission"].write is False
+
+
+def test_generate_project_directory_token_raises_for_cool_storage_with_write_permissions(
+    cool_client: DataAzureClient,
+):
+    with patch.object(cool_client, "_generate_share_sas_token") as sas_token_mock:
+        with pytest.raises(PermissionError):
+            cool_client.generate_project_directory_token(
+                project_name="project-name",
+                permission={
+                    "read": True,
+                    "list": True,
+                    "write": True,
+                    "delete": True,
+                    "add": True,
+                    "create": True,
+                },
+            )
+
+    sas_token_mock.assert_not_called()
+
+
+def test_generate_project_directory_token_allows_read_permissions_for_cool_storage(
+    cool_client: DataAzureClient,
+):
+    with patch.object(cool_client, "_generate_share_sas_token") as sas_token_mock:
+        cool_client.generate_project_directory_token(
+            project_name="project-name",
+            permission={
+                "read": True,
+                "list": True,
+            },
+        )
+
+    permissions = sas_token_mock.call_args.args[0]
+    assert permissions.read is True
+    assert permissions.list is True
+    assert permissions.write is False
+    assert permissions.delete is False
+    assert permissions.add is False
+    assert permissions.create is False
+
+
+def test_generate_project_directory_token_force_write_allows_write_permissions_for_cool_storage(
+    cool_client: DataAzureClient,
+):
+    with patch.object(cool_client, "_generate_share_sas_token") as sas_token_mock:
+        cool_client.generate_project_directory_token(
+            project_name="project-name",
+            permission={
+                "read": True,
+                "list": True,
+                "write": True,
+                "delete": True,
+                "add": True,
+                "create": True,
+            },
+            force_write=True,
+        )
+
+    permissions = sas_token_mock.call_args.args[0]
+    assert permissions.read is True
+    assert permissions.list is True
+    assert permissions.write is True
+    assert permissions.delete is True
+    assert permissions.add is True
+    assert permissions.create is True
 
 
 @patch("clients.azure.data.ShareDirectoryClient")

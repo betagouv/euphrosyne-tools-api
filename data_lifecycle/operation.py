@@ -1,25 +1,19 @@
 import logging
 import threading
 import time
-from typing import Any
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from fastapi import BackgroundTasks
 
 from clients.data_models import TokenPermissions
-from data_lifecycle import azcopy_runner
-from data_lifecycle.hooks import post_lifecycle_operation_callback
-from data_lifecycle.models import (
-    LifecycleOperation,
-    LifecycleOperationStatus,
-    LifecycleOperationType,
-)
-from data_lifecycle.storage_resolver import (
-    StorageRole,
-    resolve_backend_client,
-    resolve_location,
-)
+
+from . import azcopy_runner
+from .hooks import post_lifecycle_operation_callback
+from .models import LifecycleOperation, LifecycleOperationStatus, LifecycleOperationType
+from .storage_resolver import resolve_backend_client, resolve_location
+from .storage_types import StorageRole
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +164,7 @@ def _build_signed_copy_urls(
     )
     destination_uri = (
         f"{destination_location.uri}?"
-        f"{destination_client.generate_project_directory_token(project_name=project_slug, permission=_COPY_DEST_TOKEN_PERMISSIONS)}"
+        f"{destination_client.generate_project_directory_token(project_name=project_slug, permission=_COPY_DEST_TOKEN_PERMISSIONS, force_write=True)}"
     )
     return source_uri, destination_uri
 

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import abc
 import io
+from functools import wraps
 from typing import AsyncIterator
+
+from data_lifecycle.storage_types import StorageRole
 
 from .data_models import (
     ProjectFileOrDirectory,
@@ -12,7 +15,56 @@ from .data_models import (
 )
 
 
-class AbstractDataClient(abc.ABC):
+def write_method(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        role = getattr(self, "storage_role", None)
+        if not role:
+            raise AttributeError(
+                f"{type(self).__name__} missing storage_role attribute."
+            )
+        if role != StorageRole.HOT:
+            raise PermissionError(
+                f"Write not allowed for storage role {role} in {type(self).__name__}."
+            )
+        return func(self, *args, **kwargs)
+
+    # marker used by __init_subclass__
+    wrapper.__write_guard__ = True  # type: ignore[attr-defined]
+    return wrapper
+
+
+class WriteMethodsGuardClass(abc.ABC):
+    storage_role: StorageRole
+
+    def __init_subclass__(cls, **kwargs):
+        """Automatically wraps concrete implementations
+        of write-guarded abstract methods with the write guard."""
+        super().__init_subclass__(**kwargs)
+
+        # Find abstract methods from base classes that are marked with @write_method
+        guarded_abstract_names = set()
+        for base in cls.mro()[1:]:
+            for name, obj in base.__dict__.items():
+                if getattr(obj, "__isabstractmethod__", False) and getattr(
+                    obj, "__write_guard__", False
+                ):
+                    guarded_abstract_names.add(name)
+
+        # Wrap concrete overrides in this subclass
+        for name in guarded_abstract_names:
+            impl = cls.__dict__.get(name)
+            if impl is None:
+                continue
+            if getattr(impl, "__isabstractmethod__", False):
+                continue
+            if getattr(impl, "__write_guard__", False):
+                continue
+            setattr(cls, name, write_method(impl))
+
+
+class AbstractDataClient(WriteMethodsGuardClass):
+
     @abc.abstractmethod
     def list_project_dirs(self) -> list[str]:
         """Returns all directory names in project folder."""
@@ -57,6 +109,7 @@ class AbstractDataClient(abc.ABC):
         """Check if project data is available on the data backend."""
 
     @abc.abstractmethod
+    @write_method
     def generate_run_data_upload_sas(
         self,
         project_name: str,
@@ -75,6 +128,7 @@ class AbstractDataClient(abc.ABC):
         """Generate a signed URL to manage run data."""
 
     @abc.abstractmethod
+    @write_method
     def generate_project_documents_upload_sas_url(
         self, project_name: str, file_name: str
     ) -> str:
@@ -86,24 +140,58 @@ class AbstractDataClient(abc.ABC):
 
     @abc.abstractmethod
     def generate_project_directory_token(
-        self, project_name: str, permission: TokenPermissions
+        self, project_name: str, permission: TokenPermissions, force_write: bool = False
     ) -> str:
         """Generate credentials used to manage project directory."""
 
     @abc.abstractmethod
+    @write_method
     def init_project_directory(self, project_name: str):
         """Create the project directory with default subfolders."""
 
     @abc.abstractmethod
+    @write_method
     def init_run_directory(self, run_name: str, project_name: str) -> None:
         """Create the run directory with default subfolders."""
 
     @abc.abstractmethod
+    @write_method
     def rename_project_directory(self, project_name: str, new_name: str) -> None:
         """Rename the project directory."""
 
     @abc.abstractmethod
+    @write_method
     def rename_run_directory(
         self, run_name: str, project_name: str, new_name: str
     ) -> None:
         """Rename the run directory."""
+
+    def can_write_run_data(self, is_admin: bool = False) -> bool:
+        """Check if the client has write permissions based on storage role and admin status."""
+        return is_admin and self.storage_role == StorageRole.HOT
+
+    def can_write_project_documents(self) -> bool:
+        """Check if the client has write permissions for project documents based on storage role."""
+        return self.storage_role == StorageRole.HOT
+
+    def check_write_permissions(
+        self, permission: TokenPermissions, force_write: bool = False
+    ):
+        """Check if the requested permissions are allowed based on storage role and force_write flag."""
+        can_write = self.storage_role == StorageRole.HOT or force_write
+        write_methods = {
+            "write",
+            "create",
+            "delete",
+            "add",
+            "update",
+            "delete_previous_version",
+            "process",
+        }
+
+        if not can_write:
+            for method in write_methods:
+                if permission.get(method, False):
+                    raise PermissionError(
+                        f"Write permissions are not allowed for storage role {self.storage_role} in {type(self).__name__}."  # noqa: E501
+                    )
