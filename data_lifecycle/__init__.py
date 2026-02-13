@@ -4,7 +4,6 @@ from .azcopy_runner import (  # noqa: F401
     AzCopyJobState,
     AzCopyNotInstalledError,
     AzCopyParseError,
-    AzCopyProgress,
     AzCopyRunnerError,
     AzCopyStartError,
     AzCopyJobIdNotFoundError,

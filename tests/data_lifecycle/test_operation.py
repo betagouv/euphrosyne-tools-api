@@ -19,7 +19,6 @@ from data_lifecycle.models import (
     LifecycleOperationProgressStatus,
     LifecycleOperationType,
 )
-from data_lifecycle.storage_resolver import StorageRole
 from data_lifecycle.storage_types import StorageRole
 
 
@@ -369,15 +368,7 @@ def test_execute_restore_operation_sets_job_id_and_sends_success_callback(
             log_dir="/tmp/.azcopy",
         ),
     )
-    monkeypatch.setattr(
-        lifecycle_operation.azcopy_runner,
-        "poll",
-        lambda _job_id: AzCopyProgress(
-            state="SUCCEEDED",
-            last_updated_at=datetime.now(timezone.utc),
-            raw_status="Completed",
-        ),
-    )
+
     monkeypatch.setattr(
         lifecycle_operation.azcopy_runner,
         "get_summary",
@@ -389,6 +380,9 @@ def test_execute_restore_operation_sets_job_id_and_sends_success_callback(
             skipped_transfers=0,
             stdout_log_path="/tmp/.azcopy/azcopy-job-restore-1-stdout.log",
             stderr_log_path="/tmp/.azcopy/azcopy-job-restore-1-stderr.log",
+            progress_percent=100.0,
+            files_total=4,
+            bytes_total=2048,
         ),
     )
 
