@@ -11,7 +11,13 @@ from clients.data_models import TokenPermissions
 
 from . import azcopy_runner
 from .hooks import post_lifecycle_operation_callback
-from .models import LifecycleOperation, LifecycleOperationStatus, LifecycleOperationType
+from .models import (
+    LifecycleOperation,
+    LifecycleOperationProgressStatus,
+    LifecycleOperationStatus,
+    LifecycleOperationStatusView,
+    LifecycleOperationType,
+)
 from .storage_resolver import resolve_backend_client, resolve_location
 from .storage_types import StorageRole
 
@@ -52,6 +58,161 @@ class LifecycleOperationExecutionError(Exception):
     def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.details = details or {}
+
+
+class LifecycleOperationNotFoundError(Exception):
+    pass
+
+
+def get_lifecycle_operation_status(
+    *,
+    project_slug: str,
+    operation_id: UUID,
+    operation_type: LifecycleOperationType,
+) -> LifecycleOperationStatusView:
+    if not _is_tracked_lifecycle_operation(
+        project_slug=project_slug,
+        operation_id=operation_id,
+        operation_type=operation_type,
+    ):
+        raise LifecycleOperationNotFoundError
+
+    azcopy_job_id = _get_lifecycle_operation_job_id(operation_id=operation_id)
+    if azcopy_job_id is None:
+        return LifecycleOperationStatusView(
+            operation_id=operation_id,
+            project_slug=project_slug,
+            type=operation_type,
+            status=LifecycleOperationProgressStatus.PENDING,
+            bytes_total=0,
+            files_total=0,
+            bytes_copied=0,
+            files_copied=0,
+            progress_percent=0.0,
+            error_details=None,
+        )
+
+    try:
+        azcopy_status = azcopy_runner.poll(azcopy_job_id)
+    except azcopy_runner.AzCopyJobNotFoundError:
+        logger.warning(
+            "Lifecycle status query returned job-not-found, treating as pending: operation_id=%s project_slug=%s type=%s azcopy_job_id=%s",
+            operation_id,
+            project_slug,
+            operation_type.value,
+            azcopy_job_id,
+        )
+        return LifecycleOperationStatusView(
+            operation_id=operation_id,
+            project_slug=project_slug,
+            type=operation_type,
+            status=LifecycleOperationProgressStatus.PENDING,
+            bytes_total=0,
+            files_total=0,
+            bytes_copied=0,
+            files_copied=0,
+            progress_percent=0.0,
+            error_details=None,
+        )
+    except azcopy_runner.AzCopyRunnerError as exc:
+        logger.error(
+            "Lifecycle status query failed: operation_id=%s project_slug=%s type=%s azcopy_job_id=%s error=%s",
+            operation_id,
+            project_slug,
+            operation_type.value,
+            azcopy_job_id,
+            exc,
+        )
+        return LifecycleOperationStatusView(
+            operation_id=operation_id,
+            project_slug=project_slug,
+            type=operation_type,
+            status=LifecycleOperationProgressStatus.FAILED,
+            bytes_total=0,
+            files_total=0,
+            bytes_copied=0,
+            files_copied=0,
+            progress_percent=0.0,
+            error_details={
+                "message": "Failed to query AzCopy job status",
+                "raw": {
+                    "job_id": exc.job_id,
+                    "log_dir": exc.log_dir,
+                    "stdout_path": exc.stdout_path,
+                    "stderr_path": exc.stderr_path,
+                    "stdout_excerpt": exc.stdout_excerpt,
+                    "stderr_excerpt": exc.stderr_excerpt,
+                },
+            },
+        )
+
+    status = _map_azcopy_status(azcopy_status.state)
+    error_details = None
+    if status == LifecycleOperationProgressStatus.FAILED:
+        error_details = {
+            "message": _build_failed_message(
+                azcopy_state=azcopy_status.state,
+                failed_transfers=azcopy_status.failed_transfers,
+            ),
+            "raw": {
+                "job_id": azcopy_job_id,
+                "azcopy_state": azcopy_status.state,
+                "failed_transfers": azcopy_status.failed_transfers,
+                "skipped_transfers": azcopy_status.skipped_transfers,
+                "stdout_log_path": azcopy_status.stdout_log_path,
+                "stderr_log_path": azcopy_status.stderr_log_path,
+            },
+        }
+
+    return LifecycleOperationStatusView(
+        operation_id=operation_id,
+        project_slug=project_slug,
+        type=operation_type,
+        status=status,
+        bytes_total=azcopy_status.bytes_total,
+        files_total=azcopy_status.files_total,
+        bytes_copied=azcopy_status.bytes_transferred,
+        files_copied=azcopy_status.files_transferred,
+        progress_percent=azcopy_status.progress_percent,
+        error_details=error_details,
+    )
+
+
+def _is_tracked_lifecycle_operation(
+    *,
+    project_slug: str,
+    operation_id: UUID,
+    operation_type: LifecycleOperationType,
+) -> bool:
+    key = (
+        project_slug,
+        operation_type.value,
+        str(operation_id),
+    )
+    with _LIFECYCLE_OPERATION_GUARD_LOCK:
+        return key in _LIFECYCLE_OPERATION_GUARD
+
+
+def _map_azcopy_status(
+    azcopy_state: azcopy_runner.AzCopyJobState,
+) -> LifecycleOperationProgressStatus:
+    if azcopy_state == "PENDING":
+        return LifecycleOperationProgressStatus.PENDING
+    if azcopy_state == "RUNNING":
+        return LifecycleOperationProgressStatus.RUNNING
+    if azcopy_state == "SUCCEEDED":
+        return LifecycleOperationProgressStatus.SUCCEEDED
+    return LifecycleOperationProgressStatus.FAILED
+
+
+def _build_failed_message(*, azcopy_state: str, failed_transfers: int) -> str:
+    if azcopy_state == "CANCELED":
+        return "AzCopy job was canceled"
+    if failed_transfers > 0:
+        return f"AzCopy reported {failed_transfers} failed transfer(s)"
+    if azcopy_state == "UNKNOWN":
+        return "AzCopy returned an unknown status"
+    return "AzCopy job failed"
 
 
 def schedule_lifecycle_operation(
