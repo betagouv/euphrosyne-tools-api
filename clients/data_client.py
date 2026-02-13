@@ -5,13 +5,14 @@ import io
 from functools import wraps
 from typing import AsyncIterator
 
+from data_lifecycle.storage_types import StorageRole
+
 from .data_models import (
     ProjectFileOrDirectory,
     RunDataTypeType,
     SASCredentials,
     TokenPermissions,
 )
-from data_lifecycle.storage_types import StorageRole
 
 
 def write_method(func):
@@ -139,7 +140,7 @@ class AbstractDataClient(WriteMethodsGuardClass):
 
     @abc.abstractmethod
     def generate_project_directory_token(
-        self, project_name: str, permission: TokenPermissions
+        self, project_name: str, permission: TokenPermissions, force_write: bool = False
     ) -> str:
         """Generate credentials used to manage project directory."""
 
@@ -164,3 +165,33 @@ class AbstractDataClient(WriteMethodsGuardClass):
         self, run_name: str, project_name: str, new_name: str
     ) -> None:
         """Rename the run directory."""
+
+    def can_write_run_data(self, is_admin: bool = False) -> bool:
+        """Check if the client has write permissions based on storage role and admin status."""
+        return is_admin and self.storage_role == StorageRole.HOT
+
+    def can_write_project_documents(self) -> bool:
+        """Check if the client has write permissions for project documents based on storage role."""
+        return self.storage_role == StorageRole.HOT
+
+    def check_write_permissions(
+        self, permission: TokenPermissions, force_write: bool = False
+    ):
+        """Check if the requested permissions are allowed based on storage role and force_write flag."""
+        can_write = self.storage_role == StorageRole.HOT or force_write
+        write_methods = {
+            "write",
+            "create",
+            "delete",
+            "add",
+            "update",
+            "delete_previous_version",
+            "process",
+        }
+
+        if not can_write:
+            for method in write_methods:
+                if permission.get(method, False):
+                    raise PermissionError(
+                        f"Write permissions are not allowed for storage role {self.storage_role} in {type(self).__name__}."  # noqa: E501
+                    )

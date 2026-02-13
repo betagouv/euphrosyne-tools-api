@@ -6,16 +6,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth import verify_is_euphrosyne_backend
+from data_lifecycle import operation as lifecycle_operation
 from data_lifecycle.azcopy_runner import (
     AzCopyJobNotFoundError,
     AzCopyJobRef,
     AzCopyProgress,
     AzCopySummary,
 )
-from data_lifecycle import operation as lifecycle_operation
 from data_lifecycle.models import LifecycleOperation, LifecycleOperationType
 from data_lifecycle.storage_types import StorageRole
-from auth import verify_is_euphrosyne_backend
 
 
 @pytest.fixture(autouse=True)
@@ -428,6 +428,7 @@ def test_build_signed_cool_copy_urls_matches_script_pattern(
     cool_client.generate_project_directory_token.assert_called_once_with(
         project_name="project-1",
         permission=lifecycle_operation._COPY_DEST_TOKEN_PERMISSIONS,
+        force_write=True,
     )
 
 
@@ -470,6 +471,7 @@ def test_build_signed_restore_copy_urls_matches_script_pattern(
     hot_client.generate_project_directory_token.assert_called_once_with(
         project_name="project-1",
         permission=lifecycle_operation._COPY_DEST_TOKEN_PERMISSIONS,
+        force_write=True,
     )
 
 

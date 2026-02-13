@@ -285,6 +285,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         """Generate a signed URL to manage run data in Azure Blob Storage."""
         blob_name = self._join_blob_path(dir_path, file_name)
         now = datetime.now(timezone.utc)
+        can_write = self.can_write_run_data(is_admin=is_admin)
         token = generate_blob_sas(
             account_name=self.storage_account_name,
             container_name=self.container_name,
@@ -292,10 +293,10 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
             account_key=self._storage_key,
             permission=BlobSasPermissions(
                 read=True,
-                create=is_admin,
-                write=is_admin,
-                delete=is_admin,
-                add=is_admin,
+                create=can_write,
+                write=can_write,
+                delete=can_write,
+                add=can_write,
             ),
             expiry=now + timedelta(minutes=5),
             start=now,
@@ -312,6 +313,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
         blob_name = self._join_blob_path(dir_path, file_name)
         now = datetime.now(timezone.utc)
+        can_write = self.can_write_project_documents()
         token = generate_blob_sas(
             account_name=self.storage_account_name,
             container_name=self.container_name,
@@ -319,10 +321,10 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
             account_key=self._storage_key,
             permission=BlobSasPermissions(
                 read=False,
-                create=True,
-                write=True,
-                delete=False,
-                add=True,
+                create=can_write,
+                write=can_write,
+                delete=can_write,
+                add=can_write,
             ),
             expiry=now + timedelta(minutes=5),
             start=now,
@@ -336,6 +338,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         """Generate a signed URL to download/delete project documents."""
         blob_name = self._join_blob_path(dir_path, file_name)
         now = datetime.now(timezone.utc)
+        can_write = self.can_write_project_documents()
         token = generate_blob_sas(
             account_name=self.storage_account_name,
             container_name=self.container_name,
@@ -345,7 +348,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
                 read=True,
                 create=False,
                 write=False,
-                delete=True,
+                delete=can_write,
                 add=False,
             ),
             expiry=now + timedelta(minutes=5),
@@ -357,22 +360,15 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         )
 
     def generate_project_directory_token(
-        self, project_name: str, permission: TokenPermissions
+        self, project_name: str, permission: TokenPermissions, force_write: bool = False
     ) -> str:
         """Generate a SAS token with permissions to manage the project directory
         within the Azure Blob Storage container."""
         now = datetime.now(timezone.utc)
-        container_permission = ContainerSasPermissions(
-            read=permission.get("read", False),
-            write=permission.get("write", False),
-            delete=permission.get("delete", False),
-            list=permission.get("list", False),
-            delete_previous_version=permission.get("delete_previous_version", False),
-            add=permission.get("add", False),
-            create=permission.get("create", False),
-            update=permission.get("update", False),
-            process=permission.get("process", False),
-        )
+
+        self.check_write_permissions(permission, force_write=force_write)
+
+        container_permission = ContainerSasPermissions(**permission)
         return generate_container_sas(
             account_name=self.storage_account_name,
             container_name=self.container_name,
