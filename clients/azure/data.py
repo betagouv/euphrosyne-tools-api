@@ -313,8 +313,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         """Generate URL with Shared Access Signature to manage run data in an
         Azure Fileshare. Regular users can read. Admins can also write, create & delete.
         """
+        can_write = self.can_write_run_data(is_admin=is_admin)
         permission = FilePermissions(
-            read=True, create=is_admin, write=is_admin, delete=is_admin
+            read=True, create=can_write, write=can_write, delete=can_write
         )
         return self._generate_sas_url(dir_path, file_name, permission)
 
@@ -325,8 +326,11 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         an Azure Fileshare. Permission are write & create. To download and delete use
         generate_project_documents_sas_url.
         """
+        can_write = self.can_write_project_documents()
         dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
-        permission = FilePermissions(read=False, create=True, write=True, delete=False)
+        permission = FilePermissions(
+            read=False, create=can_write, write=can_write, delete=False
+        )
         return self._generate_sas_url(dir_path, file_name, permission)
 
     def generate_project_documents_sas_url(self, dir_path: str, file_name: str):
@@ -334,25 +338,20 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         an Azure Fileshare. Permission are read & delete. To upload a document use
         generate_project_documents_upload_sas_url.
         """
-        permission = FilePermissions(read=True, create=False, write=False, delete=True)
+        can_write = self.can_write_project_documents()
+        permission = FilePermissions(
+            read=True, create=False, write=False, delete=can_write
+        )
         return self._generate_sas_url(dir_path, file_name, permission)
 
     def generate_project_directory_token(
-        self, project_name: str, permission: TokenPermissions
+        self, project_name: str, permission: TokenPermissions, force_write: bool = False
     ) -> str:
         """Generate a token with permissions to manage project directory
         in an Azure Fileshare."""
-        account_permission = AccountSasPermissions(
-            read=permission.get("read", False),
-            write=permission.get("write", False),
-            delete=permission.get("delete", False),
-            list=permission.get("list", False),
-            delete_previous_version=permission.get("delete_previous_version", False),
-            add=permission.get("add", False),
-            create=permission.get("create", False),
-            update=permission.get("update", False),
-            process=permission.get("process", False),
-        )
+        self.check_write_permissions(permission, force_write)
+
+        account_permission = AccountSasPermissions(**permission)
         return self._generate_share_sas_token(account_permission)
 
     def _generate_share_sas_token(self, permission: AccountSasPermissions):
