@@ -14,7 +14,7 @@ azure-storage-file==2.1.0
 black==26.1.0
 h5grove @ git+https://github.com/wiwski/h5grove.git@feature/filepath-resolver
 httpx==0.28.1
-fastapi==0.128.5 
+fastapi==0.129.0 
 isort==7.0.0 
 mypy==1.19.1
 pydantic-settings==2.13.0 
