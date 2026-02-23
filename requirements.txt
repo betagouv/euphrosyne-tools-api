@@ -30,4 +30,4 @@ stream-zip==0.0.84
 types-python-jose==3.5.0.20250531
 types-python-slugify==8.0.2.20240310 
 types-requests==2.32.4.20260107
-uvicorn[standard]==0.40.0
+uvicorn[standard]==0.41.0
