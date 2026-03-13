@@ -202,6 +202,8 @@ def test_execute_cool_operation_sets_job_id_and_sends_success_callback(
     assert operation.status == lifecycle_operation.LifecycleOperationStatus.SUCCEEDED
     assert operation.bytes_copied == 1024
     assert operation.files_copied == 7
+    assert operation.bytes_total == 1024
+    assert operation.files_total == 7
     assert operation.error_message is None
     assert operation.finished_at is not None
     assert lifecycle_operation._LIFECYCLE_OPERATION_JOB_ID[operation_id] == "job-1"
@@ -250,6 +252,8 @@ def test_execute_cool_operation_failure_before_job_id_keeps_job_map_empty(
     assert operation.error_message == "boom"
     assert operation.bytes_copied is None
     assert operation.files_copied is None
+    assert operation.bytes_total is None
+    assert operation.files_total is None
     assert operation.error_details is not None
     assert operation.error_details["type"] == "RuntimeError"
     assert operation_id not in lifecycle_operation._LIFECYCLE_OPERATION_JOB_ID
@@ -401,6 +405,8 @@ def test_execute_restore_operation_sets_job_id_and_sends_success_callback(
     assert operation.status == lifecycle_operation.LifecycleOperationStatus.SUCCEEDED
     assert operation.bytes_copied == 2048
     assert operation.files_copied == 4
+    assert operation.bytes_total == 2048
+    assert operation.files_total == 4
     assert operation.error_message is None
     assert operation.finished_at is not None
     assert (
@@ -578,7 +584,7 @@ def test_operation_guard_is_not_cleared_after_execution(
     monkeypatch.setattr(
         lifecycle_operation,
         "_perform_lifecycle_operation",
-        lambda **_kwargs: (None, None),
+        lambda **_kwargs: (0, 0, 0, 0),
     )
 
     assert (
@@ -588,6 +594,19 @@ def test_operation_guard_is_not_cleared_after_execution(
     assert (
         lifecycle_operation._register_lifecycle_operation(operation=operation) is False
     )
+
+
+def test_perform_lifecycle_operation_raises_for_unsupported_operation_type():
+    operation = lifecycle_operation.LifecycleOperation(
+        project_slug="project-1",
+        operation_id=uuid4(),
+        type="UNKNOWN",  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(
+        ValueError, match="Unsupported lifecycle operation type: UNKNOWN"
+    ):
+        lifecycle_operation._perform_lifecycle_operation(operation=operation)
 
 
 def test_cool_status_endpoint_returns_pending_when_job_not_assigned(
