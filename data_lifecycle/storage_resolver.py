@@ -2,19 +2,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import Enum
 
 from fastapi import HTTPException, status
 
-
-class StorageRole(str, Enum):
-    HOT = "HOT"
-    COOL = "COOL"
-
-
-class StorageBackend(str, Enum):
-    AZURE_FILESHARE = "AZURE_FILESHARE"
-    AZURE_BLOB = "AZURE_BLOB"
+from clients.data_client import AbstractDataClient
+from .storage_types import StorageRole, StorageBackend
 
 
 @dataclass(frozen=True)
@@ -76,6 +68,18 @@ def resolve_location(role: StorageRole, project_slug: str) -> DataLocation:
         project_slug=project_slug,
         uri=uri,
     )
+
+
+def resolve_backend_client(role: StorageRole) -> AbstractDataClient:
+    backend = _resolve_backend(role)
+    if backend == StorageBackend.AZURE_FILESHARE:
+        from clients.azure.data import DataAzureClient
+
+        return DataAzureClient(role)
+    else:
+        from clients.azure.blob_data import BlobDataAzureClient
+
+        return BlobDataAzureClient(role)
 
 
 def _resolve_backend(role: StorageRole) -> StorageBackend:

@@ -19,8 +19,16 @@ from azure.storage.blob import (
     generate_container_sas,
 )
 
+from data_lifecycle.storage_types import StorageRole
+
+from ..data_client import AbstractDataClient
+from ..data_models import (
+    ProjectFileOrDirectory,
+    RunDataTypeType,
+    SASCredentials,
+    TokenPermissions,
+)
 from .blob import BlobAzureClient
-from .utils import iterate_blocking
 from .data import (
     FolderCreationError,
     ProjectDocumentsNotFound,
@@ -28,8 +36,7 @@ from .data import (
     _generate_base_dir_path,
     _get_projects_path,
 )
-from ..data_client import AbstractDataClient
-from ..data_models import ProjectFileOrDirectory, RunDataTypeType, SASCredentials
+from .utils import iterate_blocking
 
 
 class AzureBlobFile(io.BytesIO):
@@ -98,8 +105,15 @@ class AzureBlobFile(io.BytesIO):
 class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
     """Client to read / write data on Azure Blob Storage."""
 
-    def __init__(self):
-        container_name = os.environ.get("AZURE_STORAGE_DATA_CONTAINER")
+    def __init__(self, storage_role: StorageRole = StorageRole.HOT):
+        self.storage_role = storage_role
+        if storage_role == StorageRole.HOT:
+            container_name = os.environ.get("AZURE_STORAGE_DATA_CONTAINER")
+        elif storage_role == StorageRole.COOL:
+            container_name = os.environ.get("AZURE_STORAGE_DATA_CONTAINER_COOL")
+        else:
+            raise ValueError(f"Unsupported storage role: {storage_role}")
+
         if not container_name:
             raise ValueError(
                 "AZURE_STORAGE_DATA_CONTAINER environment variable is not set"
@@ -271,6 +285,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         """Generate a signed URL to manage run data in Azure Blob Storage."""
         blob_name = self._join_blob_path(dir_path, file_name)
         now = datetime.now(timezone.utc)
+        can_write = self.can_write_run_data(is_admin=is_admin)
         token = generate_blob_sas(
             account_name=self.storage_account_name,
             container_name=self.container_name,
@@ -278,10 +293,10 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
             account_key=self._storage_key,
             permission=BlobSasPermissions(
                 read=True,
-                create=is_admin,
-                write=is_admin,
-                delete=is_admin,
-                add=is_admin,
+                create=can_write,
+                write=can_write,
+                delete=can_write,
+                add=can_write,
             ),
             expiry=now + timedelta(minutes=5),
             start=now,
@@ -298,6 +313,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
         blob_name = self._join_blob_path(dir_path, file_name)
         now = datetime.now(timezone.utc)
+        can_write = self.can_write_project_documents()
         token = generate_blob_sas(
             account_name=self.storage_account_name,
             container_name=self.container_name,
@@ -305,10 +321,10 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
             account_key=self._storage_key,
             permission=BlobSasPermissions(
                 read=False,
-                create=True,
-                write=True,
-                delete=False,
-                add=True,
+                create=can_write,
+                write=can_write,
+                delete=can_write,
+                add=can_write,
             ),
             expiry=now + timedelta(minutes=5),
             start=now,
@@ -322,6 +338,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         """Generate a signed URL to download/delete project documents."""
         blob_name = self._join_blob_path(dir_path, file_name)
         now = datetime.now(timezone.utc)
+        can_write = self.can_write_project_documents()
         token = generate_blob_sas(
             account_name=self.storage_account_name,
             container_name=self.container_name,
@@ -331,7 +348,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
                 read=True,
                 create=False,
                 write=False,
-                delete=True,
+                delete=can_write,
                 add=False,
             ),
             expiry=now + timedelta(minutes=5),
@@ -340,6 +357,25 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         return (
             f"https://{self.storage_account_name}.blob.core.windows.net/"
             f"{self.container_name}/{blob_name}?{token}"
+        )
+
+    def generate_project_directory_token(
+        self, project_name: str, permission: TokenPermissions, force_write: bool = False
+    ) -> str:
+        """Generate a SAS token with permissions to manage the project directory
+        within the Azure Blob Storage container."""
+        now = datetime.now(timezone.utc)
+
+        self.check_write_permissions(permission, force_write=force_write)
+
+        container_permission = ContainerSasPermissions(**permission)
+        return generate_container_sas(
+            account_name=self.storage_account_name,
+            container_name=self.container_name,
+            account_key=self._storage_key,
+            permission=container_permission,
+            expiry=now + timedelta(hours=1),
+            start=now,
         )
 
     def init_project_directory(self, project_name: str):

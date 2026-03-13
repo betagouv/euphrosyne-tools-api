@@ -29,6 +29,8 @@ from azure.storage.fileshare import (
 from dotenv import load_dotenv
 from slugify import slugify
 
+from data_lifecycle.storage_types import StorageRole
+
 if TYPE_CHECKING:
     from auth import User
 
@@ -39,6 +41,7 @@ from ..data_models import (
     ProjectFileOrDirectory,
     RunDataTypeType,
     SASCredentials,
+    TokenPermissions,
 )
 from ._storage import BaseStorageAzureClient
 
@@ -141,13 +144,28 @@ class AzureFileShareFile(io.BytesIO):
 
 
 class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
-    def __init__(self):
+    def __init__(self, storage_role: StorageRole = StorageRole.HOT):
+        self.storage_role = storage_role
         super().__init__()
         self._file_shared_access_signature = FileSharedAccessSignature(
             account_name=self.storage_account_name, account_key=self._storage_key
         )
 
-        self.share_name = os.environ["AZURE_STORAGE_FILESHARE"]
+        share_name = None
+
+        if storage_role == StorageRole.HOT:
+            share_name = os.environ.get("AZURE_STORAGE_FILESHARE")
+        elif storage_role == StorageRole.COOL:
+            share_name = os.environ.get("AZURE_STORAGE_FILESHARE_COOL")
+        else:
+            raise ValueError(f"Unsupported storage role: {storage_role}")
+
+        if not share_name:
+            raise ValueError(
+                f"Share name for storage role {storage_role} is not set in environment variables."
+            )
+
+        self.share_name = share_name
 
     def list_project_dirs(self) -> list[str]:
         """Returns all directory names in project folder"""
@@ -277,7 +295,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         file storage.
         """
         dir_path = _generate_base_dir_path(project_name, run_name, data_type)
-        permission = FilePermissions(read=False, create=True, write=True, delete=False)
+        permission = AccountSasPermissions(
+            add=True, write=True, create=True, update=True
+        )
         token = self._generate_share_sas_token(permission)
         return {
             "url": f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{dir_path}/",
@@ -293,8 +313,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         """Generate URL with Shared Access Signature to manage run data in an
         Azure Fileshare. Regular users can read. Admins can also write, create & delete.
         """
+        can_write = self.can_write_run_data(is_admin=is_admin)
         permission = FilePermissions(
-            read=True, create=is_admin, write=is_admin, delete=is_admin
+            read=True, create=can_write, write=can_write, delete=can_write
         )
         return self._generate_sas_url(dir_path, file_name, permission)
 
@@ -305,8 +326,11 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         an Azure Fileshare. Permission are write & create. To download and delete use
         generate_project_documents_sas_url.
         """
+        can_write = self.can_write_project_documents()
         dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
-        permission = FilePermissions(read=False, create=True, write=True, delete=False)
+        permission = FilePermissions(
+            read=False, create=can_write, write=can_write, delete=False
+        )
         return self._generate_sas_url(dir_path, file_name, permission)
 
     def generate_project_documents_sas_url(self, dir_path: str, file_name: str):
@@ -314,18 +338,29 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         an Azure Fileshare. Permission are read & delete. To upload a document use
         generate_project_documents_upload_sas_url.
         """
-        permission = FilePermissions(read=True, create=False, write=False, delete=True)
+        can_write = self.can_write_project_documents()
+        permission = FilePermissions(
+            read=True, create=False, write=False, delete=can_write
+        )
         return self._generate_sas_url(dir_path, file_name, permission)
 
-    def _generate_share_sas_token(self, permission: FilePermissions):
+    def generate_project_directory_token(
+        self, project_name: str, permission: TokenPermissions, force_write: bool = False
+    ) -> str:
+        """Generate a token with permissions to manage project directory
+        in an Azure Fileshare."""
+        self.check_write_permissions(permission, force_write)
+
+        account_permission = AccountSasPermissions(**permission)
+        return self._generate_share_sas_token(account_permission)
+
+    def _generate_share_sas_token(self, permission: AccountSasPermissions):
         """Generate a Shared Access Signature (SAS) URL for the Azure Fileshare."""
         return generate_account_sas(
             account_name=self.storage_account_name,
             account_key=self._storage_key,
             resource_types=ResourceTypes(container=True, object=True),
-            permission=AccountSasPermissions(
-                add=True, write=True, create=True, update=True
-            ),
+            permission=permission,
             expiry=datetime.now(timezone.utc) + timedelta(hours=1),
         )
 

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+AZCOPY_URL="https://aka.ms/downloadazcopy-v10-linux"
+
+echo "Installing AzCopy..."
+
+mkdir -p bin
+
+curl -sSL "$AZCOPY_URL" -o azcopy.tar.gz
+tar -xzf azcopy.tar.gz
+
+# Extract the azcopy binary (directory name varies)
+AZCOPY_BIN=$(find . -type f -name azcopy | head -n 1)
+
+mv "$AZCOPY_BIN" bin/azcopy
+chmod +x bin/azcopy
+
+rm -rf azcopy.tar.gz azcopy_linux_*
+
+echo "AzCopy installed at bin/azcopy"

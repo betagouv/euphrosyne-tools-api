@@ -1,20 +1,21 @@
-from datetime import datetime
 import pathlib
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, BackgroundTasks, Query
-from fastapi.responses import JSONResponse, StreamingResponse
 import pydantic
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
+from fastapi.responses import JSONResponse, StreamingResponse
+
 from auth import (
     ExtraPayloadTokenGetter,
-    generate_token_for_path,
-    verify_path_permission,
     User,
+    generate_token_for_path,
     get_current_user,
+    verify_admin_permission,
     verify_is_euphrosyne_backend,
     verify_is_euphrosyne_backend_or_admin,
-    verify_admin_permission,
+    verify_path_permission,
     verify_project_membership,
 )
 from clients.azure import DataAzureClient
@@ -27,12 +28,16 @@ from clients.azure.data import (
     validate_project_document_file_path,
     validate_run_data_file_path,
 )
-from clients.data_models import ProjectFileOrDirectory
 from clients.azure.stream import stream_zip_from_azure_files_async
+from clients.data_models import ProjectFileOrDirectory
+from data_lifecycle import models
+from data_lifecycle.operation import (
+    LifecycleOperationNotFoundError,
+    get_lifecycle_operation_status,
+    schedule_lifecycle_operation,
+)
 from dependencies import get_project_data_client
 from hooks.euphrosyne import post_data_access_event
-from data_lifecycle.operation import schedule_lifecycle_operation
-from data_lifecycle import models
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -392,6 +397,48 @@ def restore_project_data(
         operation=operation,
         background_tasks=background_tasks,
     )
+
+
+@router.get(
+    "/projects/{project_slug}/cool/{operation_id}",
+    status_code=200,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    response_model=models.LifecycleOperationStatusView,
+    response_model_exclude_none=True,
+)
+def get_cool_project_data_status(
+    project_slug: str,
+    operation_id: UUID,
+):
+    try:
+        return get_lifecycle_operation_status(
+            project_slug=project_slug,
+            operation_id=operation_id,
+            operation_type=models.LifecycleOperationType.COOL,
+        )
+    except LifecycleOperationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Operation not found") from exc
+
+
+@router.get(
+    "/projects/{project_slug}/restore/{operation_id}",
+    status_code=200,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    response_model=models.LifecycleOperationStatusView,
+    response_model_exclude_none=True,
+)
+def get_restore_project_data_status(
+    project_slug: str,
+    operation_id: UUID,
+):
+    try:
+        return get_lifecycle_operation_status(
+            project_slug=project_slug,
+            operation_id=operation_id,
+            operation_type=models.LifecycleOperationType.RESTORE,
+        )
+    except LifecycleOperationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Operation not found") from exc
 
 
 def _verify_can_set_token_expiration(user: User):

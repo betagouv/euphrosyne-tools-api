@@ -1,255 +1,85 @@
-## [TASK] Implement deterministic HOT/COOL storage resolver for `project_slug` (URI-based)
+# Implement the **tools-api GET status endpoints** for COOL and RESTORE operations
 
-### Context
+## Context
 
-PRD – Storage path resolution
+PRD “Hot → Cool Project Data Management (Immutable Cool)” defines the **tools-api** surface for lifecycle operations, including **status endpoints** per project + operation_id:
 
-`euphrosyne-tools-api` must deterministically compute **where project data lives** for two logical storage roles:
+- `GET /data/projects/{project_slug}/cool/{operation_id}`
+- `GET /data/projects/{project_slug}/restore/{operation_id}`
 
-* **HOT** — workspace / active project data
-* **COOL** — immutable cooled project data
+Admin visibility (FR4) requires surfacing **operation status + bytes/files moved + error details**. The tools-api is the natural place to expose **live progress** (AzCopy job status) because it owns the job execution.
 
-The resolver must be **role-based**, not “Azure Files vs Azure Blob”-based, because HOT and COOL may both live on blob containers in the future.
-
-This resolver is **foundational**: all later operations (AzCopy, listing, restore) must rely on it as the **single source of truth** for project storage locations.
+So the “/data/operations/{operation_id}” endpoint we discussed earlier does **not** match the PRD API specs.
 
 ---
 
-## Goal
+## Description
 
-Implement a deterministic resolver that returns a canonical `DataLocation` for:
+Implement the **tools-api GET status endpoints** for COOL and RESTORE operations:
 
-* HOT project data
-* COOL project data (when cooling is enabled)
+- `GET /data/projects/{project_slug}/cool/{operation_id}`
+- `GET /data/projects/{project_slug}/restore/{operation_id}`
 
-using only:
+### Access control
 
-* `project_slug`
-* environment configuration
+- Protect endpoints using the same **backend-only auth** mechanism as other tools-api backend views (Euphrosyne backend token).
+- Unauthorized requests return `401/403` consistently.
 
-No network calls. No Azure SDK usage.
+### Operation lookup
 
----
+- Identify the operation using `operation_id` (provided by Euphrosyne).
+- Use the in-memory structures already in tools-api:
+  - lifecycle guard entry keyed by `operation_id`
+  - mapping `operation_id → azcopy_job_id` (may be missing early)
 
-## Data model: `DataLocation`
+### Status resolution (including “early” phase)
 
-Implement (or add) a minimal immutable dataclass:
+Return a status even if the AzCopy job id is not yet known:
 
-```python
-@dataclass(frozen=True)
-class DataLocation:
-    role: StorageRole               # HOT | COOL
-    backend: StorageBackend         # AZURE_FILESHARE | AZURE_BLOB
-    project_slug: str
-    uri: str                        # canonical URI for project root
-```
+- If `operation_id` unknown → `404`
+- If known but `azcopy_job_id` not set yet → `status = PENDING` (or equivalent) with 0 progress
+- If job id known → query AzCopy (`azcopy jobs show <job_id>`) and map to:
+  - `RUNNING` when `InProgress`
+  - `SUCCEEDED` when `Completed` (or equivalent AzCopy terminal success)
+  - `FAILED` when `Failed/Cancelled` (terminal failure)
 
-Notes:
+### Progress & stats
 
-* Use `uri` (lowercase) for Python style.
-* `uri` must point to the **project root folder/prefix** (not to a file, not to a run subfolder).
-* `StorageBackend` enum values must be:
+Expose:
 
-  * `AZURE_FILESHARE`
-  * `AZURE_BLOB`
+- `bytes_total`, `files_total` (from AzCopy “Total Number of Bytes Transferred” / “Number of File Transfers” or the best available “total” values AzCopy provides)
+- `bytes_copied`, `files_copied` (completed so far)
+- `progress_percent` (AzCopy “Percent Complete (approx)” if available; otherwise compute from bytes/files)
 
----
+### Errors
 
-## Environment configuration
+If the job failed:
 
-### Backend selection (per role)
+- return `error_details` populated from AzCopy job output (summary fields + any available failure reason)
+- keep it structured enough for the caller to display (message + optional raw details)
 
-* `DATA_BACKEND=azure_fileshare|azure_blob`
-
-  * Used for **HOT** data
-  * Required
-
-* `DATA_BACKEND_COOL=azure_fileshare|azure_blob`
-
-  * Used for **COOL** data
-  * **Optional**
-  * If **absent**, cooling is considered **disabled** and COOL resolution must not be allowed
-
-If `DATA_BACKEND_COOL` is set, **all required COOL-specific configuration must be present**; otherwise startup or resolution must fail with a clear configuration error.
-
----
-
-### Backend-specific configuration
-
-#### Azure Fileshare
-
-* `AZURE_STORAGE_FILESHARE`
-
-  * Fileshare name for HOT data (existing config; keep as-is)
-
-* `AZURE_STORAGE_FILESHARE_COOL`
-
-  * Fileshare name for COOL data (required if `DATA_BACKEND_COOL=azure_fileshare`)
-
-#### Azure Blob
-
-* `AZURE_STORAGE_DATA_CONTAINER`
-
-  * Blob container for HOT data (existing config; keep as-is)
-
-* `AZURE_STORAGE_DATA_CONTAINER_COOL`
-
-  * Blob container for COOL data (required if `DATA_BACKEND_COOL=azure_blob`)
-
----
-
-### Project prefix configuration
-
-Project prefix must be **backend-agnostic**.
-
-* `DATA_PROJECTS_LOCATION_PREFIX`
-
-  * Base prefix for HOT data
-
-* `DATA_PROJECTS_LOCATION_PREFIX_COOL`
-
-  * Base prefix for COOL data
-
-**Backward compatibility rule**:
-* No backward compatibility rule. Replace `AZURE_STORAGE_PROJECTS_LOCATION_PREFIX` with `DATA_PROJECTS_LOCATION_PREFIX`
-
-
----
-
-## Resolver behavior
-
-### Resolver API
-
-Expose role-based resolver functions (names indicative):
-
-* `resolve_hot_location(project_slug: str) -> DataLocation`
-* `resolve_cool_location(project_slug: str) -> DataLocation`
-
-Optionally expose:
-
-* `resolve_location(role: StorageRole, project_slug: str) -> DataLocation`
-
-The resolver must:
-
-* validate `project_slug`
-* determine backend from env configuration
-* build a **canonical URI**
-* return `DataLocation(role, backend, project_slug, uri)`
-
-If `resolve_cool_location` is called while `DATA_BACKEND_COOL` is **unset**, raise a clear error indicating that cooling is disabled.
-
----
-
-## Canonical URI formats
-
-Use **no trailing slash** policy.
-
-### Azure Fileshare
-
-```
-https://{account}.file.core.windows.net/{share}/{prefix}/{project_slug}
-```
-
-### Azure Blob
-
-```
-https://{account}.blob.core.windows.net/{container}/{prefix}/{project_slug}
-```
-
-### Prefix normalization rules
-
-* Strip leading/trailing `/` from prefixes before joining
-* Avoid double slashes in the resulting path
-* Empty prefix must be handled cleanly
-
----
-
-## Validation requirements
-
-Reject invalid `project_slug` values:
-
-* empty string
-* leading or trailing whitespace
-* contains `/` or `\`
-* contains `..`
-* contains `//`
-
-Raise a clear, FastAPI-compatible error (HTTP 400–class).
-
----
-
-## Determinism & stability requirements
-
-* Same inputs + same env config → **exact same `uri` string**
-* Must not depend on:
-
-  * timestamps
-  * randomness
-  * operation_id
-  * mutable metadata
-* All project storage URIs must be produced via this resolver; no ad-hoc concatenation elsewhere in the codebase.
-
----
-
-## Unit tests
-
-Add unit tests covering:
-
-1. **Determinism**
-
-   * same slug + same config → identical `DataLocation` (including `uri`)
-
-2. **Golden snapshots**
-
-   * exact URI assertion for:
-
-     * HOT (fileshare)
-     * COOL (blob)
-
-3. **Prefix joining**
-
-   * empty prefix
-   * non-empty prefix (no double slashes)
-
-4. **Validation**
-
-   * invalid slugs rejected:
-
-     * `""`
-     * `"../x"`
-     * `"a/b"`
-     * `"a\\b"`
-     * `"a..b"`
-     * `" a "`
-
-5. **Role backend selection**
-
-   * HOT backend driven by `DATA_BACKEND`
-   * COOL backend driven by `DATA_BACKEND_COOL`
-   * COOL resolution fails when `DATA_BACKEND_COOL` is unset
+> Note: verification gating (bytes/files match expected totals) is handled on the **Euphrosyne callback side** per PRD; these GET endpoints are about reporting tools-api’s view of the operation/job progress and terminal result.
 
 ---
 
 ## Acceptance criteria
 
-* `DataLocation` dataclass exists with:
+- Implements:
+  - `GET /data/projects/{project_slug}/cool/{operation_id}`
+  - `GET /data/projects/{project_slug}/restore/{operation_id}`
 
-  * `role`, `backend`, `project_slug`, `uri`
-* HOT and COOL resolver functions exist and are the **single source of truth** for project storage URIs
-* HOT and COOL backends are configurable independently
-* Cooling is **disabled by default** when `DATA_BACKEND_COOL` is absent
-* URIs are canonical, stable, and validated
-* Unit tests validate mapping, validation, and backend selection
+- Each endpoint returns (at minimum):
+  - `operation_id`, `project_slug`, `type` (COOL/RESTORE)
+  - `status` in `{PENDING, RUNNING, SUCCEEDED, FAILED}`
+  - `progress_percent`
+  - `bytes_total`, `files_total`
+  - `bytes_copied`, `files_copied`
+  - `error_details` when `FAILED`
 
----
+- Works in the “fast enqueue” timeline:
+  - if `operation_id` exists but job id not yet assigned, endpoint still returns `PENDING` without error
 
-## Notes
+- Access control enforced with backend-only token; unauthorized access returns `401/403`
+- Returns `404` when `operation_id` is unknown for the given project/type
 
-* This task is **resolution only**:
-
-  * no Azure API calls
-  * no AzCopy
-  * no authentication or SAS logic
-* Keep implementation minimal, explicit, and well-documented.
-* This resolver defines a long-lived contract; correctness and stability matter more than flexibility.
-
+If you want, I can also propose a concrete JSON response schema (including exact field names) that matches what you already send in `post_lifecycle_operation_callback(...)` so both sides stay consistent.
