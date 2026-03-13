@@ -268,7 +268,7 @@ def _reset_lifecycle_operation_guard() -> None:
 def _perform_lifecycle_operation(
     *,
     operation: LifecycleOperation,
-) -> tuple[int | None, int | None]:
+) -> tuple[int, int, int, int]:
     """Execute lifecycle data movement and return bytes/files copied."""
     if operation.type == LifecycleOperationType.COOL:
         source_uri, destination_uri = _build_signed_cool_copy_urls(
@@ -288,7 +288,7 @@ def _perform_lifecycle_operation(
             source_uri=source_uri,
             destination_uri=destination_uri,
         )
-    return None, None
+    raise ValueError(f"Unsupported lifecycle operation type: {operation.type}")
 
 
 def _build_signed_cool_copy_urls(*, project_slug: str) -> tuple[str, str]:
@@ -335,7 +335,7 @@ def _perform_azcopy_lifecycle_operation(
     operation: LifecycleOperation,
     source_uri: str,
     destination_uri: str,
-) -> tuple[int, int]:
+) -> tuple[int, int, int, int]:
     job = azcopy_runner.start_copy(source_uri, destination_uri)
     _set_lifecycle_operation_job_id(
         operation_id=operation.operation_id,
@@ -363,7 +363,12 @@ def _perform_azcopy_lifecycle_operation(
             },
         )
 
-    return summary.bytes_transferred, summary.files_transferred
+    return (
+        summary.bytes_transferred,
+        summary.files_transferred,
+        summary.bytes_total,
+        summary.files_total,
+    )
 
 
 def _await_terminal_azcopy_summary(
@@ -446,7 +451,12 @@ def _execute_lifecycle_operation(
         operation.type.value,
     )
     try:
-        operation.bytes_copied, operation.files_copied = _perform_lifecycle_operation(
+        (
+            operation.bytes_copied,
+            operation.files_copied,
+            operation.bytes_total,
+            operation.files_total,
+        ) = _perform_lifecycle_operation(
             operation=operation,
         )
         operation.status = LifecycleOperationStatus.SUCCEEDED

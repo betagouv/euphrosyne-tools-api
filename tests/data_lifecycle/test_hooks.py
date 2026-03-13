@@ -165,6 +165,8 @@ def test_post_lifecycle_operation_serialization(
         finished_at=finished_at,
         bytes_copied=12345,
         files_copied=67,
+        bytes_total=20000,
+        files_total=100,
         error_message=None,
         error_details=None,
     )
@@ -189,5 +191,7 @@ def test_post_lifecycle_operation_serialization(
     assert json_body["finished_at"] == finished_at.isoformat()
     assert json_body["bytes_copied"] == 12345
     assert json_body["files_copied"] == 67
+    assert json_body["bytes_total"] == 20000
+    assert json_body["files_total"] == 100
     assert json_body["error_message"] is None
     assert json_body["error_details"] is None

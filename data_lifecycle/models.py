@@ -32,6 +32,8 @@ class LifecycleOperation:
     finished_at: datetime | None = None
     bytes_copied: int | None = None
     files_copied: int | None = None
+    bytes_total: int | None = None
+    files_total: int | None = None
     error_message: str | None = None
     error_details: dict[str, Any] | None = None
 
