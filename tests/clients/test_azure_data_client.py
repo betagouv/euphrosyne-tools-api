@@ -1,6 +1,5 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 import asyncio
-import pathlib
 from datetime import datetime
 from unittest.mock import MagicMock, call, patch
 
@@ -9,15 +8,8 @@ from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.fileshare import ShareDirectoryClient
 from pytest import MonkeyPatch
 
-from auth import Project, User
 from clients.azure import DataAzureClient
-from clients.azure.data import (
-    FolderCreationError,
-    IncorrectDataFilePath,
-    extract_info_from_path,
-    validate_project_document_file_path,
-    validate_run_data_file_path,
-)
+from clients.azure.data import FolderCreationError
 from clients.data_models import ProjectFile
 from data_lifecycle.storage_types import StorageRole
 
@@ -449,64 +441,6 @@ def test_list_files_recursive_with_detailed_info(
     )
 
 
-@patch("clients.azure.data._get_projects_path", MagicMock(return_value="projects"))
-@pytest.mark.parametrize(
-    ("path,is_valid"),
-    (
-        ("projects/hello/runs/world/raw_data/", True),
-        ("projects/hello/runs/world/processed_data/", True),
-        ("projects/hello/runs/world/processed_data/and/the/path", True),
-        ("projects/otherproject/runs/world/processed_data/", False),
-        ("projects/hello/notruns/world/processed_data/", False),
-        ("projects/hel|lo/runs/world/processed_data/", False),
-        ("projects/hello/runs/wor|ld/processed_data/", False),
-        ("start/differently/hello/runs/world/processed_data/", False),
-        ("projects/hello/runs/world/other_data/", False),
-    ),
-)
-def test_validate_run_data_file_path(path, is_valid):
-    is_invalid = False
-    try:
-        validate_run_data_file_path(
-            path,
-            User(
-                id="1",
-                is_admin=False,
-                projects=[Project(id=2, name="hello", slug="hello")],
-            ),
-        )
-    except IncorrectDataFilePath:
-        is_invalid = True
-    assert is_valid is not is_invalid
-
-
-@patch("clients.azure.data._get_projects_path", MagicMock(return_value="projects"))
-@pytest.mark.parametrize(
-    ("path,is_valid"),
-    (
-        ("projects/hello/documents/", True),
-        ("projects/hello/world/documents/and/the/path", False),
-        ("projects/otherproject/documents/", False),
-        ("projects/hel|lo/documents/", False),
-        ("start/differently/hello/documents/", False),
-    ),
-)
-def test_validate_document_file_path(path, is_valid):
-    is_invalid = False
-    try:
-        validate_project_document_file_path(
-            path,
-            User(
-                id="1",
-                is_admin=False,
-                projects=[Project(id=2, name="hello", slug="hello")],
-            ),
-        )
-    except IncorrectDataFilePath:
-        is_invalid = True
-    assert is_valid is not is_invalid
-
-
 def test_init_project_directory(client: DataAzureClient, monkeypatch: MonkeyPatch):
     monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     share_directory_client_mock = MagicMock(spec=ShareDirectoryClient)
@@ -721,29 +655,6 @@ def test_is_project_data_available_when_run_dir_not_exists(
         result = client.is_project_data_available("test_project")
         assert not result
         init_run_directory_mock.assert_called_once_with("run1", "test_project")
-
-
-@patch("clients.azure.data._validate_run_data_file_path_regex", MagicMock())
-def test_extract_info_from_path(monkeypatch: MonkeyPatch):
-    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
-
-    path1 = pathlib.Path("projects/project1/runs/run1/data")
-    path2 = pathlib.Path("projects/project2/runs/run2")
-    path3 = pathlib.Path("projects/project3")
-
-    info1 = extract_info_from_path(path1)
-    info2 = extract_info_from_path(path2)
-    info3 = extract_info_from_path(path3)
-
-    assert info1["project_name"] == "project1"
-    assert info1["run_name"] == "run1"
-    assert info1["data_type"] == "data"
-    assert info2["project_name"] == "project2"
-    assert info2["run_name"] == "run2"
-    assert info2["data_type"] is None
-    assert info3["project_name"] == "project3"
-    assert info3["run_name"] is None
-    assert info3["data_type"] is None
 
 
 @patch("clients.azure.data.ShareDirectoryClient")

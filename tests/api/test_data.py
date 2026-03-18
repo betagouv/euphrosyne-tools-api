@@ -6,10 +6,9 @@ import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.data import _verify_can_set_token_expiration
 from auth import (
     ExtraPayloadTokenGetter,
     User,
@@ -18,13 +17,10 @@ from auth import (
     verify_is_euphrosyne_backend_or_admin,
     verify_path_permission,
 )
-from clients.azure.data import (
-    FolderCreationError,
-    IncorrectDataFilePath,
-    RunDataNotFound,
-)
+from clients.azure.data import FolderCreationError, RunDataNotFound
 from dependencies import get_project_data_client
 from hooks.euphrosyne import post_data_access_event
+from path import IncorrectDataFilePath
 
 
 @pytest.fixture(autouse=True)
@@ -142,25 +138,30 @@ def test_change_project_name_when_caught_error(app: FastAPI, client: TestClient)
 
 
 @patch("auth._decode_jwt", MagicMock(return_value={}))
-def test_zip_project_run_data_when_path_incorrect(app: FastAPI, client: TestClient):
+def test_zip_project_run_data_when_path_incorrect(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
-    with patch("api.data.extract_info_from_path") as extract_info_from_path_mock:
-        extract_info_from_path_mock.side_effect = IncorrectDataFilePath("incorrect")
+    with patch("api.data.RunDataTypeRef.from_path") as from_path_mock:
+        from_path_mock.side_effect = IncorrectDataFilePath("incorrect")
         response = client.get("/data/run-data-zip?token=wrong-token&path=/a/wrong/path")
     assert response.status_code == 422
 
 
 @patch("auth._decode_jwt", MagicMock(return_value={}))
 def test_zip_project_run_data_when_path_not_found_in_azure(
-    app: FastAPI, client: TestClient
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     iter_project_run_files_async_mock = MagicMock(side_effect=RunDataNotFound())
     app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         iter_project_run_files_async=iter_project_run_files_async_mock
     )
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
-    with patch("api.data.extract_info_from_path"):
-        response = client.get("/data/run-data-zip?token=token&path=/a/wrong/path")
+    response = client.get(
+        "/data/run-data-zip?token=token&path=projects/project-01/runs/runur/raw_data"
+    )
     assert response.status_code == 404
 
 
@@ -217,25 +218,49 @@ def test_zip_project_run_data_with_data_request(
     assert add_background_task_mock.call_args[1]["data_request"] == "12"
 
 
-@patch("api.data._verify_can_set_token_expiration", MagicMock())
-@patch("api.data.validate_run_data_file_path", MagicMock())
 def test_generate_signed_url_for_path_with_expiration(
     app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     app.dependency_overrides[get_current_user] = lambda: User(
         id="1", projects=[], is_admin=True
     )
     with patch("api.data.generate_token_for_path") as generate_token_for_path_mock:
         response = client.get(
-            "/data/project-name/token?path=/a/path&expiration=2024-07-15T15:51:27.911649"
+            "/data/project-name/token?path=projects/project-01/runs/run-01/HDF5/data.h5&expiration=2024-07-15T15:51:27.911649"
         )
         generate_token_for_path_mock.assert_called_once_with(
-            "/a/path",
+            "projects/project-01/runs/run-01/HDF5/data.h5",
             expiration=datetime.datetime.fromisoformat("2024-07-15T15:51:27.911649"),
             data_request=None,
         )
         assert response.status_code == 200
     del app.dependency_overrides[get_current_user]
+
+
+def test_generate_signed_url_for_path_with_expiration_forbidden_for_non_admin(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+
+    response = client.get(
+        "/data/project-01/token?path=projects/project-01/runs/run-01/raw_data/file.txt&expiration=2024-07-15T15:51:27.911649"
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only admins can set token expiration"
+
+
+def test_generate_signed_url_for_path_when_path_incorrect(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+
+    response = client.get("/data/project-01/token?path=projects/project-01/not-runs")
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["query", "path"]
+    assert "path must start with" in response.json()["detail"][0]["msg"]
 
 
 def test_check_folders_sync(app: FastAPI, client: TestClient):
@@ -252,9 +277,3 @@ def test_check_folders_sync(app: FastAPI, client: TestClient):
         "unsynced_dirs": ["unsynced project"],
         "orphan_dirs": ["project2"],
     }
-
-
-def test_verify_can_set_token_expiration():
-    with pytest.raises(HTTPException):
-        _verify_can_set_token_expiration(user=User(id="1", projects=[], is_admin=False))
-    _verify_can_set_token_expiration(user=User(id="1", projects=[], is_admin=True))
