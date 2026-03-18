@@ -48,5 +48,5 @@ def get_guacamole_client():
 
 
 @lru_cache()
-def get_image_storage_client(project_name: str) -> ImageStorageClient:
-    return ImageStorageClient(project_slug=project_name)
+def get_image_storage_client(project_slug: str) -> ImageStorageClient:
+    return ImageStorageClient(project_slug=project_slug)

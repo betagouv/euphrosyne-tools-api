@@ -40,28 +40,28 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 
 @router.get(
-    "/available/{project_name}",
+    "/available/{project_slug}",
     dependencies=[Depends(verify_is_euphrosyne_backend)],
 )
 def check_project_data_available(
-    project_name: str,
+    project_slug: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
-    return {"available": azure_client.is_project_data_available(project_name)}
+    return {"available": azure_client.is_project_data_available(project_slug)}
 
 
 @router.get(
-    "/{project_name}/documents",
+    "/{project_slug}/documents",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=list[ProjectFileOrDirectory],
 )
 def list_project_documents(
-    project_name: str,
+    project_slug: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.get_project_documents(project_name)
+        return azure_client.get_project_documents(project_slug)
     except ProjectDocumentsNotFound:
         return JSONResponse(
             {"detail": "Folder for the project documents not found"}, status_code=404
@@ -111,20 +111,20 @@ async def zip_project_run_data(
 
 
 @router.get(
-    "/{project_name}/runs/{run_name}/{data_type}",
+    "/{project_slug}/runs/{run_name}/{data_type}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=list[ProjectFileOrDirectory],
 )
 def list_run_data(
-    project_name: str,
+    project_slug: str,
     run_name: str,
     data_type: str = Path(regex="^(raw_data|processed_data|HDF5)$"),
     folder: str | None = None,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.get_run_files_folders(project_name, run_name, data_type, folder)  # type: ignore # noqa: E501
+        return azure_client.get_run_files_folders(project_slug, run_name, data_type, folder)  # type: ignore # noqa: E501
     except RunDataNotFound:
         return JSONResponse(
             {"detail": "Run data not found"},
@@ -134,12 +134,12 @@ def list_run_data(
 
 
 @router.get(
-    "/{project_name}/runs/{run_name}/upload/shared_access_signature",
+    "/{project_slug}/runs/{run_name}/upload/shared_access_signature",
     status_code=200,
     dependencies=[Depends(verify_admin_permission)],
 )
 def generate_run_data_upload_shared_access_signature(
-    project_name: str,
+    project_slug: str,
     run_name: str,
     data_type: Annotated[
         str | None, Query(pattern="^(raw_data|processed_data|HDF5)$")
@@ -150,7 +150,7 @@ def generate_run_data_upload_shared_access_signature(
     to file storage.
     """
     credentials = azure_client.generate_run_data_upload_sas(
-        project_name=project_name,
+        project_name=project_slug,
         run_name=run_name,
         data_type=data_type,  # type: ignore
     )
@@ -201,12 +201,12 @@ def generate_project_documents_shared_access_signature(
 
 
 @router.get(
-    "/{project_name}/documents/upload/shared_access_signature",
+    "/{project_slug}/documents/upload/shared_access_signature",
     dependencies=[Depends(verify_project_membership)],
     status_code=200,
 )
 def generate_project_documents_upload_shared_access_signature(
-    project_name: str,
+    project_slug: str,
     file_name: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
@@ -214,18 +214,19 @@ def generate_project_documents_upload_shared_access_signature(
     to document file storage.
     """
     url = azure_client.generate_project_documents_upload_sas_url(
-        project_name=project_name,
+        project_name=project_slug,
         file_name=file_name,
     )
     return {"url": url}
 
 
 @router.get(
-    "/{project_name}/token",
+    "/{project_slug}/token",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
 )
 def generate_signed_url_for_path(
+    project_slug: str,
     path: pathlib.Path,
     current_user: User = Depends(get_current_user),
     data_request: str | None = None,
@@ -245,65 +246,65 @@ def generate_signed_url_for_path(
 
 
 @router.post(
-    "/{project_name}/init",
+    "/{project_slug}/init",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend_or_admin)],
 )
 def init_project_data(
-    project_name: str,
+    project_slug: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.init_project_directory(project_name)
+        return azure_client.init_project_directory(project_slug)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 
 
 @router.post(
-    "/{project_name}/runs/{run_name}/init",
+    "/{project_slug}/runs/{run_name}/init",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend_or_admin)],
 )
 def init_run_data(
-    project_name: str,
+    project_slug: str,
     run_name: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.init_run_directory(run_name, project_name)
+        return azure_client.init_run_directory(run_name, project_slug)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 
 
 @router.post(
-    "/{project_name}/rename/{new_project_name}",
+    "/{project_slug}/rename/{new_project_name}",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend)],
 )
 def rename_project_folder(
-    project_name: str,
+    project_slug: str,
     new_project_name: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.rename_project_directory(project_name, new_project_name)
+        return azure_client.rename_project_directory(project_slug, new_project_name)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 
 
 @router.post(
-    "/{project_name}/runs/{run_name}/rename/{new_run_name}",
+    "/{project_slug}/runs/{run_name}/rename/{new_run_name}",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend)],
 )
 def rename_run_folder(
-    project_name: str,
+    project_slug: str,
     run_name: str,
     new_run_name: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.rename_run_directory(run_name, project_name, new_run_name)
+        return azure_client.rename_run_directory(run_name, project_slug, new_run_name)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 

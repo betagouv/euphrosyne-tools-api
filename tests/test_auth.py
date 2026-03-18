@@ -134,8 +134,6 @@ def test_verify_project_membership_fails_for_regular_user():
                 projects=[],
             ),
         )
-
-
 def test_verify_admin_permission():
     with pytest.raises(HTTPException):
         verify_admin_permission(
