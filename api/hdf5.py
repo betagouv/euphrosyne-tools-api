@@ -4,13 +4,9 @@ import pathlib
 
 from fastapi import APIRouter, Depends
 
-from auth import User, get_current_user
-from clients.azure.data import (
-    DataAzureClient,
-    IncorrectDataFilePath,
-    validate_run_data_file_path,
-)
-from exceptions import NoProjectMembershipException
+from auth import User, get_current_user, verify_project_membership
+from clients.azure.data import DataAzureClient
+from path import RunDataTypeRef
 
 # Disable libhdf5 file locking since h5grove is only reading files
 # This needs to be done before any import of h5py, so before h5grove import
@@ -23,10 +19,8 @@ def verify_file_path(
     file: str = Depends(h5grove_fastapi.add_base_path),
     current_user: User = Depends(get_current_user),
 ):
-    try:
-        validate_run_data_file_path(pathlib.Path(file), current_user)
-    except IncorrectDataFilePath as error:
-        raise NoProjectMembershipException from error
+    ref = RunDataTypeRef.from_path(pathlib.Path(file))
+    verify_project_membership(ref.project_slug, current_user)
     return file
 
 

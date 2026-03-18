@@ -21,12 +21,8 @@ from auth import (
 from clients.azure import DataAzureClient
 from clients.azure.data import (
     FolderCreationError,
-    IncorrectDataFilePath,
     ProjectDocumentsNotFound,
     RunDataNotFound,
-    extract_info_from_path,
-    validate_project_document_file_path,
-    validate_run_data_file_path,
 )
 from clients.azure.stream import stream_zip_from_azure_files_async
 from clients.data_models import ProjectFileOrDirectory
@@ -38,6 +34,7 @@ from data_lifecycle.operation import (
 )
 from dependencies import get_project_data_client
 from hooks.euphrosyne import post_data_access_event
+from path import ProjectDocumentRef, RunDataTypeRef
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -91,16 +88,10 @@ async def zip_project_run_data(
     Returns:
         StreamingResponse: A streaming response containing the zip file.
     """
-    try:
-        path_info = extract_info_from_path(path)
-    except IncorrectDataFilePath as error:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["query", "path"], "msg": error.message}],
-        ) from error
+    ref = RunDataTypeRef.from_path(path)
     try:
         files = azure_client.iter_project_run_files_async(
-            path_info["project_name"], path_info["run_name"], path_info.get("data_type")
+            ref.project_slug, ref.run_name, ref.data_type
         )
     except RunDataNotFound:
         raise HTTPException(status_code=404, detail="Run data not found.")
@@ -114,7 +105,7 @@ async def zip_project_run_data(
         stream_zip_from_azure_files_async(files),
         media_type="application/zip",
         headers={
-            "Content-Disposition": f"attachment; filename={path_info['run_name']}-{timestamp}.zip"
+            "Content-Disposition": f"attachment; filename={ref.run_name}-{timestamp}.zip"
         },
     )
 
@@ -178,13 +169,8 @@ def generate_run_data_shared_access_signature(
     """Return a token used to directly download run data
     from run file storage.
     """
-    try:
-        validate_run_data_file_path(path, current_user)
-    except IncorrectDataFilePath as error:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["query", "path"], "msg": error.message}],
-        ) from error
+    ref = RunDataTypeRef.from_path(path)
+    verify_project_membership(ref.project_slug, current_user)
     url = azure_client.generate_run_data_sas_url(
         dir_path=str(path.parents[0]),
         file_name=path.name,
@@ -205,13 +191,8 @@ def generate_project_documents_shared_access_signature(
     """Return a token used to directly download project documents
     from document file storage.
     """
-    try:
-        validate_project_document_file_path(path, current_user)
-    except IncorrectDataFilePath as error:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["query", "path"], "msg": error.message}],
-        ) from error
+    ref = ProjectDocumentRef.from_path(path)
+    verify_project_membership(ref.project_slug, current_user)
     url = azure_client.generate_project_documents_sas_url(
         dir_path=str(path.parents[0]),
         file_name=path.name,
@@ -252,15 +233,11 @@ def generate_signed_url_for_path(
 ):
     """Return a auth token for a given path. It is used to grant access to project data via
     a GET request without revealing jwt access token. It is like an Azure SAS token."""
-    if expiration:
-        _verify_can_set_token_expiration(current_user)
-    try:
-        validate_run_data_file_path(path, current_user)
-    except IncorrectDataFilePath as error:
+    if expiration and not current_user.is_admin:
         raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["query", "path"], "msg": error.message}],
-        ) from error
+            status_code=403, detail="Only admins can set token expiration"
+        )
+    RunDataTypeRef.validate_path(path)
     token = generate_token_for_path(
         str(path), expiration=expiration, data_request=data_request
     )
@@ -439,10 +416,3 @@ def get_restore_project_data_status(
         )
     except LifecycleOperationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Operation not found") from exc
-
-
-def _verify_can_set_token_expiration(user: User):
-    if not user.is_admin:
-        raise HTTPException(
-            status_code=403, detail="Only admins can set token expiration"
-        )
