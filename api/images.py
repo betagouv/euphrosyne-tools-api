@@ -17,19 +17,19 @@ class ListProjectObjectImagesResponse(pydantic.BaseModel):
 
 
 @router.get(
-    "/projects/{project_name}",
+    "/projects/{project_slug}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=ListProjectObjectImagesResponse,
 )
 @router.get(
-    "/projects/{project_name}/object-groups/{object_group_id}",
+    "/projects/{project_slug}/object-groups/{object_group_id}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=ListProjectObjectImagesResponse,
 )
 async def list_project_images(
-    project_name: str,
+    project_slug: str,
     object_group_id: int | None = None,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
     with_sas_token: bool = True,
@@ -55,7 +55,7 @@ class GetUploadSignedUrlResponse(pydantic.BaseModel):
     response_model=GetUploadSignedUrlResponse,
 )
 async def get_upload_signed_url(
-    project_name: str,
+    project_slug: str,
     file_name: str,
     object_group_id: int | None = None,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
@@ -84,13 +84,13 @@ class GetReadonlyProjectContainerSignedUrlResponse(pydantic.BaseModel):
 
 
 @router.get(
-    "/projects/{project_name}/signed-url",
+    "/projects/{project_slug}/signed-url",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=GetReadonlyProjectContainerSignedUrlResponse,
 )
 def get_readonly_project_container_signed_url(
-    project_name: str,
+    project_slug: str,
     azure_client: ImageStorageClient = Depends(get_image_storage_client),
 ):
     """Returns a signed URL to read file in a project container."""

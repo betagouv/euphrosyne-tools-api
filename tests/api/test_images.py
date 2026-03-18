@@ -69,7 +69,7 @@ def test_get_upload_signed_url_valid_extension(
     response = client.get(
         "/images/upload/signed-url",
         params={
-            "project_name": "test_project",
+            "project_slug": "test_project",
             "object_group_id": 1,
             "file_name": "image.png",
         },
@@ -85,7 +85,7 @@ def test_get_upload_signed_url_invalid_extension(
     response = client.get(
         "/images/upload/signed-url",
         params={
-            "project_name": "test_project",
+            "project_slug": "test_project",
             "object_group_id": 1,
             "file_name": "image.txt",
         },
@@ -110,3 +110,24 @@ def test_get_readonly_project_container_signed_url(
 
     assert response.status_code == 200
     assert response.json() == {"token": "sas_token", "base_url": "http://base.url"}
+
+
+def test_openapi_uses_project_slug_for_image_routes(client: TestClient):
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+
+    list_images_params = response.json()["paths"]["/images/projects/{project_slug}"]["get"][
+        "parameters"
+    ]
+    assert "project_slug" in [param["name"] for param in list_images_params]
+    assert "project_name" not in [param["name"] for param in list_images_params]
+
+    upload_params = response.json()["paths"]["/images/upload/signed-url"]["get"][
+        "parameters"
+    ]
+    assert [param["name"] for param in upload_params] == [
+        "project_slug",
+        "file_name",
+        "object_group_id",
+    ]
