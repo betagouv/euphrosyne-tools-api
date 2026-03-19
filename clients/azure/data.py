@@ -463,11 +463,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         )
 
     def _list_files(self, dir_path: str) -> list[ProjectFileOrDirectory]:
-        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
-
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
-            share_name=share_name,
+            share_name=self.share_name,
             directory_path=dir_path,
         )
 

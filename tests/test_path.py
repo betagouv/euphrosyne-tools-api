@@ -41,7 +41,9 @@ def test_project_ref_from_path_raises_for_invalid_path(
     with pytest.raises(IncorrectDataFilePath) as error:
         ProjectRef.from_path(path)
 
-    assert error.value.message == "path must be like {projects_path_prefix}/<project_slug>"
+    assert (
+        error.value.message == "path must be like {projects_path_prefix}/<project_slug>"
+    )
 
 
 @pytest.mark.parametrize(
@@ -105,7 +107,7 @@ def test_run_data_type_ref_from_directory_path(
     assert RunDataTypeRef.from_path(path) == RunDataTypeRef(
         project_slug="project-01",
         run_name="run-01",
-        data_type=data_type,
+        data_type=data_type,  # type: ignore
     )
 
 
@@ -120,7 +122,7 @@ def test_run_data_type_ref_from_nested_file_path(
     assert RunDataTypeRef.from_path(path) == RunDataTypeRef(
         project_slug="project-01",
         run_name="run-01",
-        data_type=data_type,
+        data_type=data_type,  # type: ignore
     )
 
 

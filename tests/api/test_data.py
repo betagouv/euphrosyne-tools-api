@@ -18,7 +18,7 @@ from auth import (
     verify_path_permission,
 )
 from clients.azure.data import FolderCreationError, RunDataNotFound
-from dependencies import get_project_data_client
+from dependencies import get_hot_project_data_client, get_project_data_client
 from hooks.euphrosyne import post_data_access_event
 from path import IncorrectDataFilePath
 
@@ -263,9 +263,24 @@ def test_generate_signed_url_for_path_when_path_incorrect(
     assert "path must start with" in response.json()["detail"][0]["msg"]
 
 
+def test_generate_signed_url_for_path_forbidden_when_path_project_differs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+
+    with patch("api.data.generate_token_for_path") as generate_token_for_path_mock:
+        response = client.get(
+            "/data/project-01/token?path=projects/project-02/runs/run-01/raw_data/file.txt"
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "User does not have access to this project"
+    generate_token_for_path_mock.assert_not_called()
+
+
 def test_check_folders_sync(app: FastAPI, client: TestClient):
     app.dependency_overrides[verify_is_euphrosyne_backend] = lambda: MagicMock()
-    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
+    app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
         list_project_dirs=MagicMock(return_value=["project1", "project2"])
     )
     response = client.post(

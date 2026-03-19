@@ -32,7 +32,7 @@ from data_lifecycle.operation import (
     get_lifecycle_operation_status,
     schedule_lifecycle_operation,
 )
-from dependencies import get_project_data_client
+from dependencies import get_hot_project_data_client, get_project_data_client
 from hooks.euphrosyne import post_data_access_event
 from path import ProjectDocumentRef, RunDataTypeRef
 
@@ -238,7 +238,8 @@ def generate_signed_url_for_path(
         raise HTTPException(
             status_code=403, detail="Only admins can set token expiration"
         )
-    RunDataTypeRef.validate_path(path)
+    ref = RunDataTypeRef.from_path(path)
+    verify_project_membership(ref.project_slug, current_user)
     token = generate_token_for_path(
         str(path), expiration=expiration, data_request=data_request
     )
@@ -320,7 +321,7 @@ class CheckFoldersSyncBody(pydantic.BaseModel):
 )
 def check_folders_sync(
     body: CheckFoldersSyncBody,
-    azure_client: DataAzureClient = Depends(get_project_data_client),
+    azure_client: DataAzureClient = Depends(get_hot_project_data_client),
 ):
     unsynced_dirs = []
     project_dirs = azure_client.list_project_dirs()
