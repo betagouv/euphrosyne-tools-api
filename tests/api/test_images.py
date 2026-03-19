@@ -117,9 +117,9 @@ def test_openapi_uses_project_slug_for_image_routes(client: TestClient):
 
     assert response.status_code == 200
 
-    list_images_params = response.json()["paths"]["/images/projects/{project_slug}"]["get"][
-        "parameters"
-    ]
+    list_images_params = response.json()["paths"]["/images/projects/{project_slug}"][
+        "get"
+    ]["parameters"]
     assert "project_slug" in [param["name"] for param in list_images_params]
     assert "project_name" not in [param["name"] for param in list_images_params]
 
