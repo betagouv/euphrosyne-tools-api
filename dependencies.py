@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 
 from clients.azure import (
     BlobDataAzureClient,
@@ -62,6 +62,11 @@ def get_hot_project_data_client():
 def get_project_data_client(
     storage_role: Annotated[StorageRole, Depends(get_project_lifecycle)],
 ) -> AbstractDataClient:
+    if storage_role not in [StorageRole.HOT, StorageRole.COOL]:
+        raise HTTPException(
+            status_code=409,
+            detail="Project data is not in a stable state (HOT or COOL)",
+        )
     backend = resolve_backend(storage_role)
     if backend == StorageBackend.AZURE_BLOB:
         return BlobDataAzureClient(storage_role=storage_role)
