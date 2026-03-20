@@ -111,12 +111,7 @@ def _parse_backend_value(value: str, env_name: str) -> StorageBackend:
 
 
 def _get_prefix(role: StorageRole) -> str:
-    env_name = (
-        "DATA_PROJECTS_LOCATION_PREFIX"
-        if role == StorageRole.HOT
-        else "DATA_PROJECTS_LOCATION_PREFIX_COOL"
-    )
-    raw_prefix = os.getenv(env_name, "")
+    raw_prefix = os.getenv("DATA_PROJECTS_LOCATION_PREFIX", "")
     return _normalize_prefix(raw_prefix)
 
 
