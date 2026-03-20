@@ -1,26 +1,28 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi import HTTPException, status
 from jose import jwt
+
 import auth
 from auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
     ALGORITHM,
     EUPHROSYNE_TOKEN_USER_ID_VALUE,
     JWT_CREDENTIALS_EXCEPTION,
     Project,
     User,
     _decode_jwt,
+    _generate_jwt_token,
     generate_token_for_path,
     get_current_user,
     verify_admin_permission,
     verify_has_azure_permission,
     verify_is_euphrosyne_backend,
     verify_is_euphrosyne_backend_or_admin,
-    verify_project_membership,
     verify_path_permission,
-    _generate_jwt_token,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
+    verify_project_membership,
 )
 from exceptions import NoProjectMembershipException
 

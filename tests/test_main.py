@@ -8,9 +8,8 @@ from fastapi.testclient import TestClient
 from auth import User, get_current_user
 from backgrounds import wait_for_deploy
 from clients.azure import VMAzureClient
-from clients.azure.data import IncorrectDataFilePath
-from clients.data_models import ProjectFileOrDirectory
 from clients.azure.vm import AzureVMDeploymentProperties, DeploymentNotFound, VMNotFound
+from clients.data_models import ProjectFileOrDirectory
 from clients.guacamole import GuacamoleClient, GuacamoleConnectionNotFound
 from dependencies import (
     get_config_azure_client,
@@ -18,6 +17,7 @@ from dependencies import (
     get_project_data_client,
     get_vm_azure_client,
 )
+from path import IncorrectDataFilePath
 from tests.conftest import get_current_user_override
 
 
@@ -221,25 +221,27 @@ def test_generate_project_documents_upload_sas_url_success(
     }
 
 
-@patch("api.data.validate_project_document_file_path", MagicMock())
-def test_generate_project_documents_sas_url_success(app: FastAPI, client: TestClient):
+def test_generate_project_documents_sas_url_success(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     generate_shared_access_signature_url_mock = MagicMock(return_value="url")
     app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         generate_project_documents_sas_url=generate_shared_access_signature_url_mock,
     )
-    file_path = "file/path/to/document"
+    file_path = "projects/project-01/documents/document.pdf"
     response = client.get(f"/data/documents/shared_access_signature?path={file_path}")
 
     assert response.status_code == 200
     assert response.json()["url"] == "url"
     assert generate_shared_access_signature_url_mock.call_args[1] == {
-        "dir_path": "file/path/to",
-        "file_name": "document",
+        "dir_path": "projects/project-01/documents",
+        "file_name": "document.pdf",
     }
 
 
 @patch(
-    "api.data.validate_project_document_file_path",
+    "api.data.ProjectDocumentRef.from_path",
     MagicMock(side_effect=IncorrectDataFilePath("wrong file path")),
 )
 def test_generate_project_documents_sas_url_wrong_path(client: TestClient):
@@ -250,26 +252,28 @@ def test_generate_project_documents_sas_url_wrong_path(client: TestClient):
     assert response.json()["detail"][0]["msg"] == "wrong file path"
 
 
-@patch("api.data.validate_run_data_file_path", MagicMock())
-def test_generate_run_data_sas_url_success(app: FastAPI, client: TestClient):
+def test_generate_run_data_sas_url_success(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     generate_shared_access_signature_url_mock = MagicMock(return_value="url")
     app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         generate_run_data_sas_url=generate_shared_access_signature_url_mock
     )
-    file_path = "file/path/to/run"
+    file_path = "projects/project-01/runs/run-01/raw_data/file.csv"
     response = client.get(f"/data/runs/shared_access_signature?path={file_path}")
 
     assert response.status_code == 200
     assert response.json()["url"] == "url"
     assert generate_shared_access_signature_url_mock.call_args[1] == {
-        "dir_path": "file/path/to",
-        "file_name": "run",
+        "dir_path": "projects/project-01/runs/run-01/raw_data",
+        "file_name": "file.csv",
         "is_admin": False,
     }
 
 
 @patch(
-    "api.data.validate_run_data_file_path",
+    "api.data.RunDataTypeRef.from_path",
     MagicMock(side_effect=IncorrectDataFilePath("wrong file path")),
 )
 def test_generate_run_data_sas_url_wrong_path(

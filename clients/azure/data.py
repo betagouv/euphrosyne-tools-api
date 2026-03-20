@@ -4,10 +4,8 @@ import asyncio
 import functools
 import io
 import os
-import re
 from datetime import datetime, timedelta, timezone
 from io import SEEK_CUR, SEEK_END, SEEK_SET
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import sentry_sdk
@@ -32,7 +30,7 @@ from slugify import slugify
 from data_lifecycle.storage_types import StorageRole
 
 if TYPE_CHECKING:
-    from auth import User
+    pass
 
 # pylint: disable=wrong-import-position
 from ..data_client import AbstractDataClient
@@ -59,12 +57,6 @@ class ProjectDocumentsNotFound(Exception):
 class FolderCreationError(Exception):
     def __init__(self, message, *args) -> None:
         self.message = str(message)
-        super().__init__(*args)
-
-
-class IncorrectDataFilePath(Exception):
-    def __init__(self, message: str, *args: object):
-        self.message = message
         super().__init__(*args)
 
 
@@ -471,11 +463,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         )
 
     def _list_files(self, dir_path: str) -> list[ProjectFileOrDirectory]:
-        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
-
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
-            share_name=share_name,
+            share_name=self.share_name,
             directory_path=dir_path,
         )
 
@@ -572,51 +562,8 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
             yield asyncio.to_thread(file_client.download_file)
 
 
-def extract_info_from_path(path: Path):
-    """Extract project and run name from a path."""
-    _validate_run_data_file_path_regex(path)
-    projects_path_prefix = _get_projects_path()
-    path_without_prefix = Path(str(path).replace(projects_path_prefix + "/", "", 1))
-    info: dict[str, str | None] = {
-        "project_name": None,
-        "run_name": None,
-        "data_type": None,
-    }
-    if len(path_without_prefix.parts) > 0:
-        info["project_name"] = path_without_prefix.parts[0]
-    if len(path_without_prefix.parts) > 2:
-        info["run_name"] = path_without_prefix.parts[2]
-    if len(path_without_prefix.parts) > 3:
-        info["data_type"] = path_without_prefix.parts[3]
-    return info
-
-
-def validate_run_data_file_path(path: Path, current_user: User):
-    _validate_run_data_file_path_regex(path)
-    _validate_project_file_path(path, current_user)
-
-
-def validate_project_document_file_path(path: Path, current_user: User):
-    if not re.match(rf"^{_get_projects_path()}\/[\w\- ]+\/documents", str(path)):
-        raise IncorrectDataFilePath(
-            "path must start with {projects_path_prefix}/<project_name>/documents/"
-        )
-    _validate_project_file_path(path, current_user)
-
-
 def _get_projects_path():
     return os.getenv("DATA_PROJECTS_LOCATION_PREFIX", "")
-
-
-def _validate_project_file_path(path: Path, current_user: User):
-    """Given a path, validate the path is valid for project data and the user has
-    permission to access it.
-    """
-    projects_path_prefix = _get_projects_path()
-    path_without_prefix = Path(str(path).replace(projects_path_prefix + "/", "", 1))
-    project_name = path_without_prefix.parts[0]
-    if not current_user.has_project(project_name) and not current_user.is_admin:
-        raise IncorrectDataFilePath(f"user is not part of project {project_name}")
 
 
 def _generate_base_dir_path(
@@ -630,14 +577,3 @@ def _generate_base_dir_path(
         if data_type:
             base_dir_path = os.path.join(base_dir_path, data_type)
     return base_dir_path
-
-
-def _validate_run_data_file_path_regex(path: Path):
-    if not re.match(
-        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data|HDF5)",  # noqa: E501
-        str(path),
-    ):
-        # pylint: disable=line-too-long
-        raise IncorrectDataFilePath(
-            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data|HDF5)/"  # noqa: E501
-        )
