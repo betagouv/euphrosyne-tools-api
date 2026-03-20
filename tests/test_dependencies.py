@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 
 import dependencies
 from data_lifecycle.storage_types import StorageBackend, StorageRole
@@ -120,6 +121,14 @@ def test_get_project_data_client_returns_fileshare_client_for_fileshare_backend(
     resolve_backend_mock.assert_called_once_with(StorageRole.HOT)
     data_client_mock.assert_called_once_with(storage_role=StorageRole.HOT)
     blob_client_mock.assert_not_called()
+
+
+def test_get_project_data_client_raises_when_lifecycle_state_is_not_stable():
+    with pytest.raises(HTTPException) as error:
+        dependencies.get_project_data_client("COOLING")
+    print(error)
+    assert error.value.status_code == 409
+    assert error.value.detail == "Project data is not in a stable state (HOT or COOL)"
 
 
 def test_get_hot_project_data_client_delegates_to_hot_role():
