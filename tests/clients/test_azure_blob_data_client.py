@@ -1,9 +1,11 @@
-from unittest.mock import call, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from pytest import MonkeyPatch
 
 from clients.azure.blob_data import BlobDataAzureClient
+from clients.azure.data import FolderCreationError, RunDataNotFound
 from data_lifecycle.storage_types import StorageRole
 
 
@@ -217,3 +219,113 @@ def test_generate_project_directory_token_force_write_allows_writes_for_cool_sto
     assert permission.delete is True
     assert permission.add is True
     assert permission.create is True
+
+
+@pytest.mark.parametrize(
+    ("dir_path", "blob_names"),
+    [
+        (
+            "projects/my-project/runs/run1/raw_data",
+            ["projects/my-project/runs/run1/raw_data/"],
+        ),
+        (
+            "projects/my-project/runs/run1/raw_data",
+            ["projects/my-project/runs/run1/raw_data/file.txt"],
+        ),
+        (
+            r"\projects\my-project\runs\run1\raw_data\\",
+            ["projects/my-project/runs/run1/raw_data/file.txt"],
+        ),
+    ],
+)
+def test_path_exists_returns_true_for_exact_directory_prefix(
+    hot_client: BlobDataAzureClient,
+    dir_path: str,
+    blob_names: list[str],
+):
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blob_names.return_value = iter(blob_names)
+
+    assert hot_client._path_exists(dir_path) is True
+    hot_client.container_client.list_blob_names.assert_called_once_with(
+        name_starts_with="projects/my-project/runs/run1/raw_data/"
+    )
+
+
+def test_path_exists_returns_false_for_sibling_prefix(
+    hot_client: BlobDataAzureClient,
+):
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blob_names.return_value = iter([])
+
+    assert hot_client._path_exists("projects/my-project/runs/run1/raw_data") is False
+    hot_client.container_client.list_blob_names.assert_called_once_with(
+        name_starts_with="projects/my-project/runs/run1/raw_data/"
+    )
+
+
+def test_get_run_files_folders_raises_when_only_sibling_prefix_exists(
+    hot_client: BlobDataAzureClient,
+    monkeypatch: MonkeyPatch,
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blob_names.return_value = iter([])
+
+    with pytest.raises(RunDataNotFound):
+        hot_client.get_run_files_folders("My Project", "run1", "raw_data")
+
+    hot_client.container_client.list_blob_names.assert_called_once_with(
+        name_starts_with="projects/my-project/runs/run1/raw_data/"
+    )
+
+
+def test_rename_directory_raises_when_only_source_sibling_prefix_exists(
+    hot_client: BlobDataAzureClient,
+):
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blob_names.side_effect = [
+        iter([]),
+    ]
+
+    with pytest.raises(FolderCreationError) as error:
+        hot_client._rename_directory(
+            "projects/my-project/runs/run1",
+            "projects/my-project/runs/run2",
+        )
+
+    assert error.value.message == "directory not found"
+    assert hot_client.container_client.list_blob_names.call_args_list == [
+        call(name_starts_with="projects/my-project/runs/run1/"),
+    ]
+
+
+def test_rename_directory_ignores_sibling_prefixed_destination(
+    hot_client: BlobDataAzureClient,
+):
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blob_names.side_effect = [
+        iter(["projects/my-project/runs/run1/file.txt"]),
+        iter([]),
+    ]
+    hot_client.container_client.list_blobs.return_value = [
+        SimpleNamespace(name="projects/my-project/runs/run1/file.txt")
+    ]
+
+    with patch.object(hot_client, "_copy_blob") as copy_blob_mock:
+        hot_client._rename_directory(
+            "projects/my-project/runs/run1",
+            "projects/my-project/runs/run10",
+        )
+
+    assert hot_client.container_client.list_blob_names.call_args_list == [
+        call(name_starts_with="projects/my-project/runs/run1/"),
+        call(name_starts_with="projects/my-project/runs/run10/"),
+    ]
+    hot_client.container_client.list_blobs.assert_called_once_with(
+        name_starts_with="projects/my-project/runs/run1/"
+    )
+    copy_blob_mock.assert_called_once_with(
+        "projects/my-project/runs/run1/file.txt",
+        "projects/my-project/runs/run10/file.txt",
+    )
