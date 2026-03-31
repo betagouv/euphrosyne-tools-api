@@ -33,6 +33,7 @@ def test_fetch_project_lifecycle_returns_storage_role(
     get_mock.assert_called_once_with(
         "https://backend.example/api/data-management/projects/project-01/lifecycle",
         headers={"Authorization": "Bearer token"},
+        timeout=3,
     )
 
 
