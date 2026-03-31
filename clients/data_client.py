@@ -6,6 +6,7 @@ from functools import wraps
 from typing import AsyncIterator
 
 from data_lifecycle.storage_types import StorageRole
+from exceptions import StorageWriteNotAllowedError
 
 from .data_models import (
     ProjectFileOrDirectory,
@@ -24,7 +25,7 @@ def write_method(func):
                 f"{type(self).__name__} missing storage_role attribute."
             )
         if role != StorageRole.HOT:
-            raise PermissionError(
+            raise StorageWriteNotAllowedError(
                 f"Write not allowed for storage role {role} in {type(self).__name__}."
             )
         return func(self, *args, **kwargs)
@@ -192,6 +193,6 @@ class AbstractDataClient(WriteMethodsGuardClass):
         if not can_write:
             for method in write_methods:
                 if permission.get(method, False):
-                    raise PermissionError(
+                    raise StorageWriteNotAllowedError(
                         f"Write permissions are not allowed for storage role {self.storage_role} in {type(self).__name__}."  # noqa: E501
                     )

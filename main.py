@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api import config, connect, data, deployments, eros, hdf5, images, infra, vms
-from exceptions import NoProjectMembershipException
+from exceptions import NoProjectMembershipException, StorageWriteNotAllowedError
 from path import IncorrectDataFilePath
 
 sentry_sdk.init(
@@ -56,4 +56,15 @@ async def incorrect_data_file_path(
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": [{"loc": ["query", "path"], "msg": exc.message}]},
+    )
+
+
+@app.exception_handler(StorageWriteNotAllowedError)
+async def storage_write_not_allowed(
+    request: Request,
+    exc: StorageWriteNotAllowedError,
+):
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": exc.message},
     )
