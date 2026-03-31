@@ -19,6 +19,7 @@ from auth import (
 )
 from clients.azure.data import FolderCreationError, RunDataNotFound
 from dependencies import get_hot_project_data_client, get_project_data_client
+from exceptions import StorageWriteNotAllowedError
 from hooks.euphrosyne import post_data_access_event
 from path import IncorrectDataFilePath
 
@@ -60,6 +61,26 @@ def test_init_project_data_when_caught_error(app: FastAPI, client: TestClient):
     init_project_directory_mock.assert_called_with("project_01")
     assert response.status_code == 400
     assert response.json()["detail"] == "an error"
+
+
+def test_init_project_data_when_storage_is_cool(app: FastAPI, client: TestClient):
+    init_project_directory_mock = MagicMock(
+        side_effect=StorageWriteNotAllowedError(
+            "Write not allowed for storage role StorageRole.COOL in DataAzureClient."
+        )
+    )
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
+        init_project_directory=init_project_directory_mock
+    )
+
+    response = client.post("/data/project_01/init")
+
+    init_project_directory_mock.assert_called_with("project_01")
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == "Write not allowed for storage role StorageRole.COOL in DataAzureClient."
+    )
 
 
 def test_init_run_data(app: FastAPI, client: TestClient):
