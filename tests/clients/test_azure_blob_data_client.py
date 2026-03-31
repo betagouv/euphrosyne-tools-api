@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from azure.core.exceptions import ResourceNotFoundError
 from pytest import MonkeyPatch
 
 from clients.azure.blob_data import BlobDataAzureClient
@@ -257,6 +258,18 @@ def test_path_exists_returns_false_for_sibling_prefix(
 ):
     hot_client.container_client = MagicMock()
     hot_client.container_client.list_blob_names.return_value = iter([])
+
+    assert hot_client._path_exists("projects/my-project/runs/run1/raw_data") is False
+    hot_client.container_client.list_blob_names.assert_called_once_with(
+        name_starts_with="projects/my-project/runs/run1/raw_data/"
+    )
+
+
+def test_path_exists_returns_false_when_container_is_missing(
+    hot_client: BlobDataAzureClient,
+):
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blob_names.side_effect = ResourceNotFoundError()
 
     assert hot_client._path_exists("projects/my-project/runs/run1/raw_data") is False
     hot_client.container_client.list_blob_names.assert_called_once_with(
