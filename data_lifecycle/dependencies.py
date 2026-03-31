@@ -29,6 +29,7 @@ def fetch_project_lifecycle(project_slug: str) -> StorageRole:
                 euphroyne_backend_url
                 + f"/api/data-management/projects/{project_slug}/lifecycle",
                 headers=headers,
+                timeout=3,
             )
         except requests.RequestException as e:
             logger.warning(
