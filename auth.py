@@ -40,8 +40,8 @@ class User(BaseModel):
     projects: list[Project]
     is_admin: bool
 
-    def has_project(self, project_name: str):
-        return slugify(project_name) in (project.slug for project in self.projects)
+    def has_project(self, project_slug: str):
+        return slugify(project_slug) in (project.slug for project in self.projects)
 
 
 async def get_current_user(
@@ -66,9 +66,9 @@ async def get_current_user(
 
 
 def verify_project_membership(
-    project_name: str, current_user: User = Depends(get_current_user)
+    project_slug: str, current_user: User = Depends(get_current_user)
 ):
-    if not current_user.is_admin and not current_user.has_project(project_name):
+    if not current_user.is_admin and not current_user.has_project(project_slug):
         raise NoProjectMembershipException()
 
 

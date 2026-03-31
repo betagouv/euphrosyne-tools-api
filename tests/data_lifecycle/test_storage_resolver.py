@@ -4,11 +4,10 @@ from fastapi import HTTPException
 from data_lifecycle.storage_resolver import (
     CoolingDisabledError,
     DataLocation,
-    StorageBackend,
-    StorageRole,
     resolve_cool_location,
     resolve_hot_location,
 )
+from data_lifecycle.storage_types import StorageRole, StorageBackend
 
 
 @pytest.fixture(autouse=True)
@@ -17,7 +16,6 @@ def clear_storage_env(monkeypatch: pytest.MonkeyPatch):
         "DATA_BACKEND",
         "DATA_BACKEND_COOL",
         "DATA_PROJECTS_LOCATION_PREFIX",
-        "DATA_PROJECTS_LOCATION_PREFIX_COOL",
         "AZURE_STORAGE_ACCOUNT",
         "AZURE_STORAGE_FILESHARE",
         "AZURE_STORAGE_FILESHARE_COOL",
@@ -80,7 +78,7 @@ def test_resolver_hot_fileshare_golden_uri(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_resolver_cool_blob_golden_uri(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_cool_blob_env(monkeypatch)
-    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX_COOL", "cool/projects")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "cool/projects")
 
     location = resolve_cool_location("project-01")
 
@@ -140,7 +138,7 @@ def test_role_backend_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     assert location.backend == StorageBackend.AZURE_BLOB
 
     _set_cool_fileshare_env(monkeypatch)
-    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX_COOL", "cool")
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "cool")
 
     cool_location = resolve_cool_location("project-01")
 

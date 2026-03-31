@@ -10,9 +10,9 @@ from dependencies import get_guacamole_client, get_vm_azure_client
 router = APIRouter(prefix="/connect", tags=["connect"])
 
 
-@router.get("/{project_name}", dependencies=[Depends(verify_project_membership)])
+@router.get("/{project_slug}", dependencies=[Depends(verify_project_membership)])
 def get_connection_link(
-    project_name: str,
+    project_slug: str,
     current_user: User = Depends(get_current_user),
     azure_client: VMAzureClient = Depends(get_vm_azure_client),
     guacamole_client: GuacamoleClient = Depends(get_guacamole_client),
@@ -22,11 +22,11 @@ def get_connection_link(
     no connection exists on Guacamole.
     """
     try:
-        azure_client.get_vm(project_name)
+        azure_client.get_vm(project_slug)
     except VMNotFound:
         return JSONResponse({"detail": "Azure VM not found"}, status_code=404)
     try:
-        connection_id = guacamole_client.get_connection_by_name(project_name)
+        connection_id = guacamole_client.get_connection_by_name(project_slug)
     except GuacamoleConnectionNotFound:
         return JSONResponse(
             {"detail": "Guacamole connection not found"}, status_code=404

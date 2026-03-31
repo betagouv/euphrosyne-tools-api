@@ -11,7 +11,7 @@ from data_lifecycle.models import LifecycleOperation
 
 logger = logging.getLogger(__name__)
 
-LIFECYCLE_CALLBACK_PATH = "/api/data-lifecycle/operations/callback"
+LIFECYCLE_CALLBACK_PATH = "/api/data-management/operations/callback"
 LIFECYCLE_CALLBACK_MAX_ATTEMPTS = 5
 LIFECYCLE_CALLBACK_INITIAL_BACKOFF_SECONDS = 1.0
 LIFECYCLE_CALLBACK_TIMEOUT_SECONDS = 10.0

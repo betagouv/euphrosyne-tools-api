@@ -2,19 +2,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import Enum
 
 from fastapi import HTTPException, status
 
+from clients.data_client import AbstractDataClient
 
-class StorageRole(str, Enum):
-    HOT = "HOT"
-    COOL = "COOL"
-
-
-class StorageBackend(str, Enum):
-    AZURE_FILESHARE = "AZURE_FILESHARE"
-    AZURE_BLOB = "AZURE_BLOB"
+from .storage_types import StorageBackend, StorageRole
 
 
 @dataclass(frozen=True)
@@ -49,7 +42,7 @@ def resolve_cool_location(project_slug: str) -> DataLocation:
 
 def resolve_location(role: StorageRole, project_slug: str) -> DataLocation:
     _validate_project_slug(project_slug)
-    backend = _resolve_backend(role)
+    backend = resolve_backend(role)
     account = _require_env("AZURE_STORAGE_ACCOUNT")
     prefix = _get_prefix(role)
 
@@ -78,7 +71,19 @@ def resolve_location(role: StorageRole, project_slug: str) -> DataLocation:
     )
 
 
-def _resolve_backend(role: StorageRole) -> StorageBackend:
+def resolve_backend_client(role: StorageRole) -> AbstractDataClient:
+    backend = resolve_backend(role)
+    if backend == StorageBackend.AZURE_FILESHARE:
+        from clients.azure.data import DataAzureClient
+
+        return DataAzureClient(role)
+    else:
+        from clients.azure.blob_data import BlobDataAzureClient
+
+        return BlobDataAzureClient(role)
+
+
+def resolve_backend(role: StorageRole) -> StorageBackend:
     if role == StorageRole.HOT:
         value = os.getenv("DATA_BACKEND")
         if not value:
@@ -106,12 +111,7 @@ def _parse_backend_value(value: str, env_name: str) -> StorageBackend:
 
 
 def _get_prefix(role: StorageRole) -> str:
-    env_name = (
-        "DATA_PROJECTS_LOCATION_PREFIX"
-        if role == StorageRole.HOT
-        else "DATA_PROJECTS_LOCATION_PREFIX_COOL"
-    )
-    raw_prefix = os.getenv(env_name, "")
+    raw_prefix = os.getenv("DATA_PROJECTS_LOCATION_PREFIX", "")
     return _normalize_prefix(raw_prefix)
 
 

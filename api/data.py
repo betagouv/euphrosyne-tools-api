@@ -1,65 +1,67 @@
-from datetime import datetime
 import pathlib
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, BackgroundTasks, Query
-from fastapi.responses import JSONResponse, StreamingResponse
 import pydantic
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
+from fastapi.responses import JSONResponse, StreamingResponse
+
 from auth import (
     ExtraPayloadTokenGetter,
-    generate_token_for_path,
-    verify_path_permission,
     User,
+    generate_token_for_path,
     get_current_user,
+    verify_admin_permission,
     verify_is_euphrosyne_backend,
     verify_is_euphrosyne_backend_or_admin,
-    verify_admin_permission,
+    verify_path_permission,
     verify_project_membership,
 )
 from clients.azure import DataAzureClient
 from clients.azure.data import (
     FolderCreationError,
-    IncorrectDataFilePath,
     ProjectDocumentsNotFound,
     RunDataNotFound,
-    extract_info_from_path,
-    validate_project_document_file_path,
-    validate_run_data_file_path,
 )
-from clients.data_models import ProjectFileOrDirectory
 from clients.azure.stream import stream_zip_from_azure_files_async
-from dependencies import get_project_data_client
-from hooks.euphrosyne import post_data_access_event
-from data_lifecycle.operation import schedule_lifecycle_operation
+from clients.data_models import ProjectFileOrDirectory
 from data_lifecycle import models
+from data_lifecycle.operation import (
+    LifecycleOperationNotFoundError,
+    get_lifecycle_operation_status,
+    schedule_lifecycle_operation,
+)
+from dependencies import get_hot_project_data_client, get_project_data_client
+from hooks.euphrosyne import post_data_access_event
+from path import ProjectDocumentRef, RunDataTypeRef
 
 router = APIRouter(prefix="/data", tags=["data"])
 
 
 @router.get(
-    "/available/{project_name}",
+    "/available/{project_slug}",
     dependencies=[Depends(verify_is_euphrosyne_backend)],
 )
 def check_project_data_available(
-    project_name: str,
+    project_slug: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
-    return {"available": azure_client.is_project_data_available(project_name)}
+    return {"available": azure_client.is_project_data_available(project_slug)}
 
 
 @router.get(
-    "/{project_name}/documents",
+    "/{project_slug}/documents",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=list[ProjectFileOrDirectory],
 )
 def list_project_documents(
-    project_name: str,
+    project_slug: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.get_project_documents(project_name)
+        return azure_client.get_project_documents(project_slug)
     except ProjectDocumentsNotFound:
         return JSONResponse(
             {"detail": "Folder for the project documents not found"}, status_code=404
@@ -86,16 +88,10 @@ async def zip_project_run_data(
     Returns:
         StreamingResponse: A streaming response containing the zip file.
     """
-    try:
-        path_info = extract_info_from_path(path)
-    except IncorrectDataFilePath as error:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["query", "path"], "msg": error.message}],
-        ) from error
+    ref = RunDataTypeRef.from_path(path)
     try:
         files = azure_client.iter_project_run_files_async(
-            path_info["project_name"], path_info["run_name"], path_info.get("data_type")
+            ref.project_slug, ref.run_name, ref.data_type
         )
     except RunDataNotFound:
         raise HTTPException(status_code=404, detail="Run data not found.")
@@ -109,26 +105,26 @@ async def zip_project_run_data(
         stream_zip_from_azure_files_async(files),
         media_type="application/zip",
         headers={
-            "Content-Disposition": f"attachment; filename={path_info['run_name']}-{timestamp}.zip"
+            "Content-Disposition": f"attachment; filename={ref.run_name}-{timestamp}.zip"
         },
     )
 
 
 @router.get(
-    "/{project_name}/runs/{run_name}/{data_type}",
+    "/{project_slug}/runs/{run_name}/{data_type}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
     response_model=list[ProjectFileOrDirectory],
 )
 def list_run_data(
-    project_name: str,
+    project_slug: str,
     run_name: str,
     data_type: str = Path(regex="^(raw_data|processed_data|HDF5)$"),
     folder: str | None = None,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.get_run_files_folders(project_name, run_name, data_type, folder)  # type: ignore # noqa: E501
+        return azure_client.get_run_files_folders(project_slug, run_name, data_type, folder)  # type: ignore # noqa: E501
     except RunDataNotFound:
         return JSONResponse(
             {"detail": "Run data not found"},
@@ -138,12 +134,12 @@ def list_run_data(
 
 
 @router.get(
-    "/{project_name}/runs/{run_name}/upload/shared_access_signature",
+    "/{project_slug}/runs/{run_name}/upload/shared_access_signature",
     status_code=200,
     dependencies=[Depends(verify_admin_permission)],
 )
 def generate_run_data_upload_shared_access_signature(
-    project_name: str,
+    project_slug: str,
     run_name: str,
     data_type: Annotated[
         str | None, Query(pattern="^(raw_data|processed_data|HDF5)$")
@@ -154,7 +150,7 @@ def generate_run_data_upload_shared_access_signature(
     to file storage.
     """
     credentials = azure_client.generate_run_data_upload_sas(
-        project_name=project_name,
+        project_name=project_slug,
         run_name=run_name,
         data_type=data_type,  # type: ignore
     )
@@ -173,13 +169,8 @@ def generate_run_data_shared_access_signature(
     """Return a token used to directly download run data
     from run file storage.
     """
-    try:
-        validate_run_data_file_path(path, current_user)
-    except IncorrectDataFilePath as error:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["query", "path"], "msg": error.message}],
-        ) from error
+    ref = RunDataTypeRef.from_path(path)
+    verify_project_membership(ref.project_slug, current_user)
     url = azure_client.generate_run_data_sas_url(
         dir_path=str(path.parents[0]),
         file_name=path.name,
@@ -200,13 +191,8 @@ def generate_project_documents_shared_access_signature(
     """Return a token used to directly download project documents
     from document file storage.
     """
-    try:
-        validate_project_document_file_path(path, current_user)
-    except IncorrectDataFilePath as error:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["query", "path"], "msg": error.message}],
-        ) from error
+    ref = ProjectDocumentRef.from_path(path)
+    verify_project_membership(ref.project_slug, current_user)
     url = azure_client.generate_project_documents_sas_url(
         dir_path=str(path.parents[0]),
         file_name=path.name,
@@ -215,12 +201,12 @@ def generate_project_documents_shared_access_signature(
 
 
 @router.get(
-    "/{project_name}/documents/upload/shared_access_signature",
+    "/{project_slug}/documents/upload/shared_access_signature",
     dependencies=[Depends(verify_project_membership)],
     status_code=200,
 )
 def generate_project_documents_upload_shared_access_signature(
-    project_name: str,
+    project_slug: str,
     file_name: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
@@ -228,18 +214,19 @@ def generate_project_documents_upload_shared_access_signature(
     to document file storage.
     """
     url = azure_client.generate_project_documents_upload_sas_url(
-        project_name=project_name,
+        project_name=project_slug,
         file_name=file_name,
     )
     return {"url": url}
 
 
 @router.get(
-    "/{project_name}/token",
+    "/{project_slug}/token",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
 )
 def generate_signed_url_for_path(
+    project_slug: str,
     path: pathlib.Path,
     current_user: User = Depends(get_current_user),
     data_request: str | None = None,
@@ -247,15 +234,12 @@ def generate_signed_url_for_path(
 ):
     """Return a auth token for a given path. It is used to grant access to project data via
     a GET request without revealing jwt access token. It is like an Azure SAS token."""
-    if expiration:
-        _verify_can_set_token_expiration(current_user)
-    try:
-        validate_run_data_file_path(path, current_user)
-    except IncorrectDataFilePath as error:
+    if expiration and not current_user.is_admin:
         raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["query", "path"], "msg": error.message}],
-        ) from error
+            status_code=403, detail="Only admins can set token expiration"
+        )
+    ref = RunDataTypeRef.from_path(path)
+    verify_project_membership(ref.project_slug, current_user)
     token = generate_token_for_path(
         str(path), expiration=expiration, data_request=data_request
     )
@@ -263,65 +247,65 @@ def generate_signed_url_for_path(
 
 
 @router.post(
-    "/{project_name}/init",
+    "/{project_slug}/init",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend_or_admin)],
 )
 def init_project_data(
-    project_name: str,
+    project_slug: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.init_project_directory(project_name)
+        return azure_client.init_project_directory(project_slug)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 
 
 @router.post(
-    "/{project_name}/runs/{run_name}/init",
+    "/{project_slug}/runs/{run_name}/init",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend_or_admin)],
 )
 def init_run_data(
-    project_name: str,
+    project_slug: str,
     run_name: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.init_run_directory(run_name, project_name)
+        return azure_client.init_run_directory(run_name, project_slug)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 
 
 @router.post(
-    "/{project_name}/rename/{new_project_name}",
+    "/{project_slug}/rename/{new_project_name}",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend)],
 )
 def rename_project_folder(
-    project_name: str,
+    project_slug: str,
     new_project_name: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.rename_project_directory(project_name, new_project_name)
+        return azure_client.rename_project_directory(project_slug, new_project_name)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 
 
 @router.post(
-    "/{project_name}/runs/{run_name}/rename/{new_run_name}",
+    "/{project_slug}/runs/{run_name}/rename/{new_run_name}",
     status_code=204,
     dependencies=[Depends(verify_is_euphrosyne_backend)],
 )
 def rename_run_folder(
-    project_name: str,
+    project_slug: str,
     run_name: str,
     new_run_name: str,
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.rename_run_directory(run_name, project_name, new_run_name)
+        return azure_client.rename_run_directory(run_name, project_slug, new_run_name)
     except FolderCreationError as error:
         return JSONResponse({"detail": error.message}, status_code=400)
 
@@ -337,7 +321,7 @@ class CheckFoldersSyncBody(pydantic.BaseModel):
 )
 def check_folders_sync(
     body: CheckFoldersSyncBody,
-    azure_client: DataAzureClient = Depends(get_project_data_client),
+    azure_client: DataAzureClient = Depends(get_hot_project_data_client),
 ):
     unsynced_dirs = []
     project_dirs = azure_client.list_project_dirs()
@@ -394,8 +378,43 @@ def restore_project_data(
     )
 
 
-def _verify_can_set_token_expiration(user: User):
-    if not user.is_admin:
-        raise HTTPException(
-            status_code=403, detail="Only admins can set token expiration"
+@router.get(
+    "/projects/{project_slug}/cool/{operation_id}",
+    status_code=200,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    response_model=models.LifecycleOperationStatusView,
+    response_model_exclude_none=True,
+)
+def get_cool_project_data_status(
+    project_slug: str,
+    operation_id: UUID,
+):
+    try:
+        return get_lifecycle_operation_status(
+            project_slug=project_slug,
+            operation_id=operation_id,
+            operation_type=models.LifecycleOperationType.COOL,
         )
+    except LifecycleOperationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Operation not found") from exc
+
+
+@router.get(
+    "/projects/{project_slug}/restore/{operation_id}",
+    status_code=200,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    response_model=models.LifecycleOperationStatusView,
+    response_model_exclude_none=True,
+)
+def get_restore_project_data_status(
+    project_slug: str,
+    operation_id: UUID,
+):
+    try:
+        return get_lifecycle_operation_status(
+            project_slug=project_slug,
+            operation_id=operation_id,
+            operation_type=models.LifecycleOperationType.RESTORE,
+        )
+    except LifecycleOperationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Operation not found") from exc

@@ -5,9 +5,9 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api import config, connect, data, deployments, hdf5, images, infra, vms
-from exceptions import NoProjectMembershipException
-from api import eros
+from api import config, connect, data, deployments, eros, hdf5, images, infra, vms
+from exceptions import NoProjectMembershipException, StorageWriteNotAllowedError
+from path import IncorrectDataFilePath
 
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN"),
@@ -45,4 +45,26 @@ async def no_project_membership_exception_handler(
     return JSONResponse(
         status_code=status.HTTP_403_FORBIDDEN,
         content={"detail": "User does not have access to this project"},
+    )
+
+
+@app.exception_handler(IncorrectDataFilePath)
+async def incorrect_data_file_path(
+    request: Request,
+    exc: IncorrectDataFilePath,
+):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": [{"loc": ["query", "path"], "msg": exc.message}]},
+    )
+
+
+@app.exception_handler(StorageWriteNotAllowedError)
+async def storage_write_not_allowed(
+    request: Request,
+    exc: StorageWriteNotAllowedError,
+):
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": exc.message},
     )

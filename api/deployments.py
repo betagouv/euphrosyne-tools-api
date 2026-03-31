@@ -17,38 +17,38 @@ router = APIRouter(prefix="/deployments", tags=["deployments"])
 
 
 @router.get(
-    "/{project_name}",
+    "/{project_slug}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
 )
 def get_deployment_status(
-    project_name: str, azure_client: VMAzureClient = Depends(get_vm_azure_client)
+    project_slug: str, azure_client: VMAzureClient = Depends(get_vm_azure_client)
 ):
     """Get deployment status about a VM being deployed."""
     try:
-        status = azure_client.get_deployment_status(project_name)
+        status = azure_client.get_deployment_status(project_slug)
     except DeploymentNotFound:
         return JSONResponse(status_code=404, content={})
     return {"status": status}
 
 
 @router.post(
-    "/{project_name}",
+    "/{project_slug}",
     status_code=202,
     dependencies=[Depends(verify_project_membership)],
 )
 def deploy_vm(
-    project_name: str,
+    project_slug: str,
     background_tasks: BackgroundTasks,
     vm_client: VMAzureClient = Depends(get_vm_azure_client),
     config_client: ConfigAzureClient = Depends(get_config_azure_client),
     guacamole_client: GuacamoleClient = Depends(get_guacamole_client),
 ):
     """Deploys a VM for a specific project."""
-    vm_size = config_client.get_project_vm_size(project_name)
-    image_definition = config_client.get_project_image_definition(project_name)
+    vm_size = config_client.get_project_vm_size(project_slug)
+    image_definition = config_client.get_project_image_definition(project_slug)
     vm_information = vm_client.deploy_vm(
-        project_name, vm_size=vm_size, image_definition=image_definition
+        project_slug, vm_size=vm_size, image_definition=image_definition
     )
     if vm_information:
         background_tasks.add_task(wait_for_deploy, vm_information, guacamole_client)

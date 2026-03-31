@@ -4,10 +4,8 @@ import asyncio
 import functools
 import io
 import os
-import re
 from datetime import datetime, timedelta, timezone
 from io import SEEK_CUR, SEEK_END, SEEK_SET
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import sentry_sdk
@@ -29,8 +27,10 @@ from azure.storage.fileshare import (
 from dotenv import load_dotenv
 from slugify import slugify
 
+from data_lifecycle.storage_types import StorageRole
+
 if TYPE_CHECKING:
-    from auth import User
+    pass
 
 # pylint: disable=wrong-import-position
 from ..data_client import AbstractDataClient
@@ -39,6 +39,7 @@ from ..data_models import (
     ProjectFileOrDirectory,
     RunDataTypeType,
     SASCredentials,
+    TokenPermissions,
 )
 from ._storage import BaseStorageAzureClient
 
@@ -56,12 +57,6 @@ class ProjectDocumentsNotFound(Exception):
 class FolderCreationError(Exception):
     def __init__(self, message, *args) -> None:
         self.message = str(message)
-        super().__init__(*args)
-
-
-class IncorrectDataFilePath(Exception):
-    def __init__(self, message: str, *args: object):
-        self.message = message
         super().__init__(*args)
 
 
@@ -141,13 +136,28 @@ class AzureFileShareFile(io.BytesIO):
 
 
 class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
-    def __init__(self):
+    def __init__(self, storage_role: StorageRole = StorageRole.HOT):
+        self.storage_role = storage_role
         super().__init__()
         self._file_shared_access_signature = FileSharedAccessSignature(
             account_name=self.storage_account_name, account_key=self._storage_key
         )
 
-        self.share_name = os.environ["AZURE_STORAGE_FILESHARE"]
+        share_name = None
+
+        if storage_role == StorageRole.HOT:
+            share_name = os.environ.get("AZURE_STORAGE_FILESHARE")
+        elif storage_role == StorageRole.COOL:
+            share_name = os.environ.get("AZURE_STORAGE_FILESHARE_COOL")
+        else:
+            raise ValueError(f"Unsupported storage role: {storage_role}")
+
+        if not share_name:
+            raise ValueError(
+                f"Share name for storage role {storage_role} is not set in environment variables."
+            )
+
+        self.share_name = share_name
 
     def list_project_dirs(self) -> list[str]:
         """Returns all directory names in project folder"""
@@ -277,7 +287,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         file storage.
         """
         dir_path = _generate_base_dir_path(project_name, run_name, data_type)
-        permission = FilePermissions(read=False, create=True, write=True, delete=False)
+        permission = AccountSasPermissions(
+            add=True, write=True, create=True, update=True
+        )
         token = self._generate_share_sas_token(permission)
         return {
             "url": f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{dir_path}/",
@@ -293,8 +305,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         """Generate URL with Shared Access Signature to manage run data in an
         Azure Fileshare. Regular users can read. Admins can also write, create & delete.
         """
+        can_write = self.can_write_run_data(is_admin=is_admin)
         permission = FilePermissions(
-            read=True, create=is_admin, write=is_admin, delete=is_admin
+            read=True, create=can_write, write=can_write, delete=can_write
         )
         return self._generate_sas_url(dir_path, file_name, permission)
 
@@ -305,8 +318,11 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         an Azure Fileshare. Permission are write & create. To download and delete use
         generate_project_documents_sas_url.
         """
+        can_write = self.can_write_project_documents()
         dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
-        permission = FilePermissions(read=False, create=True, write=True, delete=False)
+        permission = FilePermissions(
+            read=False, create=can_write, write=can_write, delete=False
+        )
         return self._generate_sas_url(dir_path, file_name, permission)
 
     def generate_project_documents_sas_url(self, dir_path: str, file_name: str):
@@ -314,18 +330,29 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         an Azure Fileshare. Permission are read & delete. To upload a document use
         generate_project_documents_upload_sas_url.
         """
-        permission = FilePermissions(read=True, create=False, write=False, delete=True)
+        can_write = self.can_write_project_documents()
+        permission = FilePermissions(
+            read=True, create=False, write=False, delete=can_write
+        )
         return self._generate_sas_url(dir_path, file_name, permission)
 
-    def _generate_share_sas_token(self, permission: FilePermissions):
+    def generate_project_directory_token(
+        self, project_name: str, permission: TokenPermissions, force_write: bool = False
+    ) -> str:
+        """Generate a token with permissions to manage project directory
+        in an Azure Fileshare."""
+        self.check_write_permissions(permission, force_write)
+
+        account_permission = AccountSasPermissions(**permission)
+        return self._generate_share_sas_token(account_permission)
+
+    def _generate_share_sas_token(self, permission: AccountSasPermissions):
         """Generate a Shared Access Signature (SAS) URL for the Azure Fileshare."""
         return generate_account_sas(
             account_name=self.storage_account_name,
             account_key=self._storage_key,
             resource_types=ResourceTypes(container=True, object=True),
-            permission=AccountSasPermissions(
-                add=True, write=True, create=True, update=True
-            ),
+            permission=permission,
             expiry=datetime.now(timezone.utc) + timedelta(hours=1),
         )
 
@@ -436,11 +463,9 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         )
 
     def _list_files(self, dir_path: str) -> list[ProjectFileOrDirectory]:
-        share_name = os.environ["AZURE_STORAGE_FILESHARE"]
-
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
-            share_name=share_name,
+            share_name=self.share_name,
             directory_path=dir_path,
         )
 
@@ -537,51 +562,8 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
             yield asyncio.to_thread(file_client.download_file)
 
 
-def extract_info_from_path(path: Path):
-    """Extract project and run name from a path."""
-    _validate_run_data_file_path_regex(path)
-    projects_path_prefix = _get_projects_path()
-    path_without_prefix = Path(str(path).replace(projects_path_prefix + "/", "", 1))
-    info: dict[str, str | None] = {
-        "project_name": None,
-        "run_name": None,
-        "data_type": None,
-    }
-    if len(path_without_prefix.parts) > 0:
-        info["project_name"] = path_without_prefix.parts[0]
-    if len(path_without_prefix.parts) > 2:
-        info["run_name"] = path_without_prefix.parts[2]
-    if len(path_without_prefix.parts) > 3:
-        info["data_type"] = path_without_prefix.parts[3]
-    return info
-
-
-def validate_run_data_file_path(path: Path, current_user: User):
-    _validate_run_data_file_path_regex(path)
-    _validate_project_file_path(path, current_user)
-
-
-def validate_project_document_file_path(path: Path, current_user: User):
-    if not re.match(rf"^{_get_projects_path()}\/[\w\- ]+\/documents", str(path)):
-        raise IncorrectDataFilePath(
-            "path must start with {projects_path_prefix}/<project_name>/documents/"
-        )
-    _validate_project_file_path(path, current_user)
-
-
 def _get_projects_path():
     return os.getenv("DATA_PROJECTS_LOCATION_PREFIX", "")
-
-
-def _validate_project_file_path(path: Path, current_user: User):
-    """Given a path, validate the path is valid for project data and the user has
-    permission to access it.
-    """
-    projects_path_prefix = _get_projects_path()
-    path_without_prefix = Path(str(path).replace(projects_path_prefix + "/", "", 1))
-    project_name = path_without_prefix.parts[0]
-    if not current_user.has_project(project_name) and not current_user.is_admin:
-        raise IncorrectDataFilePath(f"user is not part of project {project_name}")
 
 
 def _generate_base_dir_path(
@@ -595,14 +577,3 @@ def _generate_base_dir_path(
         if data_type:
             base_dir_path = os.path.join(base_dir_path, data_type)
     return base_dir_path
-
-
-def _validate_run_data_file_path_regex(path: Path):
-    if not re.match(
-        rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data|HDF5)",  # noqa: E501
-        str(path),
-    ):
-        # pylint: disable=line-too-long
-        raise IncorrectDataFilePath(
-            "path must start with {projects_path_prefix}/<project_name>/runs/<run_name>/(processed_data|raw_data|HDF5)/"  # noqa: E501
-        )
