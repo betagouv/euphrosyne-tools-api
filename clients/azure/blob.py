@@ -6,7 +6,7 @@ import posixpath
 import time
 
 
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import (
     BlobPrefix,
     BlobServiceClient,
@@ -101,10 +101,13 @@ class BlobAzureClient(BaseStorageAzureClient):
             raise FolderCreationError(str(error)) from error
 
     def _path_exists(self, dir_path: str) -> bool:
-        blob_names = self.container_client.list_blob_names(
-            name_starts_with=self._dir_prefix(dir_path)
-        )
-        return next(blob_names, None) is not None
+        try:
+            blob_names = self.container_client.list_blob_names(
+                name_starts_with=self._dir_prefix(dir_path)
+            )
+            return next(blob_names, None) is not None
+        except ResourceNotFoundError:
+            return False
 
     def _list_files(self, dir_path: str) -> list[ProjectFileOrDirectory]:
         container = self.container_client
