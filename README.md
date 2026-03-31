@@ -49,6 +49,10 @@ Le backend HOT est défini par `DATA_BACKEND`. Le backend COOL est défini par `
 
 Le préfixe `DATA_PROJECTS_LOCATION_PREFIX` s'applique au chemin de base des projets pour les deux backends.
 
+## Documentation des données projets
+
+Pour la documentation technique du stockage HOT/COOL, du routage par cycle de vie et des opérations COOL/RESTORE, voir [DATA_LIFECYCLE.md](./DATA_LIFECYCLE.md).
+
 ## Configurer le CORS (Blob / Fileshare)
 
 Pour autoriser les frontends à accéder directement au stockage, utiliser les scripts suivants :
