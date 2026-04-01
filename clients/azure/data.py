@@ -346,6 +346,41 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         account_permission = AccountSasPermissions(**permission)
         return self._generate_share_sas_token(account_permission)
 
+    def delete_project_directory(self, project_name: str) -> None:
+        """Delete the full project directory tree from Azure Files."""
+        dir_path = _generate_base_dir_path(project_name)
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=self.share_name,
+            directory_path=dir_path,
+        )
+        try:
+            self._delete_directory_tree(dir_client)
+        except ResourceNotFoundError:
+            return
+
+    def _delete_directory_tree(self, dir_client: ShareDirectoryClient) -> None:
+        """Delete a directory and all descendants from Azure Files."""
+        try:
+            entries = list(dir_client.list_directories_and_files())
+        except ResourceNotFoundError:
+            return
+
+        for entry in entries:
+            name = entry["name"]
+            if entry["is_directory"]:
+                self._delete_directory_tree(dir_client.get_subdirectory_client(name))
+                continue
+            try:
+                dir_client.get_file_client(name).delete_file()
+            except ResourceNotFoundError:
+                continue
+
+        try:
+            dir_client.delete_directory()
+        except ResourceNotFoundError:
+            return
+
     def _generate_share_sas_token(self, permission: AccountSasPermissions):
         """Generate a Shared Access Signature (SAS) URL for the Azure Fileshare."""
         return generate_account_sas(

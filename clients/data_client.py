@@ -146,6 +146,10 @@ class AbstractDataClient(WriteMethodsGuardClass):
         """Generate credentials used to manage project directory."""
 
     @abc.abstractmethod
+    def delete_project_directory(self, project_name: str) -> None:
+        """Delete the full project directory tree."""
+
+    @abc.abstractmethod
     @write_method
     def init_project_directory(self, project_name: str):
         """Create the project directory with default subfolders."""

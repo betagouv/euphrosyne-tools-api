@@ -15,7 +15,9 @@ from data_lifecycle.azcopy_runner import (
     AzCopySummary,
 )
 from data_lifecycle.models import (
+    FromDataDeletionStatus,
     LifecycleOperation,
+    LifecycleOperationPhase,
     LifecycleOperationProgressStatus,
     LifecycleOperationType,
 )
@@ -103,6 +105,32 @@ def test_duplicate_request_does_not_schedule_twice(app: FastAPI, client: TestCli
     assert lifecycle_operation._LIFECYCLE_OPERATION_GUARD == {
         ("project-1", "COOL", str(operation_id))
     }
+
+
+def test_schedule_from_data_deletion_duplicate_request_does_not_schedule_twice():
+    operation_id = uuid4()
+    deletion = lifecycle_operation.FromDataDeletionOperation(
+        project_slug="project-1",
+        operation_id=operation_id,
+        storage_role=StorageRole.HOT,
+    )
+    background_tasks = MagicMock()
+
+    first = lifecycle_operation.schedule_from_data_deletion(
+        deletion=deletion,
+        background_tasks=background_tasks,
+    )
+    second = lifecycle_operation.schedule_from_data_deletion(
+        deletion=deletion,
+        background_tasks=background_tasks,
+    )
+
+    assert first.status == lifecycle_operation.LifecycleOperationStatus.ACCEPTED
+    assert second.status == lifecycle_operation.LifecycleOperationStatus.ACCEPTED
+    background_tasks.add_task.assert_called_once_with(
+        lifecycle_operation._execute_from_data_deletion,
+        deletion=deletion,
+    )
 
 
 def test_same_operation_id_for_another_project_schedules_again(
@@ -209,6 +237,46 @@ def test_execute_cool_operation_sets_job_id_and_sends_success_callback(
     assert lifecycle_operation._LIFECYCLE_OPERATION_JOB_ID[operation_id] == "job-1"
 
 
+def test_execute_from_data_deletion_sends_success_callback(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    operation_id = uuid4()
+    captured = {}
+    delete_project_directory_mock = MagicMock()
+
+    def fake_post(callback) -> bool:
+        captured["callback"] = callback
+        return True
+
+    backend_client = MagicMock(delete_project_directory=delete_project_directory_mock)
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "resolve_backend_client",
+        lambda _role: backend_client,
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "post_from_data_deletion_callback",
+        fake_post,
+    )
+    deletion = lifecycle_operation.FromDataDeletionOperation(
+        project_slug="project-1",
+        operation_id=operation_id,
+        storage_role=StorageRole.HOT,
+    )
+
+    lifecycle_operation._register_from_data_deletion(deletion=deletion)
+    lifecycle_operation._execute_from_data_deletion(deletion=deletion)
+
+    delete_project_directory_mock.assert_called_once_with("project-1")
+    callback = captured["callback"]
+    assert callback.operation_id == operation_id
+    assert callback.phase == LifecycleOperationPhase.FROM_DATA_DELETION
+    assert callback.from_data_deletion_status == FromDataDeletionStatus.SUCCEEDED
+    assert callback.error is None
+    assert deletion.guard_key() in lifecycle_operation._FROM_DATA_DELETION_GUARD
+
+
 def test_execute_cool_operation_failure_before_job_id_keeps_job_map_empty(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -257,6 +325,46 @@ def test_execute_cool_operation_failure_before_job_id_keeps_job_map_empty(
     assert operation.error_details is not None
     assert operation.error_details["type"] == "RuntimeError"
     assert operation_id not in lifecycle_operation._LIFECYCLE_OPERATION_JOB_ID
+
+
+def test_execute_from_data_deletion_failure_posts_error_and_releases_guard(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    operation_id = uuid4()
+    captured = {}
+    backend_client = MagicMock()
+    backend_client.delete_project_directory.side_effect = RuntimeError("boom")
+
+    def fake_post(callback) -> bool:
+        captured["callback"] = callback
+        return True
+
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "resolve_backend_client",
+        lambda _role: backend_client,
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "post_from_data_deletion_callback",
+        fake_post,
+    )
+    deletion = lifecycle_operation.FromDataDeletionOperation(
+        project_slug="project-1",
+        operation_id=operation_id,
+        storage_role=StorageRole.COOL,
+    )
+
+    lifecycle_operation._register_from_data_deletion(deletion=deletion)
+    lifecycle_operation._execute_from_data_deletion(deletion=deletion)
+
+    callback = captured["callback"]
+    assert callback.phase == LifecycleOperationPhase.FROM_DATA_DELETION
+    assert callback.from_data_deletion_status == FromDataDeletionStatus.FAILED
+    assert callback.error.title == "RuntimeError"
+    assert callback.error.message == "boom"
+    assert deletion.guard_key() not in lifecycle_operation._FROM_DATA_DELETION_GUARD
+    assert lifecycle_operation._register_from_data_deletion(deletion=deletion) is True
 
 
 def test_execute_cool_operation_failure_after_job_id_contains_diagnostics(
