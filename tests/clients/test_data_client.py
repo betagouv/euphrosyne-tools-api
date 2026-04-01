@@ -128,6 +128,9 @@ def test_abstract_data_client_can_write_helpers():
         ) -> str:
             return ""
 
+        def delete_project_directory(self, project_name: str) -> None:
+            return None
+
         def init_project_directory(self, project_name: str):
             return None
 
@@ -152,6 +155,7 @@ def test_abstract_data_client_can_write_helpers():
 
     assert hot_client.can_write_project_documents() is True
     assert cool_client.can_write_project_documents() is False
+    cool_client.delete_project_directory("project-01")
 
     hot_client.check_write_permissions({"write": True})
     cool_client.check_write_permissions({"read": True, "list": True})

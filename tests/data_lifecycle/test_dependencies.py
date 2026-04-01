@@ -8,7 +8,7 @@ from data_lifecycle.dependencies import (
     FETCH_PROJECT_LIFECYCLE_RETRIES,
     fetch_project_lifecycle,
 )
-from data_lifecycle.storage_types import StorageRole
+from data_lifecycle.models import LifecycleState
 
 
 def test_fetch_project_lifecycle_returns_storage_role(
@@ -16,7 +16,7 @@ def test_fetch_project_lifecycle_returns_storage_role(
 ):
     monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
     response = MagicMock(status_code=200, ok=True)
-    response.json.return_value = {"lifecycle_state": StorageRole.COOL}
+    response.json.return_value = {"lifecycle_state": LifecycleState.COOL.value}
 
     with (
         patch(
@@ -29,7 +29,7 @@ def test_fetch_project_lifecycle_returns_storage_role(
     ):
         result = fetch_project_lifecycle("project-01")
 
-    assert result == StorageRole.COOL
+    assert result == LifecycleState.COOL
     get_mock.assert_called_once_with(
         "https://backend.example/api/data-management/projects/project-01/lifecycle",
         headers={"Authorization": "Bearer token"},
@@ -61,6 +61,7 @@ def test_fetch_project_lifecycle_raises_not_found(
     [
         (ValueError("bad json"), None),
         (None, {}),
+        (None, {"lifecycle_state": "WARM"}),
     ],
 )
 def test_fetch_project_lifecycle_raises_bad_gateway_for_invalid_payload(

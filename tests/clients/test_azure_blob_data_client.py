@@ -87,6 +87,45 @@ def test_init_raises_for_unsupported_storage_role():
     base_init_mock.assert_not_called()
 
 
+def test_delete_project_directory_removes_all_project_blobs(
+    hot_client: BlobDataAzureClient,
+    monkeypatch: MonkeyPatch,
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blob_names.return_value = iter(
+        [
+            "projects/project-01/",
+            "projects/project-01/documents/readme.txt",
+            "projects/project-01/runs/run-1/raw_data/file.txt",
+        ]
+    )
+
+    hot_client.delete_project_directory("project-01")
+
+    hot_client.container_client.list_blob_names.assert_called_once_with(
+        name_starts_with="projects/project-01/"
+    )
+    assert hot_client.container_client.delete_blob.call_args_list == [
+        call("projects/project-01/"),
+        call("projects/project-01/documents/readme.txt"),
+        call("projects/project-01/runs/run-1/raw_data/file.txt"),
+    ]
+
+
+def test_delete_project_directory_ignores_missing_blob_prefix(
+    hot_client: BlobDataAzureClient,
+):
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blob_names.side_effect = ResourceNotFoundError(
+        "not found"
+    )
+
+    hot_client.delete_project_directory("project-01")
+
+    hot_client.container_client.delete_blob.assert_not_called()
+
+
 @patch("clients.azure.blob_data.generate_blob_sas", return_value="sas-token")
 def test_generate_run_data_sas_url_allows_admin_writes_for_hot_storage(
     generate_blob_sas_mock,

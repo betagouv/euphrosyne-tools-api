@@ -81,6 +81,51 @@ def test_init_raises_for_unsupported_storage_role(monkeypatch: MonkeyPatch):
             DataAzureClient(storage_role="WARM")  # type: ignore[arg-type]
 
 
+def test_delete_project_directory_removes_nested_files_and_directories(
+    client: DataAzureClient,
+):
+    raw_data_file_client = MagicMock()
+    raw_data_dir_client = MagicMock()
+    raw_data_dir_client.list_directories_and_files.return_value = [
+        {"name": "nested.txt", "is_directory": False}
+    ]
+    raw_data_dir_client.get_file_client.return_value = raw_data_file_client
+
+    run_dir_client = MagicMock()
+    run_dir_client.list_directories_and_files.return_value = [
+        {"name": "raw_data", "is_directory": True}
+    ]
+    run_dir_client.get_subdirectory_client.return_value = raw_data_dir_client
+
+    runs_dir_client = MagicMock()
+    runs_dir_client.list_directories_and_files.return_value = [
+        {"name": "run-1", "is_directory": True}
+    ]
+    runs_dir_client.get_subdirectory_client.return_value = run_dir_client
+
+    root_file_client = MagicMock()
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.return_value = [
+        {"name": "runs", "is_directory": True},
+        {"name": "readme.txt", "is_directory": False},
+    ]
+    root_dir_client.get_subdirectory_client.return_value = runs_dir_client
+    root_dir_client.get_file_client.return_value = root_file_client
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        client.delete_project_directory("project-01")
+
+    raw_data_file_client.delete_file.assert_called_once()
+    raw_data_dir_client.delete_directory.assert_called_once()
+    run_dir_client.delete_directory.assert_called_once()
+    runs_dir_client.delete_directory.assert_called_once()
+    root_file_client.delete_file.assert_called_once()
+    root_dir_client.delete_directory.assert_called_once()
+
+
 def test_get_project_documents_with_prefix(
     client: DataAzureClient, monkeypatch: MonkeyPatch
 ):

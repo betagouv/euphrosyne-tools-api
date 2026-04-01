@@ -6,9 +6,16 @@ from uuid import uuid4
 import pytest
 import requests
 
-from data_lifecycle.hooks import post_lifecycle_operation_callback
+from data_lifecycle.hooks import (
+    post_from_data_deletion_callback,
+    post_lifecycle_operation_callback,
+)
 from data_lifecycle.models import (
+    FromDataDeletionCallback,
+    FromDataDeletionError,
+    FromDataDeletionStatus,
     LifecycleOperation,
+    LifecycleOperationPhase,
     LifecycleOperationStatus,
     LifecycleOperationType,
 )
@@ -195,3 +202,42 @@ def test_post_lifecycle_operation_serialization(
     assert json_body["files_total"] == 100
     assert json_body["error_message"] is None
     assert json_body["error_details"] is None
+
+
+def test_post_from_data_deletion_callback_serialization(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "http://localhost")
+    operation_id = uuid4()
+    payload = FromDataDeletionCallback(
+        operation_id=operation_id,
+        phase=LifecycleOperationPhase.FROM_DATA_DELETION,
+        from_data_deletion_status=FromDataDeletionStatus.FAILED,
+        error=FromDataDeletionError(
+            title="RuntimeError",
+            message="boom",
+        ),
+    )
+
+    with mock.patch(
+        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
+        return_value="token",
+    ):
+        with mock.patch(
+            "requests.sessions.Session.send",
+            mock.MagicMock(return_value=mock.MagicMock(status_code=200)),
+        ) as send_mock:
+            post_from_data_deletion_callback(payload)
+
+    assert send_mock.call_count == 1
+
+    json_body = json.loads(send_mock.call_args[0][0].body)
+    assert json_body == {
+        "operation_id": str(operation_id),
+        "phase": "FROM_DATA_DELETION",
+        "from_data_deletion_status": "FAILED",
+        "error": {
+            "title": "RuntimeError",
+            "message": "boom",
+        },
+    }

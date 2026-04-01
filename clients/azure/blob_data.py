@@ -378,6 +378,18 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
             start=now,
         )
 
+    def delete_project_directory(self, project_name: str) -> None:
+        """Delete the full project prefix from Azure Blob Storage."""
+        project_prefix = self._dir_prefix(_generate_base_dir_path(project_name))
+        try:
+            blobs = list(
+                self.container_client.list_blob_names(name_starts_with=project_prefix)
+            )
+        except ResourceNotFoundError:
+            return
+        for blob_name in blobs:
+            self.container_client.delete_blob(blob_name)
+
     def init_project_directory(self, project_name: str):
         """Create project folder in blob storage with empty children folders."""
         base_path = _generate_base_dir_path(project_name)

@@ -10,8 +10,13 @@ from fastapi import BackgroundTasks
 from clients.data_models import TokenPermissions
 
 from . import azcopy_runner
-from .hooks import post_lifecycle_operation_callback
+from .hooks import post_from_data_deletion_callback, post_lifecycle_operation_callback
 from .models import (
+    FromDataDeletionAccepted,
+    FromDataDeletionCallback,
+    FromDataDeletionError,
+    FromDataDeletionOperation,
+    FromDataDeletionStatus,
     LifecycleOperation,
     LifecycleOperationProgressStatus,
     LifecycleOperationStatus,
@@ -31,6 +36,8 @@ _LIFECYCLE_OPERATION_GUARD: set[tuple[str, str, str]] = set()
 _LIFECYCLE_OPERATION_GUARD_LOCK = threading.Lock()
 _LIFECYCLE_OPERATION_JOB_ID: dict[UUID, str] = {}
 _LIFECYCLE_OPERATION_JOB_ID_LOCK = threading.Lock()
+_FROM_DATA_DELETION_GUARD: set[tuple[str, str, str, str]] = set()
+_FROM_DATA_DELETION_GUARD_LOCK = threading.Lock()
 
 _TERMINAL_JOB_STATES = {"SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN"}
 _AZCOPY_POLL_INTERVAL_SECONDS = 5.0
@@ -263,6 +270,57 @@ def _reset_lifecycle_operation_guard() -> None:
         _LIFECYCLE_OPERATION_GUARD.clear()
     with _LIFECYCLE_OPERATION_JOB_ID_LOCK:
         _LIFECYCLE_OPERATION_JOB_ID.clear()
+    with _FROM_DATA_DELETION_GUARD_LOCK:
+        _FROM_DATA_DELETION_GUARD.clear()
+
+
+def schedule_from_data_deletion(
+    *,
+    deletion: FromDataDeletionOperation,
+    background_tasks: BackgroundTasks,
+) -> FromDataDeletionAccepted:
+    accepted = _register_from_data_deletion(deletion=deletion)
+    if accepted:
+        background_tasks.add_task(
+            _execute_from_data_deletion,
+            deletion=deletion,
+        )
+        logger.info(
+            "From-data deletion accepted: operation_id=%s project_slug=%s storage_role=%s phase=%s",
+            deletion.operation_id,
+            deletion.project_slug,
+            deletion.storage_role.value,
+            deletion.phase.value,
+        )
+    else:
+        logger.info(
+            "From-data deletion already tracked, skipping duplicate: operation_id=%s project_slug=%s storage_role=%s phase=%s",
+            deletion.operation_id,
+            deletion.project_slug,
+            deletion.storage_role.value,
+            deletion.phase.value,
+        )
+    return FromDataDeletionAccepted(
+        project_slug=deletion.project_slug,
+        operation_id=deletion.operation_id,
+        storage_role=deletion.storage_role,
+        phase=deletion.phase,
+        status=LifecycleOperationStatus.ACCEPTED,
+    )
+
+
+def _register_from_data_deletion(*, deletion: FromDataDeletionOperation) -> bool:
+    key = deletion.guard_key()
+    with _FROM_DATA_DELETION_GUARD_LOCK:
+        if key in _FROM_DATA_DELETION_GUARD:
+            return False
+        _FROM_DATA_DELETION_GUARD.add(key)
+        return True
+
+
+def _release_from_data_deletion(*, deletion: FromDataDeletionOperation) -> None:
+    with _FROM_DATA_DELETION_GUARD_LOCK:
+        _FROM_DATA_DELETION_GUARD.discard(deletion.guard_key())
 
 
 def _perform_lifecycle_operation(
@@ -437,6 +495,63 @@ def _build_error_details(
             details["stderr_path"] = exc.stderr_path
 
     return details
+
+
+def _execute_from_data_deletion(
+    *,
+    deletion: FromDataDeletionOperation,
+) -> None:
+    logger.info(
+        "From-data deletion started: operation_id=%s project_slug=%s storage_role=%s phase=%s",
+        deletion.operation_id,
+        deletion.project_slug,
+        deletion.storage_role.value,
+        deletion.phase.value,
+    )
+    callback = FromDataDeletionCallback(
+        operation_id=deletion.operation_id,
+        phase=deletion.phase,
+        from_data_deletion_status=FromDataDeletionStatus.SUCCEEDED,
+    )
+    succeeded = False
+    try:
+        client = resolve_backend_client(deletion.storage_role)
+        client.delete_project_directory(deletion.project_slug)
+        succeeded = True
+    except Exception as exc:  # pylint: disable=broad-except
+        message = str(exc) or exc.__class__.__name__
+        callback.from_data_deletion_status = FromDataDeletionStatus.FAILED
+        callback.error = FromDataDeletionError(
+            title=exc.__class__.__name__,
+            message=message,
+        )
+        logger.error(
+            "From-data deletion failed: operation_id=%s project_slug=%s storage_role=%s phase=%s error=%s",
+            deletion.operation_id,
+            deletion.project_slug,
+            deletion.storage_role.value,
+            deletion.phase.value,
+            exc,
+        )
+    finally:
+        if not succeeded:
+            _release_from_data_deletion(deletion=deletion)
+        delivered = post_from_data_deletion_callback(callback)
+        if not delivered:
+            logger.error(
+                "From-data deletion callback delivery failed: operation_id=%s storage_role=%s phase=%s",
+                deletion.operation_id,
+                deletion.storage_role.value,
+                deletion.phase.value,
+            )
+        logger.info(
+            "From-data deletion finished: operation_id=%s project_slug=%s storage_role=%s phase=%s status=%s",
+            deletion.operation_id,
+            deletion.project_slug,
+            deletion.storage_role.value,
+            deletion.phase.value,
+            callback.from_data_deletion_status.value,
+        )
 
 
 def _execute_lifecycle_operation(

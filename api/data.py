@@ -27,11 +27,15 @@ from clients.azure.data import (
 from clients.azure.stream import stream_zip_from_azure_files_async
 from clients.data_models import ProjectFileOrDirectory
 from data_lifecycle import models
+from data_lifecycle.dependencies import fetch_project_lifecycle
+from data_lifecycle.models import LifecycleState
 from data_lifecycle.operation import (
     LifecycleOperationNotFoundError,
     get_lifecycle_operation_status,
+    schedule_from_data_deletion,
     schedule_lifecycle_operation,
 )
+from data_lifecycle.storage_types import StorageRole
 from dependencies import get_hot_project_data_client, get_project_data_client
 from hooks.euphrosyne import post_data_access_event
 from path import ProjectDocumentRef, RunDataTypeRef
@@ -374,6 +378,41 @@ def restore_project_data(
     )
     return schedule_lifecycle_operation(
         operation=operation,
+        background_tasks=background_tasks,
+    )
+
+
+@router.post(
+    "/projects/{project_slug}/delete/{storage_role}",
+    status_code=202,
+    dependencies=[Depends(verify_is_euphrosyne_backend)],
+    response_model=models.FromDataDeletionAccepted,
+    response_model_exclude_none=True,
+)
+def delete_project_data(
+    project_slug: str,
+    storage_role: StorageRole,
+    background_tasks: BackgroundTasks,
+    operation_id: UUID = Query(...),
+):
+    lifecycle_state = fetch_project_lifecycle(project_slug)
+    if lifecycle_state in {LifecycleState.COOLING, LifecycleState.RESTORING}:
+        raise HTTPException(
+            status_code=409,
+            detail="Project data is not in a stable state (HOT or COOL)",
+        )
+    if lifecycle_state == LifecycleState(storage_role.value):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete active storage side {storage_role.value}",
+        )
+    deletion = models.FromDataDeletionOperation(
+        project_slug=project_slug,
+        operation_id=operation_id,
+        storage_role=storage_role,
+    )
+    return schedule_from_data_deletion(
+        deletion=deletion,
         background_tasks=background_tasks,
     )
 
