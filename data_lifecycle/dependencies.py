@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from auth import generate_token_for_euphrosyne_backend
 
-from .storage_types import StorageRole
+from .models import LifecycleState
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ FETCH_PROJECT_LIFECYCLE_RETRIES = 2
 
 
 # TODO: implement CACHE
-def fetch_project_lifecycle(project_slug: str) -> StorageRole:
+def fetch_project_lifecycle(project_slug: str) -> LifecycleState:
     """Given project_slug, fetch project data current lifecycle"""
     euphroyne_backend_url = os.environ["EUPHROSYNE_BACKEND_URL"]
     token = generate_token_for_euphrosyne_backend()
@@ -47,8 +47,17 @@ def fetch_project_lifecycle(project_slug: str) -> StorageRole:
         if response.ok:
             try:
                 content = response.json()
-                return content["lifecycle_state"]
-            except (ValueError, KeyError) as exc:
+                return LifecycleState(content["lifecycle_state"])
+            except ValueError as exc:
+                logger.error(
+                    "failed to fetch project data lifecycle.\nReason: unknown lifecycle state returned by storage backend.\n%s",
+                    response.content,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail="Storage backend returned an invalid lifecycle state (fetch_project_lifecycle)",
+                ) from exc
+            except KeyError as exc:
                 logger.error(
                     "failed to fetch project data lifecycle.\nReason: storage backend returned an invalid response.\n%s",
                     response.content,

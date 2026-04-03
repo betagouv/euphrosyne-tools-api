@@ -16,6 +16,7 @@ from clients.azure.images import ImageStorageClient
 from clients.data_client import AbstractDataClient
 from clients.guacamole import GuacamoleClient
 from data_lifecycle.dependencies import fetch_project_lifecycle
+from data_lifecycle.models import LifecycleState
 from data_lifecycle.storage_resolver import resolve_backend
 from data_lifecycle.storage_types import StorageBackend, StorageRole
 from path import ProjectRef
@@ -38,7 +39,7 @@ def get_project_from_path_or_param(
 
 def get_project_lifecycle(
     project_slug: Annotated[str, Depends(get_project_from_path_or_param)],
-) -> StorageRole:
+) -> LifecycleState:
     """Return the storage role for a project.
 
     The project slug is resolved from either the `project_slug` parameter or a
@@ -49,7 +50,7 @@ def get_project_lifecycle(
     from the data lifecycle backend.
     """
     if not os.getenv("DATA_BACKEND_COOL"):
-        return StorageRole.HOT
+        return LifecycleState.HOT
     return fetch_project_lifecycle(project_slug=project_slug)
 
 
@@ -60,13 +61,14 @@ def get_hot_project_data_client():
 
 @lru_cache()
 def get_project_data_client(
-    storage_role: Annotated[StorageRole, Depends(get_project_lifecycle)],
+    lifecycle_state: Annotated[LifecycleState, Depends(get_project_lifecycle)],
 ) -> AbstractDataClient:
-    if storage_role not in [StorageRole.HOT, StorageRole.COOL]:
+    if lifecycle_state not in [LifecycleState.HOT, LifecycleState.COOL]:
         raise HTTPException(
             status_code=409,
             detail="Project data is not in a stable state (HOT or COOL)",
         )
+    storage_role = StorageRole(lifecycle_state.value)
     backend = resolve_backend(storage_role)
     if backend == StorageBackend.AZURE_BLOB:
         return BlobDataAzureClient(storage_role=storage_role)

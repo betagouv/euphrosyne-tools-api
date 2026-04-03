@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 import dependencies
+from data_lifecycle.models import LifecycleState
 from data_lifecycle.storage_types import StorageBackend, StorageRole
 
 
@@ -55,7 +56,7 @@ def test_get_project_lifecycle_returns_hot_without_cool_backend(
     monkeypatch.delenv("DATA_BACKEND_COOL", raising=False)
 
     with patch.object(dependencies, "fetch_project_lifecycle") as fetch_mock:
-        assert dependencies.get_project_lifecycle("project-01") == StorageRole.HOT
+        assert dependencies.get_project_lifecycle("project-01") == LifecycleState.HOT
 
     fetch_mock.assert_not_called()
 
@@ -68,9 +69,9 @@ def test_get_project_lifecycle_fetches_role_when_cool_backend_enabled(
     with patch.object(
         dependencies,
         "fetch_project_lifecycle",
-        return_value=StorageRole.COOL,
+        return_value=LifecycleState.COOL,
     ) as fetch_mock:
-        assert dependencies.get_project_lifecycle("project-01") == StorageRole.COOL
+        assert dependencies.get_project_lifecycle("project-01") == LifecycleState.COOL
 
     fetch_mock.assert_called_once_with(project_slug="project-01")
 
@@ -125,7 +126,7 @@ def test_get_project_data_client_returns_fileshare_client_for_fileshare_backend(
 
 def test_get_project_data_client_raises_when_lifecycle_state_is_not_stable():
     with pytest.raises(HTTPException) as error:
-        dependencies.get_project_data_client("COOLING")
+        dependencies.get_project_data_client(LifecycleState.COOLING)
     print(error)
     assert error.value.status_code == 409
     assert error.value.detail == "Project data is not in a stable state (HOT or COOL)"
