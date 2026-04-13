@@ -1,5 +1,5 @@
 aiohttp==3.13.5
-anyio[trio]==4.12.1
+anyio[trio]==4.13.0
 azure-identity==1.25.3 
 azure-keyvault-secrets==4.10.0
 azure-mgmt-compute==37.2.0
