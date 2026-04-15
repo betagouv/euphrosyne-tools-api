@@ -10,7 +10,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api import data as data_api
 from auth import (
     ExtraPayloadTokenGetter,
     User,
@@ -22,7 +21,6 @@ from auth import (
 from clients.azure.data import FolderCreationError, RunDataNotFound
 from dependencies import get_hot_project_data_client, get_project_data_client
 from data_lifecycle import operation as lifecycle_operation
-from data_lifecycle.models import LifecycleState
 from exceptions import StorageWriteNotAllowedError
 from hooks.euphrosyne import post_data_access_event
 from path import IncorrectDataFilePath
@@ -166,14 +164,7 @@ def test_delete_project_data_accepts_and_schedules_background_task(
     app: FastAPI, client: TestClient
 ):
     operation_id = uuid4()
-    with (
-        patch.object(
-            data_api,
-            "fetch_project_lifecycle",
-            return_value=LifecycleState.COOL,
-        ),
-        patch("fastapi.BackgroundTasks.add_task") as add_task_mock,
-    ):
+    with (patch("fastapi.BackgroundTasks.add_task") as add_task_mock,):
         response = client.post(
             f"/data/projects/project-01/delete/HOT?operation_id={operation_id}"
         )
@@ -199,12 +190,7 @@ def test_delete_project_data_accepts_and_schedules_background_task(
 def test_delete_project_data_missing_operation_id_returns_422(
     app: FastAPI, client: TestClient
 ):
-    with patch.object(
-        data_api,
-        "fetch_project_lifecycle",
-        return_value=LifecycleState.COOL,
-    ):
-        response = client.post("/data/projects/project-01/delete/HOT")
+    response = client.post("/data/projects/project-01/delete/HOT")
 
     assert response.status_code == 422
 
@@ -212,48 +198,29 @@ def test_delete_project_data_missing_operation_id_returns_422(
 def test_delete_project_data_invalid_operation_id_returns_422(
     app: FastAPI, client: TestClient
 ):
-    with patch.object(
-        data_api,
-        "fetch_project_lifecycle",
-        return_value=LifecycleState.COOL,
-    ):
-        response = client.post("/data/projects/project-01/delete/HOT?operation_id=bad")
+    response = client.post("/data/projects/project-01/delete/HOT?operation_id=bad")
 
     assert response.status_code == 422
 
 
-def test_delete_project_data_rejects_active_storage_side(
+def test_delete_project_data_accepts_active_storage_side_for_background_validation(
     app: FastAPI, client: TestClient
 ):
-    with patch.object(
-        data_api,
-        "fetch_project_lifecycle",
-        return_value=LifecycleState.COOL,
-    ):
-        response = client.post(
-            f"/data/projects/project-01/delete/COOL?operation_id={uuid4()}"
-        )
-
-    assert response.status_code == 409
-    assert response.json()["detail"] == "Cannot delete active storage side COOL"
-
-
-@pytest.mark.parametrize("state", [LifecycleState.COOLING, LifecycleState.RESTORING])
-def test_delete_project_data_rejects_transitional_state(
-    app: FastAPI,
-    client: TestClient,
-    state: LifecycleState,
-):
-    with patch.object(data_api, "fetch_project_lifecycle", return_value=state):
-        response = client.post(
-            f"/data/projects/project-01/delete/HOT?operation_id={uuid4()}"
-        )
-
-    assert response.status_code == 409
-    assert (
-        response.json()["detail"]
-        == "Project data is not in a stable state (HOT or COOL)"
+    response = client.post(
+        f"/data/projects/project-01/delete/COOL?operation_id={uuid4()}"
     )
+
+    assert response.status_code == 202
+
+
+def test_delete_project_data_accepts_transitional_state_for_background_validation(
+    app: FastAPI, client: TestClient
+):
+    response = client.post(
+        f"/data/projects/project-01/delete/HOT?operation_id={uuid4()}"
+    )
+
+    assert response.status_code == 202
 
 
 def test_delete_project_data_duplicate_request_does_not_schedule_twice(
@@ -261,14 +228,7 @@ def test_delete_project_data_duplicate_request_does_not_schedule_twice(
 ):
     lifecycle_operation._reset_lifecycle_operation_guard()
     operation_id = uuid4()
-    with (
-        patch.object(
-            data_api,
-            "fetch_project_lifecycle",
-            return_value=LifecycleState.COOL,
-        ),
-        patch("fastapi.BackgroundTasks.add_task") as add_task_mock,
-    ):
+    with (patch("fastapi.BackgroundTasks.add_task") as add_task_mock,):
         first_response = client.post(
             f"/data/projects/project-01/delete/HOT?operation_id={operation_id}"
         )

@@ -19,6 +19,7 @@ from data_lifecycle.models import (
     LifecycleOperation,
     LifecycleOperationPhase,
     LifecycleOperationProgressStatus,
+    LifecycleState,
     LifecycleOperationType,
 )
 from data_lifecycle.storage_types import StorageRole
@@ -259,6 +260,11 @@ def test_execute_from_data_deletion_sends_success_callback(
         "post_from_data_deletion_callback",
         fake_post,
     )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "fetch_project_lifecycle",
+        lambda _project_slug: LifecycleState.COOL,
+    )
     deletion = lifecycle_operation.FromDataDeletionOperation(
         project_slug="project-1",
         operation_id=operation_id,
@@ -349,6 +355,11 @@ def test_execute_from_data_deletion_failure_posts_error_and_releases_guard(
         "post_from_data_deletion_callback",
         fake_post,
     )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "fetch_project_lifecycle",
+        lambda _project_slug: LifecycleState.HOT,
+    )
     deletion = lifecycle_operation.FromDataDeletionOperation(
         project_slug="project-1",
         operation_id=operation_id,
@@ -365,6 +376,103 @@ def test_execute_from_data_deletion_failure_posts_error_and_releases_guard(
     assert callback.error.message == "boom"
     assert deletion.guard_key() not in lifecycle_operation._FROM_DATA_DELETION_GUARD
     assert lifecycle_operation._register_from_data_deletion(deletion=deletion) is True
+
+
+def test_execute_from_data_deletion_rejects_active_storage_side(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    operation_id = uuid4()
+    captured = {}
+    delete_project_directory_mock = MagicMock()
+
+    def fake_post(callback) -> bool:
+        captured["callback"] = callback
+        return True
+
+    backend_client = MagicMock(delete_project_directory=delete_project_directory_mock)
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "resolve_backend_client",
+        lambda _role: backend_client,
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "post_from_data_deletion_callback",
+        fake_post,
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "fetch_project_lifecycle",
+        lambda _project_slug: LifecycleState.HOT,
+    )
+    deletion = lifecycle_operation.FromDataDeletionOperation(
+        project_slug="project-1",
+        operation_id=operation_id,
+        storage_role=StorageRole.HOT,
+    )
+
+    lifecycle_operation._register_from_data_deletion(deletion=deletion)
+    lifecycle_operation._execute_from_data_deletion(deletion=deletion)
+
+    delete_project_directory_mock.assert_not_called()
+    callback = captured["callback"]
+    assert callback.phase == LifecycleOperationPhase.FROM_DATA_DELETION
+    assert callback.from_data_deletion_status == FromDataDeletionStatus.FAILED
+    assert callback.error.title == "FromDataDeletionValidationError"
+    assert callback.error.message == "Cannot delete active storage side HOT"
+    assert deletion.guard_key() not in lifecycle_operation._FROM_DATA_DELETION_GUARD
+
+
+@pytest.mark.parametrize(
+    "state",
+    [LifecycleState.COOLING, LifecycleState.RESTORING],
+)
+def test_execute_from_data_deletion_rejects_transitional_state(
+    monkeypatch: pytest.MonkeyPatch,
+    state: LifecycleState,
+):
+    operation_id = uuid4()
+    captured = {}
+    delete_project_directory_mock = MagicMock()
+
+    def fake_post(callback) -> bool:
+        captured["callback"] = callback
+        return True
+
+    backend_client = MagicMock(delete_project_directory=delete_project_directory_mock)
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "resolve_backend_client",
+        lambda _role: backend_client,
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "post_from_data_deletion_callback",
+        fake_post,
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "fetch_project_lifecycle",
+        lambda _project_slug: state,
+    )
+    deletion = lifecycle_operation.FromDataDeletionOperation(
+        project_slug="project-1",
+        operation_id=operation_id,
+        storage_role=StorageRole.HOT,
+    )
+
+    lifecycle_operation._register_from_data_deletion(deletion=deletion)
+    lifecycle_operation._execute_from_data_deletion(deletion=deletion)
+
+    delete_project_directory_mock.assert_not_called()
+    callback = captured["callback"]
+    assert callback.phase == LifecycleOperationPhase.FROM_DATA_DELETION
+    assert callback.from_data_deletion_status == FromDataDeletionStatus.FAILED
+    assert callback.error.title == "FromDataDeletionValidationError"
+    assert (
+        callback.error.message == "Project data is not in a stable state (HOT or COOL)"
+    )
+    assert deletion.guard_key() not in lifecycle_operation._FROM_DATA_DELETION_GUARD
 
 
 def test_execute_cool_operation_failure_after_job_id_contains_diagnostics(

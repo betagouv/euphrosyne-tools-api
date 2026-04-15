@@ -37,7 +37,8 @@ def fetch_project_lifecycle(project_slug: str) -> LifecycleState:
                 str(e),
             )
             retry += 1
-            time.sleep(1)
+            if retry < FETCH_PROJECT_LIFECYCLE_RETRIES:
+                time.sleep(1)
             continue
         if response.status_code == 404:
             raise HTTPException(
@@ -68,7 +69,8 @@ def fetch_project_lifecycle(project_slug: str) -> LifecycleState:
                 ) from exc
 
         retry += 1
-        time.sleep(1)
+        if retry < FETCH_PROJECT_LIFECYCLE_RETRIES:
+            time.sleep(1)
 
     logger.error(
         "failed to fetch project data lifecycle.",

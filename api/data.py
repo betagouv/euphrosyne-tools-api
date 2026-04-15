@@ -27,8 +27,6 @@ from clients.azure.data import (
 from clients.azure.stream import stream_zip_from_azure_files_async
 from clients.data_models import ProjectFileOrDirectory
 from data_lifecycle import models
-from data_lifecycle.dependencies import fetch_project_lifecycle
-from data_lifecycle.models import LifecycleState
 from data_lifecycle.operation import (
     LifecycleOperationNotFoundError,
     get_lifecycle_operation_status,
@@ -395,17 +393,6 @@ def delete_project_data(
     background_tasks: BackgroundTasks,
     operation_id: UUID = Query(...),
 ):
-    lifecycle_state = fetch_project_lifecycle(project_slug)
-    if lifecycle_state in {LifecycleState.COOLING, LifecycleState.RESTORING}:
-        raise HTTPException(
-            status_code=409,
-            detail="Project data is not in a stable state (HOT or COOL)",
-        )
-    if lifecycle_state == LifecycleState(storage_role.value):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot delete active storage side {storage_role.value}",
-        )
     deletion = models.FromDataDeletionOperation(
         project_slug=project_slug,
         operation_id=operation_id,
