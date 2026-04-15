@@ -37,17 +37,17 @@ def list_image_definitions(
 
 
 @router.get(
-    "/{project_name}",
+    "/{project_slug}",
     status_code=200,
     dependencies=[Depends(verify_project_membership)],
 )
 def get_vm(
-    project_name: str,
+    project_slug: str,
     azure_client: VMAzureClient = Depends(get_vm_azure_client),
 ):
     """Get a specific vm."""
     try:
-        vm = azure_client.get_vm(project_name)
+        vm = azure_client.get_vm(project_slug)
     except VMNotFound:
         return JSONResponse(status_code=404, content={})
     return {"provisioning_state": vm.provisioning_state}
@@ -55,19 +55,19 @@ def get_vm(
 
 # pylint: disable=inconsistent-return-statements
 @router.delete(
-    "/{project_name}", status_code=202, dependencies=[Depends(verify_admin_permission)]
+    "/{project_slug}", status_code=202, dependencies=[Depends(verify_admin_permission)]
 )
 def delete_vm(
-    project_name: str,
+    project_slug: str,
     azure_client: VMAzureClient = Depends(get_vm_azure_client),
     guacamole_client: GuacamoleClient = Depends(get_guacamole_client),
 ):
     """Delete a VM and its connection information on Guacamole."""
-    azure_client.delete_vm(project_name)
+    azure_client.delete_vm(project_slug)
     azure_client.delete_deployment(
-        project_name
+        project_slug
     )  # should already be deleted during deployment, but just in case
     try:
-        guacamole_client.delete_connection(project_name)
+        guacamole_client.delete_connection(project_slug)
     except GuacamoleConnectionNotFound:
         pass

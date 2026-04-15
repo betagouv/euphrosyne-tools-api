@@ -101,16 +101,13 @@ class BlobAzureClient(BaseStorageAzureClient):
             raise FolderCreationError(str(error)) from error
 
     def _path_exists(self, dir_path: str) -> bool:
-        container = self.container_client
-        prefix = self._dir_prefix(dir_path)
         try:
-            if not prefix:
-                return container.exists()
-            for _ in container.list_blobs(name_starts_with=prefix, results_per_page=1):
-                return True
+            blob_names = self.container_client.list_blob_names(
+                name_starts_with=self._dir_prefix(dir_path)
+            )
+            return next(blob_names, None) is not None
         except ResourceNotFoundError:
             return False
-        return False
 
     def _list_files(self, dir_path: str) -> list[ProjectFileOrDirectory]:
         container = self.container_client
