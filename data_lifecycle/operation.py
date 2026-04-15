@@ -10,6 +10,7 @@ from fastapi import BackgroundTasks
 from clients.data_models import TokenPermissions
 
 from . import azcopy_runner
+from .dependencies import fetch_project_lifecycle
 from .hooks import post_from_data_deletion_callback, post_lifecycle_operation_callback
 from .models import (
     FromDataDeletionAccepted,
@@ -18,6 +19,7 @@ from .models import (
     FromDataDeletionOperation,
     FromDataDeletionStatus,
     LifecycleOperation,
+    LifecycleState,
     LifecycleOperationProgressStatus,
     LifecycleOperationStatus,
     LifecycleOperationStatusView,
@@ -68,6 +70,10 @@ class LifecycleOperationExecutionError(Exception):
 
 
 class LifecycleOperationNotFoundError(Exception):
+    pass
+
+
+class FromDataDeletionValidationError(Exception):
     pass
 
 
@@ -515,6 +521,7 @@ def _execute_from_data_deletion(
     )
     succeeded = False
     try:
+        _validate_from_data_deletion_target(deletion=deletion)
         client = resolve_backend_client(deletion.storage_role)
         client.delete_project_directory(deletion.project_slug)
         succeeded = True
@@ -551,6 +558,18 @@ def _execute_from_data_deletion(
             deletion.storage_role.value,
             deletion.phase.value,
             callback.from_data_deletion_status.value,
+        )
+
+
+def _validate_from_data_deletion_target(*, deletion: FromDataDeletionOperation) -> None:
+    lifecycle_state = fetch_project_lifecycle(deletion.project_slug)
+    if lifecycle_state in {LifecycleState.COOLING, LifecycleState.RESTORING}:
+        raise FromDataDeletionValidationError(
+            "Project data is not in a stable state (HOT or COOL)"
+        )
+    if lifecycle_state == LifecycleState(deletion.storage_role.value):
+        raise FromDataDeletionValidationError(
+            f"Cannot delete active storage side {deletion.storage_role.value}"
         )
 
 

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -110,7 +110,7 @@ def test_fetch_project_lifecycle_retries_then_raises_service_unavailable(
 
     assert error.value.status_code == 503
     assert get_mock.call_count == FETCH_PROJECT_LIFECYCLE_RETRIES
-    sleep_mock.assert_has_calls([call(1)] * FETCH_PROJECT_LIFECYCLE_RETRIES)
+    sleep_mock.assert_called_once_with(1)
 
 
 def test_fetch_project_lifecycle_retries_when_request_exc(
@@ -132,4 +132,4 @@ def test_fetch_project_lifecycle_retries_when_request_exc(
 
     assert error.value.status_code == 503
     assert get_mock.call_count == FETCH_PROJECT_LIFECYCLE_RETRIES
-    sleep_mock.assert_has_calls([call(1)] * FETCH_PROJECT_LIFECYCLE_RETRIES)
+    sleep_mock.assert_called_once_with(1)
