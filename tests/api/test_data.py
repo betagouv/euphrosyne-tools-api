@@ -19,9 +19,8 @@ from auth import (
     verify_path_permission,
 )
 from clients.azure.data import FolderCreationError, RunDataNotFound
-from dependencies import get_hot_project_data_client, get_project_data_client
 from data_lifecycle import operation as lifecycle_operation
-from exceptions import StorageWriteNotAllowedError
+from dependencies import get_hot_project_data_client, get_project_data_client
 from hooks.euphrosyne import post_data_access_event
 from path import IncorrectDataFilePath
 
@@ -42,7 +41,7 @@ def authenticate_euphrosyne_backend_or_admin(app: FastAPI):
 
 def test_init_project_data(app: FastAPI, client: TestClient):
     init_project_directory_mock = MagicMock()
-    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
+    app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
         init_project_directory=init_project_directory_mock
     )
     response = client.post("/data/project_01/init")
@@ -55,7 +54,7 @@ def test_init_project_data_when_caught_error(app: FastAPI, client: TestClient):
     init_project_directory_mock = MagicMock(
         **{"side_effect": FolderCreationError("an error")}
     )
-    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
+    app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
         init_project_directory=init_project_directory_mock
     )
     response = client.post("/data/project_01/init")
@@ -65,29 +64,26 @@ def test_init_project_data_when_caught_error(app: FastAPI, client: TestClient):
     assert response.json()["detail"] == "an error"
 
 
-def test_init_project_data_when_storage_is_cool(app: FastAPI, client: TestClient):
-    init_project_directory_mock = MagicMock(
-        side_effect=StorageWriteNotAllowedError(
-            "Write not allowed for storage role StorageRole.COOL in DataAzureClient."
-        )
+def test_init_project_data_uses_hot_data_client(app: FastAPI, client: TestClient):
+    hot_init_project_directory_mock = MagicMock()
+    project_init_directory_mock = MagicMock()
+    app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
+        init_project_directory=hot_init_project_directory_mock
     )
     app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
-        init_project_directory=init_project_directory_mock
+        init_project_directory=project_init_directory_mock
     )
 
     response = client.post("/data/project_01/init")
 
-    init_project_directory_mock.assert_called_with("project_01")
-    assert response.status_code == 409
-    assert (
-        response.json()["detail"]
-        == "Write not allowed for storage role StorageRole.COOL in DataAzureClient."
-    )
+    assert response.status_code == 204
+    hot_init_project_directory_mock.assert_called_once_with("project_01")
+    project_init_directory_mock.assert_not_called()
 
 
 def test_init_run_data(app: FastAPI, client: TestClient):
     init_run_directory_mock = MagicMock()
-    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
+    app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
         init_run_directory=init_run_directory_mock
     )
     response = client.post("/data/project_01/runs/run1/init")
@@ -100,7 +96,7 @@ def test_init_run_data_when_caught_error(app: FastAPI, client: TestClient):
     init_run_directory_mock = MagicMock(
         **{"side_effect": FolderCreationError("an error")}
     )
-    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
+    app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
         init_run_directory=init_run_directory_mock
     )
     response = client.post("/data/project_01/runs/run1/init")
@@ -108,6 +104,23 @@ def test_init_run_data_when_caught_error(app: FastAPI, client: TestClient):
     init_run_directory_mock.assert_called_with("run1", "project_01")
     assert response.status_code == 400
     assert response.json()["detail"] == "an error"
+
+
+def test_init_run_data_uses_hot_data_client(app: FastAPI, client: TestClient):
+    hot_init_run_directory_mock = MagicMock()
+    project_init_run_directory_mock = MagicMock()
+    app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
+        init_run_directory=hot_init_run_directory_mock
+    )
+    app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
+        init_run_directory=project_init_run_directory_mock
+    )
+
+    response = client.post("/data/project_01/runs/run1/init")
+
+    assert response.status_code == 204
+    hot_init_run_directory_mock.assert_called_once_with("run1", "project_01")
+    project_init_run_directory_mock.assert_not_called()
 
 
 def test_change_run_name(app: FastAPI, client: TestClient):

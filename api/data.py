@@ -255,7 +255,7 @@ def generate_signed_url_for_path(
 )
 def init_project_data(
     project_slug: str,
-    azure_client: DataAzureClient = Depends(get_project_data_client),
+    azure_client: DataAzureClient = Depends(get_hot_project_data_client),
 ):
     try:
         return azure_client.init_project_directory(project_slug)
@@ -271,7 +271,7 @@ def init_project_data(
 def init_run_data(
     project_slug: str,
     run_name: str,
-    azure_client: DataAzureClient = Depends(get_project_data_client),
+    azure_client: DataAzureClient = Depends(get_hot_project_data_client),
 ):
     try:
         return azure_client.init_run_directory(run_name, project_slug)
