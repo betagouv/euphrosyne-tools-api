@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 # pylint: disable=wrong-import-position
 from ..data_client import AbstractDataClient
 from ..data_models import (
+    ProjectDataStats,
     ProjectFile,
     ProjectFileOrDirectory,
     RunDataTypeType,
@@ -358,6 +359,43 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
             self._delete_directory_tree(dir_client)
         except ResourceNotFoundError:
             return
+
+    def get_project_directory_stats(self, project_name: str) -> ProjectDataStats:
+        """Return file count and byte size for the full project tree."""
+        dir_path = _generate_base_dir_path(project_name)
+        dir_client = ShareDirectoryClient.from_connection_string(
+            conn_str=self._storage_connection_string,
+            share_name=self.share_name,
+            directory_path=dir_path,
+        )
+        try:
+            return self._get_directory_stats(dir_client)
+        except ResourceNotFoundError:
+            return ProjectDataStats(file_count=0, total_size=0)
+
+    def _get_directory_stats(
+        self, dir_client: ShareDirectoryClient
+    ) -> ProjectDataStats:
+        try:
+            entries = list(dir_client.list_directories_and_files())
+        except ResourceNotFoundError:
+            return ProjectDataStats(file_count=0, total_size=0)
+
+        file_count = 0
+        total_size = 0
+        for entry in entries:
+            name = entry["name"]
+            if entry["is_directory"]:
+                child_stats = self._get_directory_stats(
+                    dir_client.get_subdirectory_client(name)
+                )
+                file_count += child_stats.file_count
+                total_size += child_stats.total_size
+                continue
+            file_count += 1
+            total_size += entry.get("size") or 0
+
+        return ProjectDataStats(file_count=file_count, total_size=total_size)
 
     def _delete_directory_tree(self, dir_client: ShareDirectoryClient) -> None:
         """Delete a directory and all descendants from Azure Files."""

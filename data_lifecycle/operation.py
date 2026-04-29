@@ -571,6 +571,22 @@ def _validate_from_data_deletion_target(*, deletion: FromDataDeletionOperation) 
         raise FromDataDeletionValidationError(
             f"Cannot delete active storage side {deletion.storage_role.value}"
         )
+    active_storage_role = StorageRole(lifecycle_state.value)
+    active_client = resolve_backend_client(active_storage_role)
+    active_stats = active_client.get_project_directory_stats(deletion.project_slug)
+
+    if (
+        active_stats.file_count != deletion.file_count
+        or active_stats.total_size != deletion.total_size
+    ):
+        raise FromDataDeletionValidationError(
+            "Active storage side "
+            f"{active_storage_role.value} stats mismatch: "
+            f"expected file_count={deletion.file_count} "
+            f"total_size={deletion.total_size}; "
+            f"actual file_count={active_stats.file_count} "
+            f"total_size={active_stats.total_size}"
+        )
 
 
 def _execute_lifecycle_operation(

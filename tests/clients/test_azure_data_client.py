@@ -126,6 +126,43 @@ def test_delete_project_directory_removes_nested_files_and_directories(
     root_dir_client.delete_directory.assert_called_once()
 
 
+def test_get_project_directory_stats_counts_nested_files(
+    client: DataAzureClient,
+):
+    raw_data_dir_client = MagicMock()
+    raw_data_dir_client.list_directories_and_files.return_value = [
+        {"name": "nested.txt", "is_directory": False, "size": 456}
+    ]
+
+    run_dir_client = MagicMock()
+    run_dir_client.list_directories_and_files.return_value = [
+        {"name": "raw_data", "is_directory": True}
+    ]
+    run_dir_client.get_subdirectory_client.return_value = raw_data_dir_client
+
+    runs_dir_client = MagicMock()
+    runs_dir_client.list_directories_and_files.return_value = [
+        {"name": "run-1", "is_directory": True}
+    ]
+    runs_dir_client.get_subdirectory_client.return_value = run_dir_client
+
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.return_value = [
+        {"name": "runs", "is_directory": True},
+        {"name": "readme.txt", "is_directory": False, "size": 123},
+    ]
+    root_dir_client.get_subdirectory_client.return_value = runs_dir_client
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        stats = client.get_project_directory_stats("project-01")
+
+    assert stats.file_count == 2
+    assert stats.total_size == 579
+
+
 def test_get_project_documents_with_prefix(
     client: DataAzureClient, monkeypatch: MonkeyPatch
 ):

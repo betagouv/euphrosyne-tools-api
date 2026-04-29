@@ -82,6 +82,8 @@ class FromDataDeletionOperation:
     project_slug: str
     operation_id: UUID
     storage_role: StorageRole
+    file_count: int
+    total_size: int
     phase: LifecycleOperationPhase = LifecycleOperationPhase.FROM_DATA_DELETION
 
     def guard_key(self) -> tuple[str, str, str, str]:

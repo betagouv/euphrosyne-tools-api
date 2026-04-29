@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, NotRequired, TypedDict
 
@@ -21,6 +22,12 @@ class ProjectFileOrDirectory(BaseModel):
     size: int | None
     path: str
     type: Literal["file", "directory"]
+
+
+@dataclass(frozen=True)
+class ProjectDataStats:
+    file_count: int
+    total_size: int
 
 
 class SASCredentials(TypedDict):

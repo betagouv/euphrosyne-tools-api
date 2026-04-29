@@ -180,6 +180,7 @@ def test_delete_project_data_accepts_and_schedules_background_task(
     with (patch("fastapi.BackgroundTasks.add_task") as add_task_mock,):
         response = client.post(
             f"/data/projects/project-01/delete/HOT?operation_id={operation_id}"
+            "&file_count=122&total_size=1234567890"
         )
 
     assert response.status_code == 202
@@ -197,6 +198,8 @@ def test_delete_project_data_accepts_and_schedules_background_task(
         project_slug="project-01",
         operation_id=operation_id,
         storage_role=lifecycle_operation.StorageRole.HOT,
+        file_count=122,
+        total_size=1234567890,
     )
 
 
@@ -216,11 +219,32 @@ def test_delete_project_data_invalid_operation_id_returns_422(
     assert response.status_code == 422
 
 
+def test_delete_project_data_missing_file_count_returns_422(
+    app: FastAPI, client: TestClient
+):
+    response = client.post(
+        f"/data/projects/project-01/delete/HOT?operation_id={uuid4()}&total_size=123"
+    )
+
+    assert response.status_code == 422
+
+
+def test_delete_project_data_missing_total_size_returns_422(
+    app: FastAPI, client: TestClient
+):
+    response = client.post(
+        f"/data/projects/project-01/delete/HOT?operation_id={uuid4()}&file_count=1"
+    )
+
+    assert response.status_code == 422
+
+
 def test_delete_project_data_accepts_active_storage_side_for_background_validation(
     app: FastAPI, client: TestClient
 ):
     response = client.post(
         f"/data/projects/project-01/delete/COOL?operation_id={uuid4()}"
+        "&file_count=1&total_size=123"
     )
 
     assert response.status_code == 202
@@ -231,6 +255,7 @@ def test_delete_project_data_accepts_transitional_state_for_background_validatio
 ):
     response = client.post(
         f"/data/projects/project-01/delete/HOT?operation_id={uuid4()}"
+        "&file_count=1&total_size=123"
     )
 
     assert response.status_code == 202
@@ -244,9 +269,11 @@ def test_delete_project_data_duplicate_request_does_not_schedule_twice(
     with (patch("fastapi.BackgroundTasks.add_task") as add_task_mock,):
         first_response = client.post(
             f"/data/projects/project-01/delete/HOT?operation_id={operation_id}"
+            "&file_count=1&total_size=123"
         )
         second_response = client.post(
             f"/data/projects/project-01/delete/HOT?operation_id={operation_id}"
+            "&file_count=1&total_size=123"
         )
 
     assert first_response.status_code == 202

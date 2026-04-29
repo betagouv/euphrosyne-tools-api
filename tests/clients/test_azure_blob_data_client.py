@@ -126,6 +126,32 @@ def test_delete_project_directory_ignores_missing_blob_prefix(
     hot_client.container_client.delete_blob.assert_not_called()
 
 
+def test_get_project_directory_stats_counts_only_real_blobs(
+    hot_client: BlobDataAzureClient,
+    monkeypatch: MonkeyPatch,
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blobs.return_value = iter(
+        [
+            SimpleNamespace(name="projects/project-01/", size=0),
+            SimpleNamespace(name="projects/project-01/documents/", size=0),
+            SimpleNamespace(name="projects/project-01/documents/readme.txt", size=123),
+            SimpleNamespace(
+                name="projects/project-01/runs/run-1/raw_data/file.txt", size=456
+            ),
+        ]
+    )
+
+    stats = hot_client.get_project_directory_stats("project-01")
+
+    hot_client.container_client.list_blobs.assert_called_once_with(
+        name_starts_with="projects/project-01/"
+    )
+    assert stats.file_count == 2
+    assert stats.total_size == 579
+
+
 @patch("clients.azure.blob_data.generate_blob_sas", return_value="sas-token")
 def test_generate_run_data_sas_url_allows_admin_writes_for_hot_storage(
     generate_blob_sas_mock,
