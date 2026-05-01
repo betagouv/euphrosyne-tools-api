@@ -185,7 +185,9 @@ the background task fetches the current project lifecycle, rejects deletion of t
 active storage side, then compares `file_count` and `total_size` against the active
 storage side. This proves the retained copy has the expected number of files and
 bytes before the inactive side is removed. Validation failures are reported through
-the lifecycle deletion callback.
+the lifecycle deletion callback. If the active project data directory or blob prefix
+is missing, deletion fails closed instead of treating missing data as an empty
+project.
 
 ## Operational Notes
 

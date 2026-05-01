@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     pass
 
 # pylint: disable=wrong-import-position
-from ..data_client import AbstractDataClient
+from ..data_client import AbstractDataClient, ProjectDataDirectoryNotFound
 from ..data_models import (
     ProjectDataStats,
     ProjectFile,
@@ -370,16 +370,13 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         )
         try:
             return self._get_directory_stats(dir_client)
-        except ResourceNotFoundError:
-            return ProjectDataStats(file_count=0, total_size=0)
+        except ResourceNotFoundError as exc:
+            raise ProjectDataDirectoryNotFound(project_name) from exc
 
     def _get_directory_stats(
         self, dir_client: ShareDirectoryClient
     ) -> ProjectDataStats:
-        try:
-            entries = list(dir_client.list_directories_and_files())
-        except ResourceNotFoundError:
-            return ProjectDataStats(file_count=0, total_size=0)
+        entries = list(dir_client.list_directories_and_files())
 
         file_count = 0
         total_size = 0

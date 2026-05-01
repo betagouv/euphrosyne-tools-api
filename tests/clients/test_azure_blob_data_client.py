@@ -7,6 +7,7 @@ from pytest import MonkeyPatch
 
 from clients.azure.blob_data import BlobDataAzureClient
 from clients.azure.data import FolderCreationError, RunDataNotFound
+from clients.data_client import ProjectDataDirectoryNotFound
 from data_lifecycle.storage_types import StorageRole
 
 
@@ -150,6 +151,52 @@ def test_get_project_directory_stats_counts_only_real_blobs(
     )
     assert stats.file_count == 2
     assert stats.total_size == 579
+
+
+def test_get_project_directory_stats_returns_zero_for_marker_only_prefix(
+    hot_client: BlobDataAzureClient,
+    monkeypatch: MonkeyPatch,
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blobs.return_value = iter(
+        [
+            SimpleNamespace(name="projects/project-01/", size=0),
+            SimpleNamespace(name="projects/project-01/documents/", size=0),
+            SimpleNamespace(name="projects/project-01/runs/", size=0),
+        ]
+    )
+
+    stats = hot_client.get_project_directory_stats("project-01")
+
+    assert stats.file_count == 0
+    assert stats.total_size == 0
+
+
+def test_get_project_directory_stats_raises_when_blob_prefix_is_missing(
+    hot_client: BlobDataAzureClient,
+    monkeypatch: MonkeyPatch,
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blobs.return_value = iter([])
+
+    with pytest.raises(ProjectDataDirectoryNotFound):
+        hot_client.get_project_directory_stats("project-01")
+
+
+def test_get_project_directory_stats_raises_when_blob_container_missing(
+    hot_client: BlobDataAzureClient,
+    monkeypatch: MonkeyPatch,
+):
+    monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
+    hot_client.container_client = MagicMock()
+    hot_client.container_client.list_blobs.side_effect = ResourceNotFoundError(
+        "not found"
+    )
+
+    with pytest.raises(ProjectDataDirectoryNotFound):
+        hot_client.get_project_directory_stats("project-01")
 
 
 @patch("clients.azure.blob_data.generate_blob_sas", return_value="sas-token")

@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import BackgroundTasks
 
+from clients.data_client import ProjectDataDirectoryNotFound
 from clients.data_models import TokenPermissions
 
 from . import azcopy_runner
@@ -573,7 +574,13 @@ def _validate_from_data_deletion_target(*, deletion: FromDataDeletionOperation) 
         )
     active_storage_role = StorageRole(lifecycle_state.value)
     active_client = resolve_backend_client(active_storage_role)
-    active_stats = active_client.get_project_directory_stats(deletion.project_slug)
+    try:
+        active_stats = active_client.get_project_directory_stats(deletion.project_slug)
+    except ProjectDataDirectoryNotFound as exc:
+        raise FromDataDeletionValidationError(
+            f"Active storage side {active_storage_role.value} "
+            "project data directory not found"
+        ) from exc
 
     if (
         active_stats.file_count != deletion.file_count

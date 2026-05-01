@@ -36,6 +36,10 @@ def write_method(func):
     return wrapper
 
 
+class ProjectDataDirectoryNotFound(Exception):
+    pass
+
+
 class WriteMethodsGuardClass(abc.ABC):
     storage_role: StorageRole
 

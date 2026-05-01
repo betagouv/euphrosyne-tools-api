@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 import auth
 from auth import verify_is_euphrosyne_backend
+from clients.data_client import ProjectDataDirectoryNotFound
 from clients.data_models import ProjectDataStats
 from data_lifecycle import operation as lifecycle_operation
 from data_lifecycle.azcopy_runner import (
@@ -627,6 +628,64 @@ def test_execute_from_data_deletion_rejects_active_storage_stats_mismatch(
         callback.error.message == "Active storage side COOL stats mismatch: "
         f"expected file_count={file_count} total_size={total_size}; "
         "actual file_count=7 total_size=1024"
+    )
+    assert deletion.guard_key() not in lifecycle_operation._FROM_DATA_DELETION_GUARD
+
+
+def test_execute_from_data_deletion_rejects_missing_active_storage(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    operation_id = uuid4()
+    captured = {}
+    deletion_client = MagicMock()
+    active_client = MagicMock(
+        get_project_directory_stats=MagicMock(
+            side_effect=ProjectDataDirectoryNotFound("project-1")
+        )
+    )
+
+    def fake_resolve_backend_client(role: StorageRole):
+        if role == StorageRole.COOL:
+            return active_client
+        return deletion_client
+
+    def fake_post(callback) -> bool:
+        captured["callback"] = callback
+        return True
+
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "resolve_backend_client",
+        fake_resolve_backend_client,
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "post_from_data_deletion_callback",
+        fake_post,
+    )
+    monkeypatch.setattr(
+        lifecycle_operation,
+        "fetch_project_lifecycle",
+        lambda _project_slug: LifecycleState.COOL,
+    )
+    deletion = lifecycle_operation.FromDataDeletionOperation(
+        project_slug="project-1",
+        operation_id=operation_id,
+        storage_role=StorageRole.HOT,
+        file_count=0,
+        total_size=0,
+    )
+
+    lifecycle_operation._register_from_data_deletion(deletion=deletion)
+    lifecycle_operation._execute_from_data_deletion(deletion=deletion)
+
+    deletion_client.delete_project_directory.assert_not_called()
+    callback = captured["callback"]
+    assert callback.from_data_deletion_status == FromDataDeletionStatus.FAILED
+    assert callback.error.title == "FromDataDeletionValidationError"
+    assert (
+        callback.error.message
+        == "Active storage side COOL project data directory not found"
     )
     assert deletion.guard_key() not in lifecycle_operation._FROM_DATA_DELETION_GUARD
 

@@ -10,6 +10,7 @@ from pytest import MonkeyPatch
 
 from clients.azure import DataAzureClient
 from clients.azure.data import FolderCreationError
+from clients.data_client import ProjectDataDirectoryNotFound
 from clients.data_models import ProjectFile
 from data_lifecycle.storage_types import StorageRole
 
@@ -161,6 +162,60 @@ def test_get_project_directory_stats_counts_nested_files(
 
     assert stats.file_count == 2
     assert stats.total_size == 579
+
+
+def test_get_project_directory_stats_returns_zero_for_empty_fileshare_project(
+    client: DataAzureClient,
+):
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.return_value = []
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        stats = client.get_project_directory_stats("project-01")
+
+    assert stats.file_count == 0
+    assert stats.total_size == 0
+
+
+def test_get_project_directory_stats_raises_when_fileshare_root_is_missing(
+    client: DataAzureClient,
+):
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.side_effect = ResourceNotFoundError(
+        "not found"
+    )
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        with pytest.raises(ProjectDataDirectoryNotFound):
+            client.get_project_directory_stats("project-01")
+
+
+def test_get_project_directory_stats_raises_when_fileshare_child_is_missing(
+    client: DataAzureClient,
+):
+    child_dir_client = MagicMock()
+    child_dir_client.list_directories_and_files.side_effect = ResourceNotFoundError(
+        "not found"
+    )
+
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.return_value = [
+        {"name": "runs", "is_directory": True},
+    ]
+    root_dir_client.get_subdirectory_client.return_value = child_dir_client
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        with pytest.raises(ProjectDataDirectoryNotFound):
+            client.get_project_directory_stats("project-01")
 
 
 def test_get_project_documents_with_prefix(
