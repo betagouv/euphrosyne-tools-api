@@ -21,8 +21,9 @@ from azure.storage.blob import (
 
 from data_lifecycle.storage_types import StorageRole
 
-from ..data_client import AbstractDataClient
+from ..data_client import AbstractDataClient, ProjectDataDirectoryNotFound
 from ..data_models import (
+    ProjectDataStats,
     ProjectFileOrDirectory,
     RunDataTypeType,
     SASCredentials,
@@ -389,6 +390,28 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
             return
         for blob_name in blobs:
             self.container_client.delete_blob(blob_name)
+
+    def get_project_directory_stats(self, project_name: str) -> ProjectDataStats:
+        """Return file count and byte size for the full project prefix."""
+        project_prefix = self._dir_prefix(_generate_base_dir_path(project_name))
+        try:
+            blobs = self.container_client.list_blobs(name_starts_with=project_prefix)
+            found_any_blob = False
+            file_count = 0
+            total_size = 0
+            for blob in blobs:
+                found_any_blob = True
+                if blob.name.endswith("/"):
+                    continue
+                file_count += 1
+                total_size += blob.size or 0
+        except ResourceNotFoundError as exc:
+            raise ProjectDataDirectoryNotFound(project_name) from exc
+
+        if not found_any_blob:
+            raise ProjectDataDirectoryNotFound(project_name)
+
+        return ProjectDataStats(file_count=file_count, total_size=total_size)
 
     def init_project_directory(self, project_name: str):
         """Create project folder in blob storage with empty children folders."""

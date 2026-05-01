@@ -4,7 +4,7 @@ import io
 import pytest
 
 from clients.data_client import AbstractDataClient, WriteMethodsGuardClass, write_method
-from clients.data_models import TokenPermissions
+from clients.data_models import ProjectDataStats, TokenPermissions
 from data_lifecycle.storage_types import StorageRole
 
 
@@ -127,6 +127,9 @@ def test_abstract_data_client_can_write_helpers():
             force_write: bool = False,
         ) -> str:
             return ""
+
+        def get_project_directory_stats(self, project_name: str) -> ProjectDataStats:
+            return ProjectDataStats(file_count=0, total_size=0)
 
         def delete_project_directory(self, project_name: str) -> None:
             return None

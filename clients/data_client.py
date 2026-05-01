@@ -9,6 +9,7 @@ from data_lifecycle.storage_types import StorageRole
 from exceptions import StorageWriteNotAllowedError
 
 from .data_models import (
+    ProjectDataStats,
     ProjectFileOrDirectory,
     RunDataTypeType,
     SASCredentials,
@@ -33,6 +34,10 @@ def write_method(func):
     # marker used by __init_subclass__
     wrapper.__write_guard__ = True  # type: ignore[attr-defined]
     return wrapper
+
+
+class ProjectDataDirectoryNotFound(Exception):
+    pass
 
 
 class WriteMethodsGuardClass(abc.ABC):
@@ -144,6 +149,10 @@ class AbstractDataClient(WriteMethodsGuardClass):
         self, project_name: str, permission: TokenPermissions, force_write: bool = False
     ) -> str:
         """Generate credentials used to manage project directory."""
+
+    @abc.abstractmethod
+    def get_project_directory_stats(self, project_name: str) -> ProjectDataStats:
+        """Return file count and total bytes for the full project directory tree."""
 
     @abc.abstractmethod
     def delete_project_directory(self, project_name: str) -> None:

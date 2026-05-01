@@ -170,6 +170,7 @@ The service exposes project-level lifecycle endpoints under `/data`:
 - `GET /data/projects/{project_slug}/cool/{operation_id}`
 - `POST /data/projects/{project_slug}/restore`
 - `GET /data/projects/{project_slug}/restore/{operation_id}`
+- `POST /data/projects/{project_slug}/delete/{storage_role}`
 
 These endpoints are intended for Euphrosyne/backend orchestration:
 
@@ -177,6 +178,16 @@ These endpoints are intended for Euphrosyne/backend orchestration:
 - `GET` endpoints return the current progress/status for a known `operation_id`
 
 The data API also standardizes on `project_slug` naming for data-related routes.
+
+The delete endpoint deletes an inactive storage side only. It accepts
+`operation_id`, `file_count`, and `total_size` query parameters. Before deletion,
+the background task fetches the current project lifecycle, rejects deletion of the
+active storage side, then compares `file_count` and `total_size` against the active
+storage side. This proves the retained copy has the expected number of files and
+bytes before the inactive side is removed. Validation failures are reported through
+the lifecycle deletion callback. If the active project data directory or blob prefix
+is missing, deletion fails closed instead of treating missing data as an empty
+project.
 
 ## Operational Notes
 

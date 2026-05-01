@@ -392,11 +392,15 @@ def delete_project_data(
     storage_role: StorageRole,
     background_tasks: BackgroundTasks,
     operation_id: UUID = Query(...),
+    file_count: int = Query(..., ge=0),
+    total_size: int = Query(..., ge=0),
 ):
     deletion = models.FromDataDeletionOperation(
         project_slug=project_slug,
         operation_id=operation_id,
         storage_role=storage_role,
+        file_count=file_count,
+        total_size=total_size,
     )
     return schedule_from_data_deletion(
         deletion=deletion,

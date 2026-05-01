@@ -10,6 +10,7 @@ from pytest import MonkeyPatch
 
 from clients.azure import DataAzureClient
 from clients.azure.data import FolderCreationError
+from clients.data_client import ProjectDataDirectoryNotFound
 from clients.data_models import ProjectFile
 from data_lifecycle.storage_types import StorageRole
 
@@ -124,6 +125,97 @@ def test_delete_project_directory_removes_nested_files_and_directories(
     runs_dir_client.delete_directory.assert_called_once()
     root_file_client.delete_file.assert_called_once()
     root_dir_client.delete_directory.assert_called_once()
+
+
+def test_get_project_directory_stats_counts_nested_files(
+    client: DataAzureClient,
+):
+    raw_data_dir_client = MagicMock()
+    raw_data_dir_client.list_directories_and_files.return_value = [
+        {"name": "nested.txt", "is_directory": False, "size": 456}
+    ]
+
+    run_dir_client = MagicMock()
+    run_dir_client.list_directories_and_files.return_value = [
+        {"name": "raw_data", "is_directory": True}
+    ]
+    run_dir_client.get_subdirectory_client.return_value = raw_data_dir_client
+
+    runs_dir_client = MagicMock()
+    runs_dir_client.list_directories_and_files.return_value = [
+        {"name": "run-1", "is_directory": True}
+    ]
+    runs_dir_client.get_subdirectory_client.return_value = run_dir_client
+
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.return_value = [
+        {"name": "runs", "is_directory": True},
+        {"name": "readme.txt", "is_directory": False, "size": 123},
+    ]
+    root_dir_client.get_subdirectory_client.return_value = runs_dir_client
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        stats = client.get_project_directory_stats("project-01")
+
+    assert stats.file_count == 2
+    assert stats.total_size == 579
+
+
+def test_get_project_directory_stats_returns_zero_for_empty_fileshare_project(
+    client: DataAzureClient,
+):
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.return_value = []
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        stats = client.get_project_directory_stats("project-01")
+
+    assert stats.file_count == 0
+    assert stats.total_size == 0
+
+
+def test_get_project_directory_stats_raises_when_fileshare_root_is_missing(
+    client: DataAzureClient,
+):
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.side_effect = ResourceNotFoundError(
+        "not found"
+    )
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        with pytest.raises(ProjectDataDirectoryNotFound):
+            client.get_project_directory_stats("project-01")
+
+
+def test_get_project_directory_stats_raises_when_fileshare_child_is_missing(
+    client: DataAzureClient,
+):
+    child_dir_client = MagicMock()
+    child_dir_client.list_directories_and_files.side_effect = ResourceNotFoundError(
+        "not found"
+    )
+
+    root_dir_client = MagicMock()
+    root_dir_client.list_directories_and_files.return_value = [
+        {"name": "runs", "is_directory": True},
+    ]
+    root_dir_client.get_subdirectory_client.return_value = child_dir_client
+
+    with patch(
+        "clients.azure.data.ShareDirectoryClient.from_connection_string",
+        return_value=root_dir_client,
+    ):
+        with pytest.raises(ProjectDataDirectoryNotFound):
+            client.get_project_directory_stats("project-01")
 
 
 def test_get_project_documents_with_prefix(
