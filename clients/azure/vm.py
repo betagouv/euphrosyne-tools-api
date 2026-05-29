@@ -3,9 +3,9 @@ import datetime
 import logging
 import os
 import re
+import typing
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
-import typing
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.core.polling import LROPoller
@@ -188,7 +188,7 @@ class VMAzureClient:
                 executor.submit(
                     self._resource_mgmt_client.deployments.list_by_resource_group,
                     self.resource_group_name,
-                    f"provisioningState eq '{status}'",
+                    filter=f"provisioningState eq '{status}'",
                 ): status
                 for status in statuses
             }

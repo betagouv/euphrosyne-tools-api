@@ -1,10 +1,11 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
 import datetime
-from unittest.mock import DEFAULT, MagicMock, Mock, patch
+from unittest.mock import DEFAULT, MagicMock, Mock, create_autospec, patch
 
 import pytest
 from azure.core.exceptions import ResourceNotFoundError
+from azure.mgmt.resource.deployments.operations import DeploymentsOperations
 from pytest import MonkeyPatch
 
 from clients import VMSizes
@@ -393,16 +394,21 @@ def test_get_ongoing_deployments(client: VMAzureClient):
         "Ready",
         "Updating",
     ]
+    method_mock = create_autospec(
+        object.__new__(DeploymentsOperations).list_by_resource_group,
+        return_value=["deployment"],
+    )
     with patch.object(
-        client._resource_mgmt_client.deployments, "list_by_resource_group"
-    ) as method_mock:
-        method_mock.return_value = ["deployment"]
+        client._resource_mgmt_client.deployments,
+        "list_by_resource_group",
+        new=method_mock,
+    ):
         deployments = client._get_ongoing_deployments()
 
     assert len(deployments) == len(statuses)
     assert deployments == ["deployment"] * len(statuses)
     assert method_mock.call_count == len(statuses)
-    filters_args = [call[0][1] for call in method_mock.call_args_list]
+    filters_args = [call.kwargs["filter"] for call in method_mock.call_args_list]
     assert all(
         [f"provisioningState eq '{status}'" in filters_args for status in statuses]
     )
