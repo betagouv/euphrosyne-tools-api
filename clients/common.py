@@ -5,3 +5,4 @@ import enum
 class VMSizes(str, enum.Enum):
     IMAGERY = "IMAGERY"
     IMAGERY_LARGE = "IMAGERY_LARGE"
+    TOMOGRAPHY = "TOMOGRAPHY"
