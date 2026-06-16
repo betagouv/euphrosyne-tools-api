@@ -97,6 +97,7 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
         call_args["parameters"]["properties"]["parameters"]["fileShareName"]["value"]
         == "fileshare"
     )
+    assert not hasattr(call_args["parameters"]["properties"]["parameters"], "location")
     assert isinstance(result, AzureVMDeploymentProperties)
     assert result.project_name == "vm-test"
     assert result.username == "username"
@@ -104,6 +105,21 @@ def test_deploys_with_proper_parameters(client: VMAzureClient):
     assert (
         result.deployment_process
         is client._resource_mgmt_client.deployments.begin_create_or_update.return_value
+    )
+
+
+@patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
+@patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
+def test_deploys_with_overriden_location(client: VMAzureClient):
+    client._resource_mgmt_client.deployments.check_existence.return_value = False
+    client.deploy_vm("vm-test", vm_size=VMSizes.TOMOGRAPHY)
+
+    call_args = (
+        client._resource_mgmt_client.deployments.begin_create_or_update.call_args[1]
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["location"]["value"]
+        == "polandcentral"
     )
 
 

@@ -30,6 +30,11 @@ PROJECT_TYPE_VM_SIZE: dict[VMSizes | None, str] = {
     None: "Standard_B8ms",  # default
     VMSizes.IMAGERY: "Standard_B20ms",
     VMSizes.IMAGERY_LARGE: "Standard_E16s_v5",
+    VMSizes.TOMOGRAPHY: "Standard_NV12ads_A10_v5",
+}
+
+VM_SIZE_LOCATION_OVERRIDE: dict[VMSizes | None, str] = {
+    VMSizes.TOMOGRAPHY: "polandcentral"
 }
 
 DeploymentStatus = Literal[
@@ -224,6 +229,7 @@ class VMAzureClient:
         template = self._get_template_specs(
             template_name=self.template_specs_name, version=spec_version
         )
+
         parameters = {
             "vmName": slugify(project_name),
             "fileShareProjectFolder": slugify(project_name),
@@ -236,6 +242,9 @@ class VMAzureClient:
             "accountPassword": os.environ["VM_PASSWORD"],
         }
         parameters["vmSize"] = PROJECT_TYPE_VM_SIZE[vm_size]
+        if vm_size and vm_size in VM_SIZE_LOCATION_OVERRIDE:
+            parameters["location"] = VM_SIZE_LOCATION_OVERRIDE[vm_size]
+
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
         poller = self._resource_mgmt_client.deployments.begin_create_or_update(
             resource_group_name=self.resource_group_name,
