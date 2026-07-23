@@ -25,6 +25,9 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+AZURE_RESOURCE_REFIX = os.environ["AZURE_RESOURCE_PREFIX"]
+AZURE_RESOURCE_GROUP_NAME = os.environ["AZURE_RESOURCE_GROUP_NAME"]
+
 
 PROJECT_TYPE_VM_SIZE: dict[VMSizes | None, str] = {
     None: "Standard_B8ms",  # default
@@ -33,8 +36,13 @@ PROJECT_TYPE_VM_SIZE: dict[VMSizes | None, str] = {
     VMSizes.TOMOGRAPHY: "Standard_NV12ads_A10_v5",
 }
 
-VM_SIZE_LOCATION_OVERRIDE: dict[VMSizes | None, str] = {
-    VMSizes.TOMOGRAPHY: "polandcentral"
+VM_SIZE_PARAMETERS_OVERRIDE: dict[VMSizes | None, dict[str, str]] = {
+    VMSizes.TOMOGRAPHY: {
+        "location": "polandcentral",
+        "vnetName": f"{AZURE_RESOURCE_REFIX}-polandcentral-vm-vnet",
+        "subnetName": f"{AZURE_RESOURCE_REFIX}-polandcentral-vm-subnet",
+        "subnetResourceGroupName": AZURE_RESOURCE_GROUP_NAME,
+    }
 }
 
 DeploymentStatus = Literal[
@@ -81,13 +89,13 @@ class AzureCaptureDeploymentProperties:
 
 class VMAzureClient:
     def __init__(self):
-        self.resource_group_name = os.environ["AZURE_RESOURCE_GROUP_NAME"]
+        self.resource_group_name = AZURE_RESOURCE_GROUP_NAME
         credentials = DefaultAzureCredential()
 
         self.template_specs_name = os.environ["AZURE_TEMPLATE_SPECS_NAME"]
         self.template_specs_image_gallery = os.environ["AZURE_IMAGE_GALLERY"]
         self.template_specs_image_definition = os.environ["AZURE_IMAGE_DEFINITION"]
-        self.resource_prefix = os.environ["AZURE_RESOURCE_PREFIX"]
+        self.resource_prefix = AZURE_RESOURCE_REFIX
 
         self._resource_mgmt_client = DeploymentsMgmtClient(
             credentials, os.environ["AZURE_SUBSCRIPTION_ID"]
@@ -242,8 +250,8 @@ class VMAzureClient:
             "accountPassword": os.environ["VM_PASSWORD"],
         }
         parameters["vmSize"] = PROJECT_TYPE_VM_SIZE[vm_size]
-        if vm_size and vm_size in VM_SIZE_LOCATION_OVERRIDE:
-            parameters["location"] = VM_SIZE_LOCATION_OVERRIDE[vm_size]
+        if vm_size and vm_size in VM_SIZE_PARAMETERS_OVERRIDE:
+            parameters.update(VM_SIZE_PARAMETERS_OVERRIDE[vm_size])
 
         formatted_parameters = {k: {"value": v} for k, v in parameters.items()}
         poller = self._resource_mgmt_client.deployments.begin_create_or_update(
@@ -314,6 +322,12 @@ class VMAzureClient:
                         "os_state": default_image.os_state,
                         "os_type": default_image.os_type,
                         "hyper_v_generation": default_image.hyper_v_generation,
+                        "features": [
+                            {
+                                "name": "SecurityType",
+                                "value": "TrustedLaunch",
+                            }
+                        ],
                         "identifier": {
                             "publisher": default_image.identifier.publisher,
                             "offer": default_image.identifier.offer,
