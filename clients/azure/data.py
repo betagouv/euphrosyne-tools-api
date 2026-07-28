@@ -92,7 +92,7 @@ class AzureFileShareFile(io.BytesIO):
         super().__init__()
 
     @functools.lru_cache
-    def _read_chunk(self, start_range: int, end_range: int) -> bytes:
+    def _read_chunk(self, start_range: int, end_range: int) -> tuple[bytes, int]:
         file = self.file_service.get_file_to_bytes(
             self.share_name,
             self.directory_name,
@@ -100,20 +100,16 @@ class AzureFileShareFile(io.BytesIO):
             start_range=start_range,
             end_range=end_range,
         )
-        return file.content
+        return file.content, file.properties.content_length
 
     def read(self, size: int | None = -1) -> bytes:
-        if self.closed:
-            raise ValueError("I/O operation on closed file.")
-        if size == 0:
+        if not size:
             return b""
-        remaining = self.content_length - self._offset
-        if remaining <= 0:
-            return b""
-        length = remaining if size is None or size < 0 else min(size, remaining)
-        end_range = self._offset + length - 1
-        content = self._read_chunk(self._offset, end_range)
-        self._offset += len(content)
+        end_range = self._offset + size - 1 if size > -1 else None
+        content, file_content_length = self._read_chunk(self._offset, end_range)
+        self._offset = (
+            self._offset + size if end_range is not None else file_content_length
+        )
         return content
 
     def readinto(self, buffer) -> int:
@@ -122,19 +118,12 @@ class AzureFileShareFile(io.BytesIO):
         return len(data)
 
     def seek(self, offset: int, whence: int = SEEK_SET) -> int:
-        if self.closed:
-            raise ValueError("I/O operation on closed file.")
         if whence == SEEK_SET or whence is None:
-            new_offset = offset
+            self._offset = offset
         elif whence == SEEK_CUR:
-            new_offset = self._offset + offset
+            self._offset += offset
         elif whence == SEEK_END:
-            new_offset = self.content_length + offset
-        else:
-            raise ValueError(f"Invalid whence value: {whence}")
-        if new_offset < 0:
-            raise ValueError(f"Negative seek position: {new_offset}")
-        self._offset = new_offset
+            self._offset = self.content_length - offset
         return self._offset
 
     def seekable(self) -> bool:
