@@ -17,7 +17,6 @@ httpx==0.28.1
 fastapi==0.139.0 
 isort==8.0.1 
 mypy==2.3.0
-openpyxl==3.1.5
 pydantic-settings==2.14.2 
 python-dotenv==1.2.2 
 python-jose[cryptography]==3.5.0
@@ -29,7 +28,6 @@ ruff==0.15.22
 sentry-sdk[fastapi]==2.64.0
 stream-zip==0.0.84
 types-python-jose==3.5.0.20260408
-types-openpyxl==3.1.5.20260724
 types-python-slugify==8.0.2.20240310 
 types-requests==2.33.0.20260712
 uvicorn[standard]==0.51.0

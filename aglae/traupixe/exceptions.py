@@ -1,59 +1,29 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
-
-
-class TraupixeValidationCode(str, Enum):
-    UNSUPPORTED_EXTENSION = "unsupported_extension"
-    SOURCE_TOO_LARGE = "source_too_large"
-    UNREADABLE_WORKBOOK = "unreadable_workbook"
-    MISSING_SHEET = "missing_sheet"
-    INVALID_HEADER = "invalid_header"
-    INVALID_ANALYSIS_ID = "invalid_analysis_id"
-    DUPLICATE_ANALYSIS_ID = "duplicate_analysis_id"
-    MISALIGNED_ANALYSIS_IDS = "misaligned_analysis_ids"
-    UNKNOWN_DETECTOR = "unknown_detector"
-    INVALID_VALUE = "invalid_value"
-    SOURCE_CHANGED = "source_changed"
-
-
-@dataclass(frozen=True)
-class TraupixeValidationIssue:
-    code: TraupixeValidationCode
-    message: str
-    sheet: str | None = None
-    cell: str | None = None
-
 
 class TraupixeError(Exception):
-    """Base class for failures raised by the TRAUPIXE domain package."""
+    """Base class for TRAUPIXE file-selection failures."""
 
 
-class TraupixeFormatError(TraupixeError):
-    def __init__(self, issues: tuple[TraupixeValidationIssue, ...]):
-        if not issues:
-            raise ValueError("At least one validation issue is required")
-        self.issues = issues
+class InvalidTraupixeScopeError(ValueError):
+    def __init__(self, component: str):
+        self.component = component
         super().__init__(
-            "Ce fichier TRAUPIXE ne respecte pas le contrat minimal pris en charge."
+            f"{component} must contain only letters, numbers, underscores, "
+            "hyphens, or spaces"
         )
 
 
-class TraupixeIncompatibleWorkbookError(TraupixeFormatError):
-    pass
+class TraupixeIncompatibleWorkbookError(TraupixeError):
+    def __init__(self, missing_sheets: set[str] | frozenset[str]):
+        self.missing_sheets = frozenset(missing_sheets)
+        super().__init__("Le fichier ne présente pas la signature minimale TRAUPIXE.")
 
 
 class TraupixeWorkbookNotFoundError(TraupixeError):
     def __init__(self, file_id: str):
         self.file_id = file_id
         super().__init__("Le fichier TRAUPIXE sélectionné est introuvable.")
-
-
-class TraupixeUnsupportedFileError(TraupixeError):
-    def __init__(self, extension: str):
-        self.extension = extension
-        super().__init__(f"Unsupported TRAUPIXE file extension: {extension}")
 
 
 class TraupixeTooLargeError(TraupixeError):
@@ -67,10 +37,6 @@ class TraupixeTooLargeError(TraupixeError):
 
 
 class TraupixeUnreadableError(TraupixeError):
-    pass
-
-
-class TraupixeNormalizationError(TraupixeError):
     pass
 
 
