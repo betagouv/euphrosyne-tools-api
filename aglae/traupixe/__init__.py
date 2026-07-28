@@ -11,6 +11,7 @@ from .exceptions import (
     TraupixeValidationIssue,
     TraupixeWorkbookNotFoundError,
 )
+from .export import export_analysis_dataset, temporary_analysis_dataset
 from .format import (
     ANALYTES,
     MAX_SOURCE_SIZE_BYTES,
@@ -62,4 +63,6 @@ __all__ = [
     "TraupixeValidationIssue",
     "TraupixeWorkbookNotFoundError",
     "WorksheetFormat",
+    "export_analysis_dataset",
+    "temporary_analysis_dataset",
 ]
