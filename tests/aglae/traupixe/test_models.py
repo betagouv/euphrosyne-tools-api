@@ -34,7 +34,9 @@ def test_domain_enums_use_contract_values() -> None:
         "below_lod",
         "missing",
     }
-    assert {detector.value for detector in Detector} == {"X0", "X10"}
+    assert Detector.X0.value == "X0"
+    assert Detector.X10.value == "X10"
+    assert Detector("Gamma").value == "Gamma"
 
 
 def test_analysis_id_is_opaque_and_analysis_has_only_two_fields() -> None:

@@ -112,33 +112,15 @@ def test_loader_accepts_the_anonymized_reference_structure() -> None:
     ("sheet_name", "cell", "value", "expected_code"),
     [
         (
-            "Elemental Conc.",
-            "C1",
-            "NOT-X0",
-            TraupixeValidationCode.INVALID_HEADER,
-        ),
-        (
             "S_Best Det.",
             "B3",
             "Contradictory description",
             TraupixeValidationCode.INVALID_VALUE,
         ),
         (
-            "Informations",
-            "A1",
-            "Unexpected content",
-            TraupixeValidationCode.INVALID_HEADER,
-        ),
-        (
             "S_Conc. & Unc %",
             "C3",
             1.25,
-            TraupixeValidationCode.INVALID_VALUE,
-        ),
-        (
-            "Informations",
-            "A1",
-            "=1+1",
             TraupixeValidationCode.INVALID_VALUE,
         ),
         (
@@ -245,17 +227,21 @@ def test_loader_stops_after_maximum_size_plus_one_and_restores_position() -> Non
     ("fixture_options", "expected_code"),
     [
         (
-            {"missing_sheet": "Matrix"},
+            {"missing_sheet": "S_Best Det."},
             TraupixeValidationCode.MISSING_SHEET,
         ),
         (
-            {"extra_sheet": "Unexpected"},
+            {
+                "header_overrides": {
+                    ("S_Conc. & Unc %", 3): "Unexpected analyte",
+                }
+            },
             TraupixeValidationCode.INVALID_HEADER,
         ),
         (
             {
                 "header_overrides": {
-                    ("S_Conc. & Unc %", 23): "V",
+                    ("S_Conc. & Unc %", 4): "Uncertainty",
                 }
             },
             TraupixeValidationCode.INVALID_HEADER,
@@ -263,7 +249,7 @@ def test_loader_stops_after_maximum_size_plus_one_and_restores_position() -> Non
         (
             {
                 "detectors": {
-                    ("opaque-analysis-a", "Na2O"): "X1",
+                    ("opaque-analysis-a", "Na2O"): 123,
                 }
             },
             TraupixeValidationCode.UNKNOWN_DETECTOR,
@@ -286,7 +272,50 @@ def test_loader_rejects_incompatible_structure(
     assert expected_code in {issue.code for issue in raised.value.issues}
 
 
-def test_loader_rejects_duplicate_analysis_ids(tmp_path: Path) -> None:
+def test_loader_accepts_additional_worksheets_and_dynamic_variants(
+    tmp_path: Path,
+) -> None:
+    analytes = (
+        "Na2O",
+        "Fe2O3",
+        "Bi2O3",
+        "F -PIGE",
+    )
+    source = write_traupixe_fixture(
+        tmp_path / "source.xlsx",
+        analytes=analytes,
+        extra_sheet="Additional calculations",
+        detectors={
+            ("opaque-analysis-a", "Na2O"): "X0",
+            ("opaque-analysis-a", "Fe2O3"): "X1",
+            ("opaque-analysis-a", "Bi2O3"): "X3",
+            ("opaque-analysis-a", "F -PIGE"): "Gamma",
+            ("opaque-analysis-b", "Na2O"): "X0",
+            ("opaque-analysis-b", "Fe2O3"): "X13",
+            ("opaque-analysis-b", "Bi2O3"): None,
+            ("opaque-analysis-b", "F -PIGE"): "Gamma",
+        },
+    )
+    source_workbook = load_xlsx(source)
+    source_workbook["Additional calculations"]["A1"] = "=1+1"
+    source_workbook.save(source)
+    source_workbook.close()
+
+    workbook = load_traupixe_workbook(source)
+
+    assert workbook.analytes == analytes
+    assert workbook.detectors == (
+        Detector("X0"),
+        Detector("X1"),
+        Detector("X3"),
+        Detector("Gamma"),
+        Detector("X13"),
+    )
+    assert len(workbook.measurements) == 2 * len(analytes) * 2
+    assert any(measurement.detector is None for measurement in workbook.measurements)
+
+
+def test_loader_disambiguates_repeated_analysis_ids(tmp_path: Path) -> None:
     source = write_traupixe_fixture(
         tmp_path / "source.xlsx",
         row_orders={
@@ -300,12 +329,13 @@ def test_loader_rejects_duplicate_analysis_ids(tmp_path: Path) -> None:
         },
     )
 
-    with pytest.raises(TraupixeIncompatibleWorkbookError) as raised:
-        load_traupixe_workbook(source)
+    workbook = load_traupixe_workbook(source)
 
-    assert TraupixeValidationCode.DUPLICATE_ANALYSIS_ID in {
-        issue.code for issue in raised.value.issues
-    }
+    assert [analysis.analysis_id for analysis in workbook.analyses] == [
+        "opaque-analysis-a [occurrence 1]",
+        "opaque-analysis-a [occurrence 2]",
+    ]
+    assert len({item.analysis_id for item in workbook.measurements}) == 2
 
 
 def test_loader_rejects_a_workbook_without_analyses(tmp_path: Path) -> None:

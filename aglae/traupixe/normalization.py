@@ -108,23 +108,19 @@ def normalize_detectors(
     *,
     traupixe_format: TraupixeFormat = TRAUPIXE_FORMAT,
 ) -> tuple[Detector, ...]:
+    del traupixe_format
     detectors: list[Detector] = []
     for raw_detector in raw_detectors:
-        try:
-            detector = Detector(raw_detector)
-        except (TypeError, ValueError) as error:
+        if raw_detector is None:
+            continue
+        if not isinstance(raw_detector, str) or not raw_detector.strip():
             raise TraupixeNormalizationError(
-                f"Unknown TRAUPIXE detector: {raw_detector!r}"
-            ) from error
-        if detector not in traupixe_format.detectors:
-            raise TraupixeNormalizationError(
-                f"Detector is not allowed by TRAUPIXE_FORMAT: {detector}"
+                "TRAUPIXE detector labels must be non-empty text"
             )
+        detector = Detector(raw_detector.strip())
         if detector not in detectors:
             detectors.append(detector)
-    return tuple(
-        detector for detector in traupixe_format.detectors if detector in detectors
-    )
+    return tuple(detectors)
 
 
 def resolve_analytes(
@@ -142,7 +138,7 @@ def resolve_analytes(
     available = tuple(
         available_analytes
         if available_analytes is not None
-        else traupixe_format.analytes
+        else traupixe_format.reference_analytes
     )
     by_normalized_name = {analyte.casefold(): analyte for analyte in available}
     aliases = {
@@ -214,10 +210,6 @@ def normalize_traupixe(
     if len(analysis_ids) != len(set(analysis_ids)):
         raise TraupixeNormalizationError("Analysis identifiers must be unique")
 
-    if workbook.analytes != traupixe_format.analytes:
-        raise TraupixeNormalizationError(
-            "The loaded analyte sequence does not match TRAUPIXE_FORMAT"
-        )
     if workbook.units != traupixe_format.units:
         raise TraupixeNormalizationError(
             "The loaded unit sequence does not match TRAUPIXE_FORMAT"
@@ -250,7 +242,7 @@ def normalize_traupixe(
     expected_keys = {
         (analysis_id, analyte, unit)
         for analysis_id in analysis_ids
-        for analyte in traupixe_format.analytes
+        for analyte in workbook.analytes
         for unit in traupixe_format.units
     }
     if seen_keys != expected_keys:
@@ -286,10 +278,14 @@ def normalize_traupixe(
         exclusions=describe_exclusions(exclusion_counts),
         conventions=(
             "Analysis identifiers are opaque and are not interpreted.",
+            (
+                "Repeated source identifiers are disambiguated by their "
+                "occurrence order."
+            ),
             "Decimal commas are normalized without using the server locale.",
             "Values below LOD are null and keep their detection limit.",
             "Missing, n.d. and sentinel values are never converted to zero.",
-            "X10 values are preserved and are not recalculated.",
+            "Detector labels are preserved and are not reinterpreted.",
         ),
     )
     return NormalizedDataset(

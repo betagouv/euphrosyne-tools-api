@@ -49,7 +49,11 @@ def _write_measurements(dataset: NormalizedDataset, path: Path) -> None:
                     measurement.qualifier.value,
                     _decimal_text(measurement.detection_limit),
                     _decimal_text(measurement.uncertainty),
-                    measurement.detector.value,
+                    (
+                        ""
+                        if measurement.detector is None
+                        else measurement.detector.value
+                    ),
                 )
             )
 

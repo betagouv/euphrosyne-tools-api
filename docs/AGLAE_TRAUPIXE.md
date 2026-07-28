@@ -1,8 +1,8 @@
 # Aglaé TRAUPIXE normalization
 
-The `aglae.traupixe` package recognizes one workbook layout for the Albert
-BETA, validates it without using a language model, and exports deterministic
-CSV and JSON files for Python analysis.
+The `aglae.traupixe` package recognizes the stable data interface shared by
+TRAUPIXE workbooks for the Albert BETA, validates it without using a language
+model, and exports deterministic CSV and JSON files for Python analysis.
 
 ## Public workflow
 
@@ -41,21 +41,35 @@ resolution.
 
 `TRAUPIXE_FORMAT` is the single source of truth for:
 
-- the 17 required worksheet names, structural rows, and exact headers;
+- the four worksheets consumed by the loader;
 - the two selected concentration worksheets and their units;
-- the 36 analytes, including the source headers with trailing spaces;
-- the allowed `X0` and `X10` detector values;
-- ignored `RED` worksheets;
+- the header and data row positions;
 - the 100 MiB source limit.
 
+The required worksheets are `S_Conc. & Unc %`, `S_Conc. & Unc ppm`,
+`S_Best Det.`, and `Exp. data`. Additional worksheets are accepted and ignored.
+The two concentration worksheets must declare alternating `analyte` / `Unc%`
+columns from column C. `S_Best Det.` must declare the same analytes, in the same
+order, with one detector column per analyte. Analyte names and detector labels
+are discovered from the workbook rather than selected from a fixed allow-list.
+A detector may be empty; non-empty values must be text and are preserved
+without interpretation.
+
+The three analyte sequences must match after trimming surrounding whitespace.
+At least one analyte is required, analyte names must be unique, and formulas
+are rejected in the four source worksheets. Formulas in additional,
+non-consumed worksheets do not affect compatibility.
+
 `analysis_id` is opaque. The V1 does not infer a point number, object, project,
-or standard from its segments. The identifier is preserved and used only for
-joins and traceability.
+or standard from its segments or from the file name. Rows are aligned by the
+source identifier and its occurrence order. A unique source identifier is
+preserved; repeated identifiers receive a deterministic occurrence suffix in
+the normalized dataset.
 
 Values below a detection limit are exported with `value` empty,
 `qualifier=below_lod`, and the threshold in `detection_limit`. Empty values,
-`n.d.`, and `999999` are never converted to zero. X10 is preserved and never
-recalculated.
+`n.d.`, and `999999` are never converted to zero. Detector labels are preserved
+and never recalculated.
 
 ## Exported files
 
@@ -69,11 +83,11 @@ same bytes.
 
 ## Supporting another TRAUPIXE variant
 
-Do not loosen `TRAUPIXE_FORMAT` or infer a layout dynamically. Introduce a
-separate immutable format definition, add a detector that selects it
-unambiguously, and run the complete validation and normalization suite against
-an anonymized fixture for that variant. Keep variant-specific parsing behind
-the same normalized models and export contract.
+A workbook variant is supported automatically when it preserves the minimal
+four-sheet interface above, even if its analyte list, detector labels, and
+additional worksheets differ. A variant that changes this interface requires
+an explicit parser change and an anonymized regression fixture; file names must
+not be used to select parsing behavior.
 
 The current fixture is derived from the workbook identified by SHA-256
 `bf7861fb9bc2d4ee43951fffa02281b01c2676c8c04d5fecdd246b27ae1a56b0`.

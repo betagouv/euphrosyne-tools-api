@@ -196,14 +196,45 @@ def test_controlled_aliases_resolve_only_to_available_analytes() -> None:
         resolve_analytes("titane")
 
 
-def test_detector_normalization_accepts_only_x0_and_x10() -> None:
-    assert normalize_detectors(("X10", Detector.X0, "X10")) == (
-        Detector.X0,
+def test_detector_normalization_preserves_dynamic_labels_and_order() -> None:
+    assert normalize_detectors(("X10", Detector.X0, "X1", "Gamma", "X10")) == (
         Detector.X10,
+        Detector.X0,
+        Detector("X1"),
+        Detector("Gamma"),
     )
 
     with pytest.raises(TraupixeNormalizationError):
-        normalize_detectors(("X1",))
+        normalize_detectors(("",))
+
+
+def test_normalization_uses_workbook_declared_analytes_and_detectors(
+    tmp_path: Path,
+) -> None:
+    analytes = ("Fe2O3", "Bi2O3", "F -PIGE")
+    source = write_traupixe_fixture(
+        tmp_path / "dynamic.xlsx",
+        analytes=analytes,
+        detectors={
+            ("opaque-analysis-a", "Fe2O3"): "X1",
+            ("opaque-analysis-a", "Bi2O3"): "X3",
+            ("opaque-analysis-a", "F -PIGE"): "Gamma",
+            ("opaque-analysis-b", "Fe2O3"): "X13",
+            ("opaque-analysis-b", "Bi2O3"): "X13",
+            ("opaque-analysis-b", "F -PIGE"): "Gamma",
+        },
+    )
+
+    dataset = normalize_traupixe(load_traupixe_workbook(source))
+
+    assert dataset.metadata.analytes == analytes
+    assert dataset.metadata.detectors == (
+        Detector("X1"),
+        Detector("X3"),
+        Detector("Gamma"),
+        Detector("X13"),
+    )
+    assert dataset.metadata.measurement_count == 2 * len(analytes) * 2
 
 
 @pytest.mark.parametrize(

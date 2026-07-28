@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
+from typing import ClassVar
 
 
 class MeasurementUnit(str, Enum):
@@ -17,9 +18,19 @@ class MeasurementQualifier(str, Enum):
     MISSING = "missing"
 
 
-class Detector(str, Enum):
-    X0 = "X0"
-    X10 = "X10"
+class Detector(str):
+    """A detector label declared by a TRAUPIXE workbook."""
+
+    X0: ClassVar[Detector]
+    X10: ClassVar[Detector]
+
+    @property
+    def value(self) -> str:
+        return str(self)
+
+
+Detector.X0 = Detector("X0")
+Detector.X10 = Detector("X10")
 
 
 class ExclusionReason(str, Enum):
@@ -45,7 +56,7 @@ class Measurement:
     qualifier: MeasurementQualifier
     detection_limit: Decimal | None
     uncertainty: Decimal | None
-    detector: Detector
+    detector: Detector | None
 
 
 @dataclass(frozen=True)

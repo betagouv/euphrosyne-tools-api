@@ -36,7 +36,7 @@ class TraupixeFormatError(TraupixeError):
             raise ValueError("At least one validation issue is required")
         self.issues = issues
         super().__init__(
-            "Cette version du fichier TRAUPIXE n'est pas encore prise en charge."
+            "Ce fichier TRAUPIXE ne respecte pas le contrat minimal pris en charge."
         )
 
 

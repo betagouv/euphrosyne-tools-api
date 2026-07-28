@@ -22,6 +22,7 @@ def write_traupixe_fixture(
     path: Path,
     *,
     analysis_ids: Sequence[Any] = DEFAULT_ANALYSIS_IDS,
+    analytes: Sequence[str] = TRAUPIXE_FORMAT.reference_analytes,
     row_orders: Mapping[str, Sequence[Any]] | None = None,
     values: Mapping[MeasurementKey, tuple[Any, Any]] | None = None,
     detectors: Mapping[DetectorKey, Any] | None = None,
@@ -43,25 +44,27 @@ def write_traupixe_fixture(
         if worksheet_format.name == missing_sheet:
             continue
         worksheet = workbook.create_sheet(worksheet_format.name)
-        for row_number, structural_values in worksheet_format.structural_rows:
-            for column, value in enumerate(structural_values, start=1):
-                worksheet.cell(
-                    row=row_number,
-                    column=column,
-                    value=value,
-                )
-        if worksheet_format.header_row is not None:
-            for column, header in enumerate(
-                worksheet_format.headers,
-                start=1,
-            ):
+        if worksheet_format.name == "S_Best Det.":
+            headers = (None, None, *analytes)
+        elif worksheet_format.name == "Exp. data":
+            headers = ()
+        else:
+            selected_headers: list[str | None] = [None, None]
+            for analyte in analytes:
+                selected_headers.extend((analyte, "Unc%"))
+            headers = tuple(selected_headers)
+        for column, header in enumerate(headers, start=1):
+            worksheet.cell(
+                row=worksheet_format.header_row,
+                column=column,
+                value=header,
+            )
+        for (sheet_name, column), value in header_overrides.items():
+            if sheet_name == worksheet_format.name:
                 worksheet.cell(
                     row=worksheet_format.header_row,
                     column=column,
-                    value=header_overrides.get(
-                        (worksheet_format.name, column),
-                        header,
-                    ),
+                    value=value,
                 )
 
     if extra_sheet is not None:
@@ -72,9 +75,10 @@ def write_traupixe_fixture(
         for index, analysis_id in enumerate(analysis_ids, start=1)
     }
     for sheet_name in TRAUPIXE_FORMAT.source_sheets:
+        if sheet_name == missing_sheet:
+            continue
         worksheet = workbook[sheet_name]
         worksheet_format = TRAUPIXE_FORMAT.worksheet(sheet_name)
-        assert worksheet_format.data_start_row is not None
         sheet_analysis_ids = row_orders.get(sheet_name, analysis_ids)
         for offset, analysis_id in enumerate(sheet_analysis_ids):
             row = worksheet_format.data_start_row + offset
@@ -90,7 +94,7 @@ def write_traupixe_fixture(
 
             if sheet_name == "S_Best Det.":
                 for analyte_index, analyte in enumerate(
-                    TRAUPIXE_FORMAT.analytes,
+                    analytes,
                 ):
                     worksheet.cell(
                         row=row,
@@ -110,7 +114,7 @@ def write_traupixe_fixture(
             if unit is None:
                 continue
             for analyte_index, analyte in enumerate(
-                TRAUPIXE_FORMAT.analytes,
+                analytes,
             ):
                 default_value = "1,25" if unit is MeasurementUnit.PERCENT else "12500"
                 raw_value, raw_uncertainty = values.get(

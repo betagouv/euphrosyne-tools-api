@@ -39,7 +39,7 @@ def fixture_dataset() -> NormalizedDataset:
             qualifier=MeasurementQualifier.BELOW_LOD,
             detection_limit=Decimal("7"),
             uncertainty=None,
-            detector=Detector.X0,
+            detector=None,
         ),
     )
     metadata = DatasetMetadata(
@@ -49,7 +49,7 @@ def fixture_dataset() -> NormalizedDataset:
         units=(MeasurementUnit.PERCENT, MeasurementUnit.PPM),
         analysis_count=1,
         measurement_count=2,
-        detectors=(Detector.X0, Detector.X10),
+        detectors=(Detector.X10,),
         aliases=(("fer", "Fe2O3"), ("plomb", "PbO")),
         exclusions=(ExclusionSummary(ExclusionReason.BELOW_LOD, 1),),
         conventions=("analysis_id is opaque",),
@@ -76,7 +76,7 @@ def test_export_analysis_dataset_writes_stable_files(
             "uncertainty,detector"
         ),
         "opaque-1,Fe2O3,1.20,%,detected,,2.5,X10",
-        "opaque-1,PbO,,ppm,below_lod,7,,X0",
+        "opaque-1,PbO,,ppm,below_lod,7,,",
     ]
     assert '"analysis_id is opaque"' in first.metadata_json.read_text(encoding="utf-8")
 
