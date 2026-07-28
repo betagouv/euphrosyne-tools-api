@@ -82,15 +82,13 @@ def test_selects_candidates_without_interpreting_filename_segments() -> None:
         ]
     )
 
-    assert result.files == (newest, older)
-    assert result.default_path == newest.path
+    assert result == [newest, older]
 
 
 def test_selection_is_empty_when_no_candidate_matches() -> None:
     result = select_traupixe_workbooks([_entry("unrelated.xlsx")])
 
-    assert result.files == ()
-    assert result.default_path is None
+    assert result == []
 
 
 def test_equal_dates_have_a_stable_name_and_path_order() -> None:
@@ -99,4 +97,4 @@ def test_equal_dates_have_a_stable_name_and_path_order() -> None:
 
     result = select_traupixe_workbooks([second, first])
 
-    assert result.files == (first, second)
+    assert result == [first, second]

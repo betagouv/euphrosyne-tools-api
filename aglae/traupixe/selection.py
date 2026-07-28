@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -9,12 +8,6 @@ from clients.data_models import ProjectFileOrDirectory
 TRAUPIXE_EXTENSION = ".xlsx"
 TRAUPIXE_NAME_MARKER = "traupixe"
 MAX_SOURCE_SIZE_BYTES = 100 * 1024 * 1024
-
-
-@dataclass(frozen=True)
-class TraupixeFileDiscovery:
-    files: tuple[ProjectFileOrDirectory, ...]
-    default_path: str | None
 
 
 def is_traupixe_workbook(entry: ProjectFileOrDirectory) -> bool:
@@ -31,14 +24,10 @@ def is_traupixe_workbook(entry: ProjectFileOrDirectory) -> bool:
 
 def select_traupixe_workbooks(
     entries: Iterable[ProjectFileOrDirectory],
-) -> TraupixeFileDiscovery:
+) -> list[ProjectFileOrDirectory]:
     """Filter and order storage metadata without downloading any workbook."""
 
-    files = tuple(sorted(filter(is_traupixe_workbook, entries), key=_sort_key))
-    return TraupixeFileDiscovery(
-        files=files,
-        default_path=files[0].path if files else None,
-    )
+    return sorted(filter(is_traupixe_workbook, entries), key=_sort_key)
 
 
 def _sort_key(entry: ProjectFileOrDirectory) -> tuple[float, str, str, str]:
