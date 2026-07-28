@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import BinaryIO
 
 import pytest
@@ -18,6 +19,11 @@ from aglae.traupixe.exceptions import (
     TraupixeWorkbookNotFoundError,
 )
 from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
+from aglae.traupixe.loader import (
+    load_traupixe_workbook,
+    validate_traupixe_workbook,
+)
+from aglae.traupixe.normalization import normalize_traupixe
 from clients.data_models import ProjectFileOrDirectory, RunDataTypeType
 
 VALID_CONTENT = b"valid TRAUPIXE workbook"
@@ -505,3 +511,45 @@ def test_resolve_distinguishes_deleted_source_from_modified_source() -> None:
             validator=_validator,
             file_id_codec=codec,
         )
+
+
+def test_discovery_resolution_and_normalization_use_the_real_contract() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "traupixe_reference_anonymized.xlsx"
+    client = FakeDataClient()
+    client.add_file(
+        "project-01",
+        "run-01",
+        "raw_data",
+        name=fixture.name,
+        path=f"raw_data/{fixture.name}",
+        content=fixture.read_bytes(),
+    )
+    codec = FileIdCodec("test-secret")
+
+    discovery = detect_traupixe_workbooks(
+        client,  # type: ignore[arg-type]
+        "project-01",
+        "run-01",
+        validator=validate_traupixe_workbook,
+        file_id_codec=codec,
+    )
+    resolved = resolve_traupixe_workbook(
+        client,  # type: ignore[arg-type]
+        "project-01",
+        "run-01",
+        discovery.files[0].file_id,
+        validator=validate_traupixe_workbook,
+        file_id_codec=codec,
+    )
+    try:
+        dataset = normalize_traupixe(
+            load_traupixe_workbook(
+                resolved.source,
+                source_name=resolved.name,
+            )
+        )
+    finally:
+        resolved.source.close()
+
+    assert len(dataset.analyses) == 48
+    assert len(dataset.measurements) == 3456
