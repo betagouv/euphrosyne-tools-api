@@ -29,6 +29,12 @@ from .format import (
     TraupixeFormat,
     WorksheetFormat,
 )
+from .loader import (
+    LoadedMeasurement,
+    LoadedTraupixeWorkbook,
+    load_traupixe_workbook,
+    validate_traupixe_workbook,
+)
 from .models import (
     Analysis,
     DatasetExport,
@@ -41,6 +47,14 @@ from .models import (
     MeasurementUnit,
     NormalizedDataset,
 )
+from .normalization import (
+    DetectionLimitResult,
+    apply_detection_limits,
+    describe_exclusions,
+    normalize_detectors,
+    normalize_traupixe,
+    resolve_analytes,
+)
 
 __all__ = [
     "ANALYTES",
@@ -51,10 +65,13 @@ __all__ = [
     "Analysis",
     "DatasetExport",
     "DatasetMetadata",
+    "DetectionLimitResult",
     "Detector",
     "ExclusionReason",
     "ExclusionSummary",
     "FileIdCodec",
+    "LoadedMeasurement",
+    "LoadedTraupixeWorkbook",
     "Measurement",
     "MeasurementQualifier",
     "MeasurementUnit",
@@ -75,8 +92,15 @@ __all__ = [
     "TraupixeValidationIssue",
     "TraupixeWorkbookNotFoundError",
     "WorksheetFormat",
+    "apply_detection_limits",
     "detect_traupixe_workbooks",
+    "describe_exclusions",
     "export_analysis_dataset",
+    "load_traupixe_workbook",
+    "normalize_detectors",
+    "normalize_traupixe",
     "resolve_traupixe_workbook",
+    "resolve_analytes",
     "temporary_analysis_dataset",
+    "validate_traupixe_workbook",
 ]
