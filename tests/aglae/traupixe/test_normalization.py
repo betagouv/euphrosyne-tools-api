@@ -251,3 +251,24 @@ def test_normalization_rejects_an_incomplete_measurement_grid(
 
     with pytest.raises(TraupixeNormalizationError):
         normalize_traupixe(incomplete)
+
+
+def test_normalization_rejects_a_same_size_but_incorrect_measurement_grid(
+    tmp_path: Path,
+) -> None:
+    source = write_traupixe_fixture(tmp_path / "source.xlsx")
+    loaded = load_traupixe_workbook(source)
+    incorrect_measurement = replace(
+        loaded.measurements[0],
+        analyte="Unknown analyte",
+    )
+    incorrect = replace(
+        loaded,
+        measurements=(incorrect_measurement, *loaded.measurements[1:]),
+    )
+
+    with pytest.raises(
+        TraupixeNormalizationError,
+        match="analyses × analytes × units",
+    ):
+        normalize_traupixe(incorrect)

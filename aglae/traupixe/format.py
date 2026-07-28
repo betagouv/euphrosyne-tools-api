@@ -270,12 +270,41 @@ SELECTED_HEADERS_WITH_UNCERTAINTY = _selected_headers_with_uncertainty()
 SELECTED_HEADERS = (None, None, *RAW_ANALYTE_HEADERS)
 
 
+def _structural_row(
+    width: int,
+    *values: tuple[int, HeaderValue],
+) -> tuple[HeaderValue, ...]:
+    row: list[HeaderValue] = [None] * width
+    for column, value in values:
+        row[column - 1] = value
+    return tuple(row)
+
+
+EXP_DATA_EMPTY_ROW = _structural_row(len(EXP_DATA_HEADERS))
+ELEMENTAL_X0_X10_ROW = _structural_row(
+    len(ELEMENTAL_HEADERS),
+    (3, "X0"),
+    (33, "X10"),
+)
+ELEMENTAL_X10_ROW = _structural_row(
+    len(ELEMENTAL_HEADERS),
+    (33, "X10"),
+)
+SELECTED_EMPTY_ROW = _structural_row(len(SELECTED_HEADERS))
+SELECTED_WITH_UNCERTAINTY_EMPTY_ROW = _structural_row(
+    len(SELECTED_HEADERS_WITH_UNCERTAINTY)
+)
+MATRIX_EMPTY_ROW = _structural_row(len(MATRIX_HEADERS))
+
+
 @dataclass(frozen=True)
 class WorksheetFormat:
     name: str
     header_row: int | None
     headers: tuple[HeaderValue, ...]
     data_start_row: int | None
+    structural_rows: tuple[tuple[int, tuple[HeaderValue, ...]], ...] = ()
+    must_be_empty: bool = False
 
 
 @dataclass(frozen=True)
@@ -316,33 +345,125 @@ TRAUPIXE_FORMAT = TraupixeFormat(
     extension=".xlsx",
     maximum_source_size=MAX_SOURCE_SIZE_BYTES,
     worksheets=(
-        WorksheetFormat("Exp. data", 1, EXP_DATA_HEADERS, 3),
-        WorksheetFormat("Elemental Conc.", 2, ELEMENTAL_HEADERS, 3),
-        WorksheetFormat("Oxide Conc.", 2, OXIDE_HEADERS, 3),
-        WorksheetFormat("LOD", 2, ELEMENTAL_HEADERS, 3),
+        WorksheetFormat(
+            "Exp. data",
+            1,
+            EXP_DATA_HEADERS,
+            3,
+            structural_rows=((2, EXP_DATA_EMPTY_ROW),),
+        ),
+        WorksheetFormat(
+            "Elemental Conc.",
+            2,
+            ELEMENTAL_HEADERS,
+            3,
+            structural_rows=((1, ELEMENTAL_X0_X10_ROW),),
+        ),
+        WorksheetFormat(
+            "Oxide Conc.",
+            2,
+            OXIDE_HEADERS,
+            3,
+            structural_rows=((1, ELEMENTAL_X10_ROW),),
+        ),
+        WorksheetFormat(
+            "LOD",
+            2,
+            ELEMENTAL_HEADERS,
+            3,
+            structural_rows=((1, ELEMENTAL_X10_ROW),),
+        ),
         WorksheetFormat(
             "S_Conc. & Unc ppm",
             2,
             SELECTED_HEADERS_WITH_UNCERTAINTY,
             3,
+            structural_rows=((1, SELECTED_WITH_UNCERTAINTY_EMPTY_ROW),),
         ),
         WorksheetFormat(
             "S_Conc. & Unc %",
             2,
             SELECTED_HEADERS_WITH_UNCERTAINTY,
             3,
+            structural_rows=((1, SELECTED_WITH_UNCERTAINTY_EMPTY_ROW),),
         ),
-        WorksheetFormat("S_Conc. ppm", 2, SELECTED_HEADERS, 3),
-        WorksheetFormat("S_Conc. %", 2, SELECTED_HEADERS, 3),
-        WorksheetFormat("S_Conc. ppm (RED)", 2, SELECTED_HEADERS, 3),
-        WorksheetFormat("S_Conc. % (RED)", 2, SELECTED_HEADERS, 3),
-        WorksheetFormat("Total Unc", 2, ELEMENTAL_HEADERS, 3),
-        WorksheetFormat("Fit-Error", 2, ELEMENTAL_HEADERS, 3),
-        WorksheetFormat("Peak Height", 2, ELEMENTAL_HEADERS, 3),
-        WorksheetFormat("Area", 2, ELEMENTAL_HEADERS, 3),
-        WorksheetFormat("Matrix", 2, MATRIX_HEADERS, 3),
-        WorksheetFormat("Informations", None, (), None),
-        WorksheetFormat("S_Best Det.", 2, SELECTED_HEADERS, 3),
+        WorksheetFormat(
+            "S_Conc. ppm",
+            2,
+            SELECTED_HEADERS,
+            3,
+            structural_rows=((1, SELECTED_EMPTY_ROW),),
+        ),
+        WorksheetFormat(
+            "S_Conc. %",
+            2,
+            SELECTED_HEADERS,
+            3,
+            structural_rows=((1, SELECTED_EMPTY_ROW),),
+        ),
+        WorksheetFormat(
+            "S_Conc. ppm (RED)",
+            2,
+            SELECTED_HEADERS,
+            3,
+            structural_rows=((1, SELECTED_EMPTY_ROW),),
+        ),
+        WorksheetFormat(
+            "S_Conc. % (RED)",
+            2,
+            SELECTED_HEADERS,
+            3,
+            structural_rows=((1, SELECTED_EMPTY_ROW),),
+        ),
+        WorksheetFormat(
+            "Total Unc",
+            2,
+            ELEMENTAL_HEADERS,
+            3,
+            structural_rows=((1, ELEMENTAL_X0_X10_ROW),),
+        ),
+        WorksheetFormat(
+            "Fit-Error",
+            2,
+            ELEMENTAL_HEADERS,
+            3,
+            structural_rows=((1, ELEMENTAL_X10_ROW),),
+        ),
+        WorksheetFormat(
+            "Peak Height",
+            2,
+            ELEMENTAL_HEADERS,
+            3,
+            structural_rows=((1, ELEMENTAL_X10_ROW),),
+        ),
+        WorksheetFormat(
+            "Area",
+            2,
+            ELEMENTAL_HEADERS,
+            3,
+            structural_rows=((1, ELEMENTAL_X10_ROW),),
+        ),
+        WorksheetFormat(
+            "Matrix",
+            2,
+            MATRIX_HEADERS,
+            3,
+            structural_rows=((1, MATRIX_EMPTY_ROW),),
+        ),
+        WorksheetFormat(
+            "Informations",
+            None,
+            (),
+            None,
+            must_be_empty=True,
+        ),
+        WorksheetFormat(
+            "S_Best Det.",
+            2,
+            SELECTED_HEADERS,
+            3,
+            structural_rows=((1, SELECTED_EMPTY_ROW),),
+        ),
     ),
     source_sheets=(
         "S_Conc. & Unc %",

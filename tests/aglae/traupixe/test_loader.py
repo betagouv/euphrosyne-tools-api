@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
+from shutil import copyfile
 from typing import Any
 
 import pytest
+from openpyxl import load_workbook as load_xlsx
 
 import aglae.traupixe.loader as loader_module
 from aglae.traupixe.exceptions import (
@@ -19,6 +21,10 @@ from aglae.traupixe.format import TRAUPIXE_FORMAT
 from aglae.traupixe.loader import load_traupixe_workbook, validate_traupixe_workbook
 from aglae.traupixe.models import Detector, MeasurementUnit
 from tests.aglae.traupixe.fixture_factory import write_traupixe_fixture
+
+REFERENCE_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "traupixe_reference_anonymized.xlsx"
+)
 
 
 def test_loader_uses_read_only_data_only_and_joins_rows_by_id(
@@ -93,6 +99,74 @@ def test_loader_resets_incorrect_a1_dimensions_and_skips_empty_information(
 
     assert len(workbook.analyses) == 2
     assert len(workbook.measurements) == 144
+
+
+def test_loader_accepts_the_anonymized_reference_structure() -> None:
+    workbook = load_traupixe_workbook(REFERENCE_FIXTURE)
+
+    assert len(workbook.analyses) == 48
+    assert len(workbook.measurements) == 3456
+
+
+@pytest.mark.parametrize(
+    ("sheet_name", "cell", "value", "expected_code"),
+    [
+        (
+            "Elemental Conc.",
+            "C1",
+            "NOT-X0",
+            TraupixeValidationCode.INVALID_HEADER,
+        ),
+        (
+            "S_Best Det.",
+            "B3",
+            "Contradictory description",
+            TraupixeValidationCode.INVALID_VALUE,
+        ),
+        (
+            "Informations",
+            "A1",
+            "Unexpected content",
+            TraupixeValidationCode.INVALID_HEADER,
+        ),
+        (
+            "S_Conc. & Unc %",
+            "C3",
+            1.25,
+            TraupixeValidationCode.INVALID_VALUE,
+        ),
+        (
+            "Informations",
+            "A1",
+            "=1+1",
+            TraupixeValidationCode.INVALID_VALUE,
+        ),
+        (
+            "S_Conc. & Unc %",
+            "C3",
+            "=1+1",
+            TraupixeValidationCode.INVALID_VALUE,
+        ),
+    ],
+)
+def test_loader_rejects_reference_structure_or_type_mutations(
+    tmp_path: Path,
+    sheet_name: str,
+    cell: str,
+    value: Any,
+    expected_code: TraupixeValidationCode,
+) -> None:
+    source = tmp_path / "mutated-reference.xlsx"
+    copyfile(REFERENCE_FIXTURE, source)
+    workbook = load_xlsx(source)
+    workbook[sheet_name][cell] = value
+    workbook.save(source)
+    workbook.close()
+
+    with pytest.raises(TraupixeIncompatibleWorkbookError) as raised:
+        load_traupixe_workbook(source)
+
+    assert expected_code in {issue.code for issue in raised.value.issues}
 
 
 def test_validator_returns_none_for_a_compatible_stream(
@@ -230,6 +304,20 @@ def test_loader_rejects_duplicate_analysis_ids(tmp_path: Path) -> None:
         load_traupixe_workbook(source)
 
     assert TraupixeValidationCode.DUPLICATE_ANALYSIS_ID in {
+        issue.code for issue in raised.value.issues
+    }
+
+
+def test_loader_rejects_a_workbook_without_analyses(tmp_path: Path) -> None:
+    source = write_traupixe_fixture(
+        tmp_path / "source.xlsx",
+        analysis_ids=(),
+    )
+
+    with pytest.raises(TraupixeIncompatibleWorkbookError) as raised:
+        load_traupixe_workbook(source)
+
+    assert TraupixeValidationCode.INVALID_ANALYSIS_ID in {
         issue.code for issue in raised.value.issues
     }
 

@@ -214,6 +214,15 @@ def normalize_traupixe(
     if len(analysis_ids) != len(set(analysis_ids)):
         raise TraupixeNormalizationError("Analysis identifiers must be unique")
 
+    if workbook.analytes != traupixe_format.analytes:
+        raise TraupixeNormalizationError(
+            "The loaded analyte sequence does not match TRAUPIXE_FORMAT"
+        )
+    if workbook.units != traupixe_format.units:
+        raise TraupixeNormalizationError(
+            "The loaded unit sequence does not match TRAUPIXE_FORMAT"
+        )
+
     expected_measurement_count = (
         len(workbook.analyses) * len(workbook.analytes) * len(workbook.units)
     )
@@ -237,6 +246,17 @@ def normalize_traupixe(
                 "The loaded measurement grid contains duplicate rows"
             )
         seen_keys.add(key)
+
+    expected_keys = {
+        (analysis_id, analyte, unit)
+        for analysis_id in analysis_ids
+        for analyte in traupixe_format.analytes
+        for unit in traupixe_format.units
+    }
+    if seen_keys != expected_keys:
+        raise TraupixeNormalizationError(
+            "The loaded measurement grid does not match " "analyses × analytes × units"
+        )
 
     exclusion_counts: Counter[ExclusionReason] = Counter()
     measurements = tuple(

@@ -11,10 +11,27 @@ CSV and JSON files for Python analysis.
 2. Send only the returned opaque `file_id` to the client.
 3. Resolve the identifier in the same project and run with
    `resolve_traupixe_workbook`.
-4. Validate and normalize the resolved stream with
-   `validate_traupixe_workbook` and `normalize_traupixe`.
-5. Use `temporary_analysis_dataset` while uploading the normalized files to
+4. Load the resolved stream with `load_traupixe_workbook`, passing the resolved
+   file name, and close the stream in a `finally` block.
+5. Normalize the resulting `LoadedTraupixeWorkbook` with `normalize_traupixe`.
+6. Use `temporary_analysis_dataset` while uploading the normalized files to
    the execution environment.
+
+Both discovery and resolution receive `validate_traupixe_workbook` as their
+validator. The resolved stream remains owned by the caller:
+
+```python
+resolved = resolve_traupixe_workbook(...)
+try:
+    loaded = load_traupixe_workbook(
+        resolved.source,
+        source_name=resolved.name,
+    )
+finally:
+    resolved.source.close()
+
+dataset = normalize_traupixe(loaded)
+```
 
 The package does not know about JWTs, HTTP routes, Albert, or Azure Dynamic
 Sessions. Authorization is performed by the caller before discovery or
@@ -24,7 +41,7 @@ resolution.
 
 `TRAUPIXE_FORMAT` is the single source of truth for:
 
-- the 17 required worksheet names and their exact headers;
+- the 17 required worksheet names, structural rows, and exact headers;
 - the two selected concentration worksheets and their units;
 - the 36 analytes, including the source headers with trailing spaces;
 - the allowed `X0` and `X10` detector values;

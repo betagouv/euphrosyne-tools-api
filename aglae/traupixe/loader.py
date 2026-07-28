@@ -136,7 +136,11 @@ def _prepare_worksheet(worksheet: Any) -> None:
     if dimension not in {"A1", "A1:A1"}:
         return
     worksheet.reset_dimensions()
-    worksheet.calculate_dimension(force=True)
+    try:
+        worksheet.calculate_dimension(force=True)
+    except UnboundLocalError:
+        # openpyxl raises this for a genuinely empty read-only worksheet.
+        return
 
 
 def _validate_sheet_names(
@@ -169,52 +173,73 @@ def _validate_headers(
     worksheet: Any,
     worksheet_format: WorksheetFormat,
 ) -> list[TraupixeValidationIssue]:
-    if worksheet_format.header_row is None:
+    if worksheet_format.must_be_empty:
+        for row_number, row in enumerate(
+            worksheet.iter_rows(values_only=True),
+            start=1,
+        ):
+            for column_number, value in enumerate(row, start=1):
+                if value is not None:
+                    return [
+                        TraupixeValidationIssue(
+                            code=TraupixeValidationCode.INVALID_HEADER,
+                            message="Worksheet must be empty",
+                            sheet=worksheet.title,
+                            cell=(f"{_column_letter(column_number)}" f"{row_number}"),
+                        )
+                    ]
         return []
 
-    expected = worksheet_format.headers
-    maximum_column = max(len(expected), worksheet.max_column or 1)
-    row = next(
-        worksheet.iter_rows(
-            min_row=worksheet_format.header_row,
-            max_row=worksheet_format.header_row,
-            max_col=maximum_column,
-            values_only=True,
-        ),
-        (),
-    )
-    actual = tuple(row[: len(expected)])
-    issues: list[TraupixeValidationIssue] = []
-
-    if actual != expected:
-        for column_index, expected_value in enumerate(expected, start=1):
-            actual_value = (
-                actual[column_index - 1] if column_index <= len(actual) else None
-            )
-            if actual_value != expected_value:
-                issues.append(
-                    TraupixeValidationIssue(
-                        code=TraupixeValidationCode.INVALID_HEADER,
-                        message=(
-                            f"Expected header {expected_value!r}, "
-                            f"got {actual_value!r}"
-                        ),
-                        sheet=worksheet.title,
-                        cell=worksheet.cell(
-                            worksheet_format.header_row,
-                            column_index,
-                        ).coordinate,
-                    )
-                )
-
-    if any(value is not None for value in row[len(expected) :]):
-        issues.append(
-            TraupixeValidationIssue(
-                code=TraupixeValidationCode.INVALID_HEADER,
-                message="Unexpected header columns",
-                sheet=worksheet.title,
+    expected_rows = list(worksheet_format.structural_rows)
+    if worksheet_format.header_row is not None:
+        expected_rows.append(
+            (
+                worksheet_format.header_row,
+                worksheet_format.headers,
             )
         )
+
+    issues: list[TraupixeValidationIssue] = []
+    for row_number, expected in expected_rows:
+        maximum_column = max(len(expected), worksheet.max_column or 1)
+        row = next(
+            worksheet.iter_rows(
+                min_row=row_number,
+                max_row=row_number,
+                max_col=maximum_column,
+                values_only=True,
+            ),
+            (),
+        )
+        actual = tuple(row[: len(expected)])
+
+        if actual != expected:
+            for column_index, expected_value in enumerate(expected, start=1):
+                actual_value = (
+                    actual[column_index - 1] if column_index <= len(actual) else None
+                )
+                if actual_value != expected_value:
+                    issues.append(
+                        TraupixeValidationIssue(
+                            code=TraupixeValidationCode.INVALID_HEADER,
+                            message=(
+                                f"Expected structural value "
+                                f"{expected_value!r}, got {actual_value!r}"
+                            ),
+                            sheet=worksheet.title,
+                            cell=(f"{_column_letter(column_index)}" f"{row_number}"),
+                        )
+                    )
+
+        if any(value is not None for value in row[len(expected) :]):
+            issues.append(
+                TraupixeValidationIssue(
+                    code=TraupixeValidationCode.INVALID_HEADER,
+                    message="Unexpected structural columns",
+                    sheet=worksheet.title,
+                    cell=f"{_column_letter(len(expected) + 1)}{row_number}",
+                )
+            )
 
     return issues
 
@@ -265,6 +290,16 @@ def _identified_rows(
                 )
             )
             continue
+        description = row[1] if len(row) > 1 else None
+        if not isinstance(description, str):
+            issues.append(
+                TraupixeValidationIssue(
+                    code=TraupixeValidationCode.INVALID_VALUE,
+                    message="Analysis descriptions must be text",
+                    sheet=worksheet.title,
+                    cell=f"B{row_number}",
+                )
+            )
         seen_ids.add(analysis_id)
         rows.append((row_number, analysis_id, tuple(row)))
     return tuple(rows), issues
@@ -278,32 +313,113 @@ def _validate_aligned_ids(
     source_sheets: tuple[str, ...],
 ) -> list[TraupixeValidationIssue]:
     reference_sheet = source_sheets[0]
-    reference_ids = {
-        analysis_id for _, analysis_id, _ in rows_by_sheet[reference_sheet]
+    reference_rows = {
+        analysis_id: (row_number, row)
+        for row_number, analysis_id, row in rows_by_sheet[reference_sheet]
     }
+    reference_ids = set(reference_rows)
     issues: list[TraupixeValidationIssue] = []
 
-    for sheet_name in source_sheets[1:]:
-        actual_ids = {analysis_id for _, analysis_id, _ in rows_by_sheet[sheet_name]}
-        if actual_ids == reference_ids:
-            continue
-        missing = sorted(reference_ids - actual_ids)
-        unexpected = sorted(actual_ids - reference_ids)
-        details = []
-        if missing:
-            details.append("missing: " + ", ".join(missing))
-        if unexpected:
-            details.append("unexpected: " + ", ".join(unexpected))
+    if not reference_ids:
         issues.append(
             TraupixeValidationIssue(
-                code=TraupixeValidationCode.MISALIGNED_ANALYSIS_IDS,
-                message=(
-                    f"Analysis identifiers do not match {reference_sheet}"
-                    + (f" ({'; '.join(details)})" if details else "")
-                ),
-                sheet=sheet_name,
+                code=TraupixeValidationCode.INVALID_ANALYSIS_ID,
+                message="The TRAUPIXE workbook contains no analyses",
+                sheet=reference_sheet,
             )
         )
+
+    for sheet_name in source_sheets[1:]:
+        actual_rows = {
+            analysis_id: (row_number, row)
+            for row_number, analysis_id, row in rows_by_sheet[sheet_name]
+        }
+        actual_ids = set(actual_rows)
+        missing = sorted(reference_ids - actual_ids)
+        unexpected = sorted(actual_ids - reference_ids)
+        if missing or unexpected:
+            details = []
+            if missing:
+                details.append("missing: " + ", ".join(missing))
+            if unexpected:
+                details.append("unexpected: " + ", ".join(unexpected))
+            issues.append(
+                TraupixeValidationIssue(
+                    code=TraupixeValidationCode.MISALIGNED_ANALYSIS_IDS,
+                    message=(
+                        f"Analysis identifiers do not match {reference_sheet}"
+                        + (f" ({'; '.join(details)})" if details else "")
+                    ),
+                    sheet=sheet_name,
+                )
+            )
+            continue
+
+        for analysis_id in reference_ids:
+            expected_description = reference_rows[analysis_id][1][1]
+            row_number, actual_row = actual_rows[analysis_id]
+            if actual_row[1] != expected_description:
+                issues.append(
+                    TraupixeValidationIssue(
+                        code=TraupixeValidationCode.INVALID_VALUE,
+                        message=(
+                            "Analysis description does not match "
+                            f"{reference_sheet} for {analysis_id}"
+                        ),
+                        sheet=sheet_name,
+                        cell=f"B{row_number}",
+                    )
+                )
+    return issues
+
+
+def _validate_measurement_value_types(
+    rows_by_sheet: dict[
+        str,
+        tuple[tuple[int, str, tuple[object, ...]], ...],
+    ],
+    traupixe_format: TraupixeFormat,
+) -> list[TraupixeValidationIssue]:
+    issues: list[TraupixeValidationIssue] = []
+    for sheet_name, _ in traupixe_format.unit_sheets:
+        for row_number, _, row in rows_by_sheet[sheet_name]:
+            for column_number, value in enumerate(row[2:], start=3):
+                if value is None or isinstance(value, str):
+                    continue
+                issues.append(
+                    TraupixeValidationIssue(
+                        code=TraupixeValidationCode.INVALID_VALUE,
+                        message=(
+                            "Selected concentrations and uncertainties "
+                            "must be text or empty"
+                        ),
+                        sheet=sheet_name,
+                        cell=f"{_column_letter(column_number)}{row_number}",
+                    )
+                )
+    return issues
+
+
+def _validate_no_formulas(
+    workbook: Any,
+    traupixe_format: TraupixeFormat,
+) -> list[TraupixeValidationIssue]:
+    issues: list[TraupixeValidationIssue] = []
+    for worksheet_format in traupixe_format.worksheets:
+        worksheet = workbook[worksheet_format.name]
+        _prepare_worksheet(worksheet)
+        for row in worksheet.iter_rows():
+            for cell in row:
+                if cell.data_type != "f":
+                    continue
+                issues.append(
+                    TraupixeValidationIssue(
+                        code=TraupixeValidationCode.INVALID_VALUE,
+                        message="Formulas are not allowed in TRAUPIXE workbooks",
+                        sheet=worksheet.title,
+                        cell=cell.coordinate,
+                    )
+                )
     return issues
 
 
@@ -458,8 +574,32 @@ def load_traupixe_workbook(
             traupixe_format.maximum_source_size,
         )
 
+    formula_workbook = None
     workbook = None
     try:
+        formula_workbook = load_workbook(
+            source,
+            read_only=True,
+            data_only=False,
+        )
+        issues = _validate_sheet_names(
+            tuple(formula_workbook.sheetnames),
+            traupixe_format,
+        )
+        if not issues:
+            issues.extend(
+                _validate_no_formulas(
+                    formula_workbook,
+                    traupixe_format,
+                )
+            )
+        if issues:
+            raise TraupixeIncompatibleWorkbookError(tuple(issues))
+        formula_workbook.close()
+        formula_workbook = None
+        if not isinstance(source, (str, Path)):
+            source.seek(0)
+
         workbook = load_workbook(
             source,
             read_only=True,
@@ -474,8 +614,7 @@ def load_traupixe_workbook(
 
         for worksheet_format in traupixe_format.worksheets:
             worksheet = workbook[worksheet_format.name]
-            if worksheet_format.header_row is not None:
-                _prepare_worksheet(worksheet)
+            _prepare_worksheet(worksheet)
             issues.extend(_validate_headers(worksheet, worksheet_format))
         if issues:
             raise TraupixeIncompatibleWorkbookError(tuple(issues))
@@ -496,6 +635,12 @@ def load_traupixe_workbook(
             _validate_aligned_ids(
                 rows_by_sheet,
                 traupixe_format.source_sheets,
+            )
+        )
+        issues.extend(
+            _validate_measurement_value_types(
+                rows_by_sheet,
+                traupixe_format,
             )
         )
         if issues:
@@ -529,6 +674,8 @@ def load_traupixe_workbook(
             f"Unable to read TRAUPIXE workbook: {error}"
         ) from error
     finally:
+        if formula_workbook is not None:
+            formula_workbook.close()
         if workbook is not None:
             workbook.close()
         _restore_stream_position(source, source_details.initial_position)

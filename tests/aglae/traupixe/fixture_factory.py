@@ -43,6 +43,13 @@ def write_traupixe_fixture(
         if worksheet_format.name == missing_sheet:
             continue
         worksheet = workbook.create_sheet(worksheet_format.name)
+        for row_number, structural_values in worksheet_format.structural_rows:
+            for column, value in enumerate(structural_values, start=1):
+                worksheet.cell(
+                    row=row_number,
+                    column=column,
+                    value=value,
+                )
         if worksheet_format.header_row is not None:
             for column, header in enumerate(
                 worksheet_format.headers,
