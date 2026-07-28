@@ -9,9 +9,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-REFERENCE_SHA256 = (
-    "bf7861fb9bc2d4ee43951fffa02281b01c2676c8c04d5fecdd246b27ae1a56b0"
-)
+REFERENCE_SHA256 = "bf7861fb9bc2d4ee43951fffa02281b01c2676c8c04d5fecdd246b27ae1a56b0"
 SOURCE_SHEET = "S_Conc. & Unc %"
 EXPERIMENT_SHEET = "Exp. data"
 
@@ -32,12 +30,10 @@ def _rewrite_dimensions_as_a1(source: Path, destination: Path) -> None:
     ):
         for entry in input_archive.infolist():
             content = input_archive.read(entry.filename)
-            if entry.filename.startswith("xl/worksheets/sheet") and entry.filename.endswith(
-                ".xml"
-            ):
-                content = dimension_pattern.sub(
-                    b'<dimension ref="A1:A1"/>', content, 1
-                )
+            if entry.filename.startswith(
+                "xl/worksheets/sheet"
+            ) and entry.filename.endswith(".xml"):
+                content = dimension_pattern.sub(b'<dimension ref="A1:A1"/>', content, 1)
             output_archive.writestr(entry, content)
 
 

@@ -2,9 +2,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-FIXTURE = (
-    Path(__file__).parent / "fixtures" / "traupixe_reference_anonymized.xlsx"
-)
+FIXTURE = Path(__file__).parent / "fixtures" / "traupixe_reference_anonymized.xlsx"
 
 
 def test_reference_fixture_is_anonymized_and_keeps_48_analyses():

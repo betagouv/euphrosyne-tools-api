@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,14 +16,9 @@ from aglae.traupixe.exceptions import (
     TraupixeValidationCode,
 )
 from aglae.traupixe.format import TRAUPIXE_FORMAT
-from aglae.traupixe.loader import (
-    load_traupixe_workbook,
-    validate_traupixe_workbook,
-)
+from aglae.traupixe.loader import load_traupixe_workbook, validate_traupixe_workbook
 from aglae.traupixe.models import Detector, MeasurementUnit
-from tests.aglae.traupixe.fixture_factory import (
-    write_traupixe_fixture,
-)
+from tests.aglae.traupixe.fixture_factory import write_traupixe_fixture
 
 
 def test_loader_uses_read_only_data_only_and_joins_rows_by_id(
@@ -49,7 +45,7 @@ def test_loader_uses_read_only_data_only_and_joins_rows_by_id(
     real_load_workbook = loader_module.load_workbook
     options: dict[str, object] = {}
 
-    def load_workbook_spy(*args: object, **kwargs: object):
+    def load_workbook_spy(*args: Any, **kwargs: Any):
         options.update(kwargs)
         return real_load_workbook(*args, **kwargs)
 
@@ -106,9 +102,8 @@ def test_validator_returns_none_for_a_compatible_stream(
     stream = BytesIO(source.read_bytes())
     stream.seek(9)
 
-    result = validate_traupixe_workbook(stream)
+    validate_traupixe_workbook(stream)
 
-    assert result is None
     assert stream.tell() == 9
 
 
@@ -176,7 +171,7 @@ def test_loader_rejects_extension_and_size_before_opening_workbook(
 )
 def test_loader_rejects_incompatible_structure(
     tmp_path: Path,
-    fixture_options: dict[str, object],
+    fixture_options: dict[str, Any],
     expected_code: TraupixeValidationCode,
 ) -> None:
     source = write_traupixe_fixture(

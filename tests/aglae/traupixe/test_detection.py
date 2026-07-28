@@ -19,10 +19,7 @@ from aglae.traupixe.exceptions import (
     TraupixeWorkbookNotFoundError,
 )
 from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
-from aglae.traupixe.loader import (
-    load_traupixe_workbook,
-    validate_traupixe_workbook,
-)
+from aglae.traupixe.loader import load_traupixe_workbook, validate_traupixe_workbook
 from aglae.traupixe.normalization import normalize_traupixe
 from clients.data_models import ProjectFileOrDirectory, RunDataTypeType
 

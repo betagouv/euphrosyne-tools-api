@@ -3,16 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 from zipfile import BadZipFile
 
-from openpyxl import load_workbook  # type: ignore[import-untyped]
-from openpyxl.utils.exceptions import (  # type: ignore[import-untyped]
-    InvalidFileException,
-)
-from openpyxl.worksheet._read_only import (  # type: ignore[import-untyped]
-    ReadOnlyWorksheet,
-)
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
 from .exceptions import (
     TraupixeIncompatibleWorkbookError,
@@ -111,7 +106,7 @@ def _restore_stream_position(
     source.seek(initial_position)
 
 
-def _prepare_worksheet(worksheet: ReadOnlyWorksheet) -> None:
+def _prepare_worksheet(worksheet: Any) -> None:
     dimension = worksheet.calculate_dimension()
     if dimension not in {"A1", "A1:A1"}:
         return
@@ -146,7 +141,7 @@ def _validate_sheet_names(
 
 
 def _validate_headers(
-    worksheet: ReadOnlyWorksheet,
+    worksheet: Any,
     worksheet_format: WorksheetFormat,
 ) -> list[TraupixeValidationIssue]:
     if worksheet_format.header_row is None:
@@ -200,7 +195,7 @@ def _validate_headers(
 
 
 def _identified_rows(
-    worksheet: ReadOnlyWorksheet,
+    worksheet: Any,
     worksheet_format: WorksheetFormat,
 ) -> tuple[
     tuple[tuple[int, str, tuple[object, ...]], ...],

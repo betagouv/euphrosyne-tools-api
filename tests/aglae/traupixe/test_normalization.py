@@ -21,9 +21,7 @@ from aglae.traupixe.normalization import (
     normalize_traupixe,
     resolve_analytes,
 )
-from tests.aglae.traupixe.fixture_factory import (
-    write_traupixe_fixture,
-)
+from tests.aglae.traupixe.fixture_factory import write_traupixe_fixture
 
 
 def test_normalization_uses_decimal_and_classifies_special_values(

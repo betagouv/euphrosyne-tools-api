@@ -3,10 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from aglae.traupixe.export import (
-    export_analysis_dataset,
-    temporary_analysis_dataset,
-)
+from aglae.traupixe.export import export_analysis_dataset, temporary_analysis_dataset
 from aglae.traupixe.models import (
     Analysis,
     DatasetMetadata,

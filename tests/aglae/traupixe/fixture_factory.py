@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from openpyxl import Workbook
@@ -20,11 +21,11 @@ HeaderKey = tuple[str, int]
 def write_traupixe_fixture(
     path: Path,
     *,
-    analysis_ids: Sequence[object] = DEFAULT_ANALYSIS_IDS,
-    row_orders: Mapping[str, Sequence[object]] | None = None,
-    values: Mapping[MeasurementKey, tuple[object, object]] | None = None,
-    detectors: Mapping[DetectorKey, object] | None = None,
-    header_overrides: Mapping[HeaderKey, object] | None = None,
+    analysis_ids: Sequence[Any] = DEFAULT_ANALYSIS_IDS,
+    row_orders: Mapping[str, Sequence[Any]] | None = None,
+    values: Mapping[MeasurementKey, tuple[Any, Any]] | None = None,
+    detectors: Mapping[DetectorKey, Any] | None = None,
+    header_overrides: Mapping[HeaderKey, Any] | None = None,
     missing_sheet: str | None = None,
     extra_sheet: str | None = None,
     force_a1_dimensions: bool = False,
@@ -35,7 +36,9 @@ def write_traupixe_fixture(
     header_overrides = header_overrides or {}
 
     workbook = Workbook()
-    workbook.remove(workbook.active)
+    active_worksheet = workbook.active
+    assert active_worksheet is not None
+    workbook.remove(active_worksheet)
     for worksheet_format in TRAUPIXE_FORMAT.worksheets:
         if worksheet_format.name == missing_sheet:
             continue
