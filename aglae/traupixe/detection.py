@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from clients.data_models import ProjectFileOrDirectory, RunDataTypeType
 from .exceptions import (
     TraupixeError,
     TraupixeSourceChangedError,
+    TraupixeTooLargeError,
     TraupixeWorkbookNotFoundError,
 )
 from .format import TRAUPIXE_FORMAT
@@ -25,6 +27,8 @@ _FILE_ID_VERSION = 1
 _DIGEST_SIZE = hashlib.sha256().digest_size
 _FILE_ID_PAYLOAD_SIZE = 1 + 4 * _DIGEST_SIZE
 _HASH_CHUNK_SIZE = 1024 * 1024
+_MINIMUM_FILE_ID_SECRET_SIZE = 32
+_SCOPE_COMPONENT_PATTERN = re.compile(r"^[\w -]+$")
 
 TraupixeValidator = Callable[[BinaryIO], object]
 
@@ -71,6 +75,15 @@ class _FileIdClaims:
     expected_sha256: str
 
 
+class InvalidTraupixeScopeError(ValueError):
+    def __init__(self, component: str):
+        self.component = component
+        super().__init__(
+            f"{component} must contain only letters, numbers, underscores, "
+            "hyphens, or spaces"
+        )
+
+
 class FileIdCodec:
     """Issue authenticated, opaque identifiers for run files.
 
@@ -80,8 +93,8 @@ class FileIdCodec:
 
     def __init__(self, secret: str | bytes):
         secret_bytes = secret.encode("utf-8") if isinstance(secret, str) else secret
-        if not secret_bytes:
-            raise ValueError("file_id secret must not be empty")
+        if len(secret_bytes) < _MINIMUM_FILE_ID_SECRET_SIZE:
+            raise ValueError("file_id secret must contain at least 32 bytes")
         self._secret = secret_bytes
 
     def issue(
@@ -231,6 +244,7 @@ def detect_traupixe_workbooks(
     validator: TraupixeValidator,
     file_id_codec: FileIdCodec,
 ) -> TraupixeFileDiscovery:
+    _validate_scope(project_slug, run_name)
     detected: list[tuple[TraupixeFile, _Candidate]] = []
 
     for candidate in _iter_xlsx_candidates(data_client, project_slug, run_name):
@@ -240,7 +254,13 @@ def detect_traupixe_workbooks(
         ):
             continue
         with closing(data_client.download_run_file(candidate.path)) as source:
-            sha256 = _sha256(source)
+            try:
+                sha256 = _sha256(
+                    source,
+                    maximum_size=TRAUPIXE_FORMAT.maximum_source_size,
+                )
+            except TraupixeTooLargeError:
+                continue
             if not _is_valid(source, validator):
                 continue
         file_id = file_id_codec.issue(
@@ -278,6 +298,7 @@ def resolve_traupixe_workbook(
     validator: TraupixeValidator,
     file_id_codec: FileIdCodec,
 ) -> ResolvedTraupixeFile:
+    _validate_scope(project_slug, run_name)
     claims = file_id_codec.decode(file_id)
     if claims is None:
         raise TraupixeWorkbookNotFoundError(file_id)
@@ -301,7 +322,16 @@ def resolve_traupixe_workbook(
 
         source = data_client.download_run_file(candidate.path)
         try:
-            actual_sha256 = _sha256(source)
+            try:
+                actual_sha256 = _sha256(
+                    source,
+                    maximum_size=TRAUPIXE_FORMAT.maximum_source_size,
+                )
+            except TraupixeTooLargeError as error:
+                raise TraupixeSourceChangedError(
+                    expected_sha256=claims.expected_sha256,
+                    actual_sha256="",
+                ) from error
             if not file_id_codec.matches_metadata(
                 claims, candidate=candidate
             ) or not hmac.compare_digest(
@@ -405,13 +435,22 @@ def _safe_child_folder(
     return str(PurePosixPath(parent or "") / child.name)
 
 
-def _sha256(source: BinaryIO) -> str:
+def _sha256(source: BinaryIO, *, maximum_size: int) -> str:
     source.seek(0)
     digest = hashlib.sha256()
-    while chunk := source.read(_HASH_CHUNK_SIZE):
-        digest.update(chunk)
-    source.seek(0)
-    return digest.hexdigest()
+    size = 0
+    try:
+        while True:
+            read_size = min(_HASH_CHUNK_SIZE, maximum_size - size + 1)
+            chunk = source.read(read_size)
+            if not chunk:
+                return digest.hexdigest()
+            size += len(chunk)
+            if size > maximum_size:
+                raise TraupixeTooLargeError(size, maximum_size)
+            digest.update(chunk)
+    finally:
+        source.seek(0)
 
 
 def _is_valid(source: BinaryIO, validator: TraupixeValidator) -> bool:
@@ -454,6 +493,21 @@ def _timestamp(value: datetime | None) -> float:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).timestamp()
+
+
+def _validate_scope(project_slug: str, run_name: str) -> None:
+    _validate_scope_component(project_slug, "project_slug")
+    _validate_scope_component(run_name, "run_name")
+
+
+def _validate_scope_component(value: str, component: str) -> None:
+    if (
+        not value
+        or value != value.strip()
+        or not _SCOPE_COMPONENT_PATTERN.fullmatch(value)
+        or value in {".", ".."}
+    ):
+        raise InvalidTraupixeScopeError(component)
 
 
 def _canonical_datetime(value: datetime | None) -> str | None:

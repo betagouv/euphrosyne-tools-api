@@ -55,20 +55,23 @@ class _SourceDetails:
 def _read_source_details(
     source: WorkbookSource,
     source_name: str | None,
+    maximum_size: int,
 ) -> _SourceDetails:
-    digest = sha256()
-
     if isinstance(source, (str, Path)):
         path = Path(source)
         name = source_name or path.name
-        size = path.stat().st_size
+        reported_size = path.stat().st_size
+        if reported_size > maximum_size:
+            raise TraupixeTooLargeError(reported_size, maximum_size)
         with path.open("rb") as source_file:
-            for chunk in iter(lambda: source_file.read(1024 * 1024), b""):
-                digest.update(chunk)
+            size, source_sha256 = _bounded_source_fingerprint(
+                source_file,
+                maximum_size,
+            )
         return _SourceDetails(
             name=name,
             size=size,
-            sha256=digest.hexdigest(),
+            sha256=source_sha256,
         )
 
     if not source.seekable():
@@ -78,11 +81,16 @@ def _read_source_details(
 
     initial_position = source.tell()
     source.seek(0)
-    size = 0
-    for chunk in iter(lambda: source.read(1024 * 1024), b""):
-        size += len(chunk)
-        digest.update(chunk)
-    source.seek(0)
+    try:
+        size, source_sha256 = _bounded_source_fingerprint(
+            source,
+            maximum_size,
+        )
+    except Exception:
+        source.seek(initial_position)
+        raise
+    else:
+        source.seek(0)
 
     stream_name = source_name
     if stream_name is None:
@@ -92,9 +100,26 @@ def _read_source_details(
     return _SourceDetails(
         name=stream_name,
         size=size,
-        sha256=digest.hexdigest(),
+        sha256=source_sha256,
         initial_position=initial_position,
     )
+
+
+def _bounded_source_fingerprint(
+    source: BinaryIO,
+    maximum_size: int,
+) -> tuple[int, str]:
+    digest = sha256()
+    size = 0
+    while True:
+        read_size = min(1024 * 1024, maximum_size - size + 1)
+        chunk = source.read(read_size)
+        if not chunk:
+            return size, digest.hexdigest()
+        size += len(chunk)
+        if size > maximum_size:
+            raise TraupixeTooLargeError(size, maximum_size)
+        digest.update(chunk)
 
 
 def _restore_stream_position(
@@ -413,7 +438,11 @@ def load_traupixe_workbook(
     traupixe_format: TraupixeFormat = TRAUPIXE_FORMAT,
 ) -> LoadedTraupixeWorkbook:
     try:
-        source_details = _read_source_details(source, source_name)
+        source_details = _read_source_details(
+            source,
+            source_name,
+            traupixe_format.maximum_source_size,
+        )
     except OSError as error:
         raise TraupixeUnreadableError(
             f"Unable to read TRAUPIXE source: {error}"

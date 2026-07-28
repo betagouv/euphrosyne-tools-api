@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import io
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import BinaryIO
 
 import pytest
 
+import aglae.traupixe.detection as detection_module
 from aglae.traupixe.detection import (
     FileIdCodec,
+    InvalidTraupixeScopeError,
     ResolvedTraupixeFile,
     detect_traupixe_workbooks,
     resolve_traupixe_workbook,
@@ -19,12 +22,14 @@ from aglae.traupixe.exceptions import (
     TraupixeWorkbookNotFoundError,
 )
 from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
+from aglae.traupixe.format import TRAUPIXE_FORMAT
 from aglae.traupixe.loader import load_traupixe_workbook, validate_traupixe_workbook
 from aglae.traupixe.normalization import normalize_traupixe
 from clients.data_models import ProjectFileOrDirectory, RunDataTypeType
 
 VALID_CONTENT = b"valid TRAUPIXE workbook"
 NOW = datetime(2026, 7, 28, 10, 0, tzinfo=timezone.utc)
+TEST_FILE_ID_SECRET = b"s" * 32
 
 
 class FakeDataClient:
@@ -35,6 +40,7 @@ class FakeDataClient:
         ] = {}
         self.contents: dict[str, bytes] = {}
         self.downloaded_paths: list[str] = []
+        self.list_calls: list[tuple[str, str, RunDataTypeType, str | None]] = []
 
     def add_directory(
         self,
@@ -116,6 +122,7 @@ class FakeDataClient:
         data_type: RunDataTypeType,
         folder: str | None,
     ) -> list[ProjectFileOrDirectory]:
+        self.list_calls.append((project_name, run_name, data_type, folder))
         return list(
             self.directories.get(
                 (project_name, run_name, data_type, folder),
@@ -156,7 +163,7 @@ def _detect(
         project_slug,
         run_name,
         validator=_validator,
-        file_id_codec=codec or FileIdCodec("test-secret"),
+        file_id_codec=codec or FileIdCodec(TEST_FILE_ID_SECRET),
     )
 
 
@@ -165,6 +172,56 @@ def test_detection_returns_empty_result_when_no_workbook_is_available() -> None:
 
     assert result.files == ()
     assert result.default_file_id is None
+
+
+def test_file_id_codec_requires_a_256_bit_secret() -> None:
+    with pytest.raises(ValueError, match="at least 32 bytes"):
+        FileIdCodec(b"s" * 31)
+
+    FileIdCodec(TEST_FILE_ID_SECRET)
+
+
+@pytest.mark.parametrize(
+    ("project_slug", "run_name"),
+    [
+        ("../other-project", "run-01"),
+        ("project/other", "run-01"),
+        ("project-01", ".."),
+        ("project-01", r"other\run"),
+        (" project-01", "run-01"),
+        ("project-01", ""),
+    ],
+)
+def test_detection_rejects_unsafe_scope_before_listing_storage(
+    project_slug: str,
+    run_name: str,
+) -> None:
+    client = FakeDataClient()
+
+    with pytest.raises(InvalidTraupixeScopeError):
+        _detect(
+            client,
+            project_slug=project_slug,
+            run_name=run_name,
+        )
+
+    assert client.list_calls == []
+
+
+def test_resolution_rejects_unsafe_scope_before_decoding_or_listing() -> None:
+    client = FakeDataClient()
+
+    with pytest.raises(InvalidTraupixeScopeError):
+        resolve_traupixe_workbook(
+            client,  # type: ignore[arg-type]
+            "project-01",
+            "../other-run",
+            "malformed",
+            validator=_validator,
+            file_id_codec=FileIdCodec(TEST_FILE_ID_SECRET),
+        )
+
+    assert client.list_calls == []
 
 
 def test_detection_walks_both_data_types_recursively_and_filters_before_read() -> None:
@@ -236,6 +293,32 @@ def test_detection_walks_both_data_types_recursively_and_filters_before_read() -
     }
 
 
+def test_detection_bounds_actual_content_when_listed_size_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        detection_module,
+        "TRAUPIXE_FORMAT",
+        replace(TRAUPIXE_FORMAT, maximum_source_size=8),
+    )
+    client = FakeDataClient()
+    path = "raw/source.xlsx"
+    client.add_file(
+        "project-01",
+        "run-01",
+        "raw_data",
+        name="source.xlsx",
+        path=path,
+        content=b"valid-data",
+        size=5,
+    )
+
+    result = _detect(client)
+
+    assert result.files == ()
+    assert client.downloaded_paths == [path]
+
+
 def test_detection_sorts_by_mtime_descending_then_by_stable_file_identity() -> None:
     client = FakeDataClient()
     client.add_file(
@@ -288,7 +371,7 @@ def test_file_id_is_stable_opaque_and_scoped_to_project_and_run() -> None:
             name="source.xlsx",
             path=path,
         )
-    codec = FileIdCodec("test-secret")
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
 
     original = _detect(client, codec=codec).files[0].file_id
     repeated = _detect(client, codec=codec).files[0].file_id
@@ -329,7 +412,7 @@ def test_file_id_rejects_an_authenticated_payload_that_was_tampered_with() -> No
         name="source.xlsx",
         path="raw/source.xlsx",
     )
-    codec = FileIdCodec("test-secret")
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
     file_id = _detect(client, codec=codec).files[0].file_id
     replacement = "A" if file_id[-1] != "A" else "B"
 
@@ -346,7 +429,7 @@ def test_resolve_returns_the_same_validated_source_in_the_same_scope() -> None:
         name="source.xlsx",
         path=path,
     )
-    codec = FileIdCodec("test-secret")
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
     file_id = _detect(client, codec=codec).files[0].file_id
 
     resolved = resolve_traupixe_workbook(
@@ -387,7 +470,7 @@ def test_resolve_rejects_unknown_or_out_of_scope_file_id(
         name="source.xlsx",
         path="raw/source.xlsx",
     )
-    codec = FileIdCodec("test-secret")
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
     issued_file_id = _detect(client, codec=codec).files[0].file_id
 
     with pytest.raises(TraupixeWorkbookNotFoundError):
@@ -421,7 +504,7 @@ def test_resolve_detects_size_or_date_replacement(
         name="source.xlsx",
         path=path,
     )
-    codec = FileIdCodec("test-secret")
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
     file_id = _detect(client, codec=codec).files[0].file_id
     client.replace_file_entry(
         "project-01",
@@ -459,7 +542,7 @@ def test_resolve_detects_content_replacement_with_same_size_and_date() -> None:
         path=path,
         content=original,
     )
-    codec = FileIdCodec("test-secret")
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
     file_id = _detect(client, codec=codec).files[0].file_id
     client.replace_file_entry(
         "project-01",
@@ -486,6 +569,41 @@ def test_resolve_detects_content_replacement_with_same_size_and_date() -> None:
     assert error.value.actual_sha256 == hashlib.sha256(replacement).hexdigest()
 
 
+def test_resolve_detects_oversized_replacement_when_listed_size_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        detection_module,
+        "TRAUPIXE_FORMAT",
+        replace(TRAUPIXE_FORMAT, maximum_source_size=8),
+    )
+    client = FakeDataClient()
+    path = "raw/source.xlsx"
+    client.add_file(
+        "project-01",
+        "run-01",
+        "raw_data",
+        name="source.xlsx",
+        path=path,
+        content=b"valid",
+    )
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
+    file_id = _detect(client, codec=codec).files[0].file_id
+    client.contents[path] = b"valid-data"
+
+    with pytest.raises(TraupixeSourceChangedError) as error:
+        resolve_traupixe_workbook(
+            client,  # type: ignore[arg-type]
+            "project-01",
+            "run-01",
+            file_id,
+            validator=_validator,
+            file_id_codec=codec,
+        )
+
+    assert error.value.actual_sha256 == ""
+
+
 def test_resolve_distinguishes_deleted_source_from_modified_source() -> None:
     client = FakeDataClient()
     client.add_file(
@@ -495,7 +613,7 @@ def test_resolve_distinguishes_deleted_source_from_modified_source() -> None:
         name="source.xlsx",
         path="raw/source.xlsx",
     )
-    codec = FileIdCodec("test-secret")
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
     file_id = _detect(client, codec=codec).files[0].file_id
     client.directories[("project-01", "run-01", "raw_data", None)].clear()
 
@@ -521,7 +639,7 @@ def test_discovery_resolution_and_normalization_use_the_real_contract() -> None:
         path=f"raw_data/{fixture.name}",
         content=fixture.read_bytes(),
     )
-    codec = FileIdCodec("test-secret")
+    codec = FileIdCodec(TEST_FILE_ID_SECRET)
 
     discovery = detect_traupixe_workbooks(
         client,  # type: ignore[arg-type]

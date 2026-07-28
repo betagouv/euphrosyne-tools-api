@@ -140,6 +140,33 @@ def test_loader_rejects_extension_and_size_before_opening_workbook(
         )
 
 
+def test_loader_stops_after_maximum_size_plus_one_and_restores_position() -> None:
+    class TrackingBytesIO(BytesIO):
+        maximum_position = 0
+
+        def read(self, size: int | None = -1) -> bytes:
+            content = super().read(size)
+            self.maximum_position = max(self.maximum_position, self.tell())
+            return content
+
+    stream = TrackingBytesIO(b"x" * 100)
+    stream.seek(3)
+
+    with pytest.raises(TraupixeTooLargeError) as error:
+        load_traupixe_workbook(
+            stream,
+            source_name="source.xlsx",
+            traupixe_format=replace(
+                TRAUPIXE_FORMAT,
+                maximum_source_size=8,
+            ),
+        )
+
+    assert error.value.size == 9
+    assert stream.maximum_position == 9
+    assert stream.tell() == 3
+
+
 @pytest.mark.parametrize(
     ("fixture_options", "expected_code"),
     [
