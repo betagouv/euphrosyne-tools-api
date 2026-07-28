@@ -1,3 +1,11 @@
+from .detection import (
+    FileIdCodec,
+    ResolvedTraupixeFile,
+    TraupixeFile,
+    TraupixeFileDiscovery,
+    detect_traupixe_workbooks,
+    resolve_traupixe_workbook,
+)
 from .exceptions import (
     TraupixeError,
     TraupixeFormatError,
@@ -46,13 +54,17 @@ __all__ = [
     "Detector",
     "ExclusionReason",
     "ExclusionSummary",
+    "FileIdCodec",
     "Measurement",
     "MeasurementQualifier",
     "MeasurementUnit",
     "NormalizedDataset",
+    "ResolvedTraupixeFile",
     "TraupixeError",
     "TraupixeFormat",
     "TraupixeFormatError",
+    "TraupixeFile",
+    "TraupixeFileDiscovery",
     "TraupixeIncompatibleWorkbookError",
     "TraupixeNormalizationError",
     "TraupixeSourceChangedError",
@@ -63,6 +75,8 @@ __all__ = [
     "TraupixeValidationIssue",
     "TraupixeWorkbookNotFoundError",
     "WorksheetFormat",
+    "detect_traupixe_workbooks",
     "export_analysis_dataset",
+    "resolve_traupixe_workbook",
     "temporary_analysis_dataset",
 ]
