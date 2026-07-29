@@ -5,7 +5,18 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api import config, connect, data, deployments, eros, hdf5, images, infra, vms
+from api import (
+    aglae,
+    config,
+    connect,
+    data,
+    deployments,
+    eros,
+    hdf5,
+    images,
+    infra,
+    vms,
+)
 from exceptions import NoProjectMembershipException, StorageWriteNotAllowedError
 from path import IncorrectDataFilePath
 
@@ -34,6 +45,7 @@ app.include_router(infra.router)
 app.include_router(hdf5.router)
 app.include_router(images.router)
 app.include_router(eros.router)
+app.include_router(aglae.router)
 
 
 @app.exception_handler(NoProjectMembershipException)

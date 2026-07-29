@@ -18,6 +18,8 @@ def clear_dependency_caches():
     dependencies.get_infra_azure_client.cache_clear()
     dependencies.get_guacamole_client.cache_clear()
     dependencies.get_image_storage_client.cache_clear()
+    dependencies.get_traupixe_llm_client.cache_clear()
+    dependencies.get_traupixe_python_sessions_client.cache_clear()
     yield
     dependencies.get_project_data_client.cache_clear()
     dependencies.get_hot_project_data_client.cache_clear()
@@ -26,6 +28,8 @@ def clear_dependency_caches():
     dependencies.get_infra_azure_client.cache_clear()
     dependencies.get_guacamole_client.cache_clear()
     dependencies.get_image_storage_client.cache_clear()
+    dependencies.get_traupixe_llm_client.cache_clear()
+    dependencies.get_traupixe_python_sessions_client.cache_clear()
 
 
 def test_get_project_from_path_or_param_prefers_project_slug():
@@ -144,3 +148,57 @@ def test_get_hot_project_data_client_delegates_to_hot_role():
 
     assert result is hot_client
     get_project_data_client_mock.assert_called_once_with(StorageRole.HOT)
+
+
+def test_get_traupixe_llm_client_uses_albert_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("ALBERT_API_KEY", "token")
+    monkeypatch.setenv("ALBERT_MODEL", "model")
+    llm_client = object()
+
+    with patch.object(
+        dependencies,
+        "AlbertClient",
+        return_value=llm_client,
+    ) as client_class:
+        result = dependencies.get_traupixe_llm_client()
+
+    assert result is llm_client
+    client_class.assert_called_once_with(
+        api_key="token",
+        model="model",
+        timeout_seconds=dependencies.TRAUPIXE_LLM_TIMEOUT_SECONDS,
+    )
+
+
+@pytest.mark.parametrize("missing_variable", ["ALBERT_API_KEY", "ALBERT_MODEL"])
+def test_get_traupixe_llm_client_requires_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    missing_variable: str,
+):
+    monkeypatch.setenv("ALBERT_API_KEY", "token")
+    monkeypatch.setenv("ALBERT_MODEL", "model")
+    monkeypatch.delenv(missing_variable)
+
+    with pytest.raises(HTTPException) as error:
+        dependencies.get_traupixe_llm_client()
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Le service de visualisation n'est pas configuré."
+
+
+def test_get_traupixe_python_sessions_client_uses_local_execution_by_default():
+    sessions = object()
+
+    with patch.object(
+        dependencies,
+        "LocalPythonSessionsClient",
+        return_value=sessions,
+    ) as client_class:
+        result = dependencies.get_traupixe_python_sessions_client()
+
+    assert result is sessions
+    client_class.assert_called_once_with(
+        execution_timeout_seconds=dependencies.TRAUPIXE_LLM_TIMEOUT_SECONDS
+    )

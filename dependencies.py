@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException
 
+from clients.albert import AlbertClient
 from clients.azure import (
     BlobDataAzureClient,
     ConfigAzureClient,
@@ -15,11 +16,14 @@ from clients.azure import (
 from clients.azure.images import ImageStorageClient
 from clients.data_client import AbstractDataClient
 from clients.guacamole import GuacamoleClient
+from clients.local_python import LocalPythonSessionsClient
 from data_lifecycle.dependencies import fetch_project_lifecycle
 from data_lifecycle.models import LifecycleState
 from data_lifecycle.storage_resolver import resolve_backend
 from data_lifecycle.storage_types import StorageBackend, StorageRole
 from path import ProjectRef
+
+TRAUPIXE_LLM_TIMEOUT_SECONDS = 300
 
 
 @lru_cache()
@@ -97,3 +101,26 @@ def get_guacamole_client():
 @lru_cache()
 def get_image_storage_client(project_slug: str) -> ImageStorageClient:
     return ImageStorageClient(project_slug=project_slug)
+
+
+@lru_cache()
+def get_traupixe_llm_client() -> AlbertClient:
+    api_key = os.getenv("ALBERT_API_KEY")
+    model = os.getenv("ALBERT_MODEL")
+    if not api_key or not model:
+        raise HTTPException(
+            status_code=503,
+            detail="Le service de visualisation n'est pas configuré.",
+        )
+    return AlbertClient(
+        api_key=api_key,
+        model=model,
+        timeout_seconds=TRAUPIXE_LLM_TIMEOUT_SECONDS,
+    )
+
+
+@lru_cache()
+def get_traupixe_python_sessions_client() -> LocalPythonSessionsClient:
+    return LocalPythonSessionsClient(
+        execution_timeout_seconds=TRAUPIXE_LLM_TIMEOUT_SECONDS
+    )
