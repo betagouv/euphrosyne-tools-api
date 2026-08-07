@@ -35,7 +35,7 @@ def _file_logger(path: Path) -> logging.Logger:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
     logger_suffix = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:12]
-    logger = logging.getLogger(f"aglae.albert.exchanges.{logger_suffix}")
+    logger = logging.getLogger(f"data_visualization.albert.exchanges.{logger_suffix}")
     logger.setLevel(logging.INFO)
     logger.propagate = False
     if not logger.handlers:

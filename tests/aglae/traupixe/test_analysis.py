@@ -15,7 +15,8 @@ from aglae.traupixe.analysis import (
     TraupixeAnalysisError,
 )
 from clients.albert import AlbertClient, AlbertCompletion
-from clients.local_python import LocalPythonSessionsClient, PythonExecutionResult
+from clients.local_python import LocalPythonSessionsClient
+from clients.python_sessions import PythonExecutionResult
 
 
 def _final_completion(payload: dict[str, Any]) -> AlbertCompletion:

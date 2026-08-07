@@ -6,10 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api import (
-    aglae,
     config,
     connect,
     data,
+    data_visualization,
     deployments,
     eros,
     hdf5,
@@ -45,7 +45,7 @@ app.include_router(infra.router)
 app.include_router(hdf5.router)
 app.include_router(images.router)
 app.include_router(eros.router)
-app.include_router(aglae.router)
+app.include_router(data_visualization.router)
 
 
 @app.exception_handler(NoProjectMembershipException)

@@ -5,13 +5,17 @@ import time
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Protocol
+from typing import Any, Callable
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from clients.albert import AlbertClient, AlbertCompletion
-from clients.local_python import PythonExecutionResult
+from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
+from data_visualization.models import (
+    DataVisualization,
+    GeneratedVisualizationResponse,
+)
 
 from .dataset import (
     TraupixeDataset,
@@ -19,79 +23,22 @@ from .dataset import (
     serialize_traupixe_for_model,
 )
 
-RESPONSE_FORMAT_NAME = "traupixe_visualizations"
+RESPONSE_FORMAT_NAME = "data_visualizations"
 PYTHON_TOOL_NAME = "execute_python"
 WORKBOOK_FILENAME = "TRAUPIXE.xlsx"
 DATASET_FILENAME = "traupixe_data.json"
 CALCULATION_RESULT_FILENAME = "analysis_result.json"
-MAX_VISUALIZATIONS = 8
 MAX_PYTHON_EXECUTIONS = 6
 MAX_VISUALIZATION_ATTEMPTS = 3
 MAX_MODEL_DATA_BYTES = 1_000_000
 MAX_CALCULATION_RESULT_BYTES = 1_000_000
-MAX_GENERATED_OPTION_BYTES = 200_000
 ExchangeLogger = Callable[[dict[str, Any]], None]
-
-
-class PythonSessionsClient(Protocol):
-    data_directory: str
-
-    def upload_file(self, session_id: str, filename: str, content: bytes) -> None: ...
-
-    def execute(self, session_id: str, code: str) -> PythonExecutionResult: ...
-
-    def list_files(self, session_id: str) -> list[dict[str, Any]]: ...
-
-    def download_file(self, session_id: str, filename: str) -> bytes: ...
-
-    def delete_session(self, session_id: str) -> None: ...
 
 
 class PythonExecutionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     code: str = Field(min_length=1, max_length=50_000)
-
-
-class TraupixeVisualization(BaseModel):
-    """A self-contained ECharts option generated from TRAUPIXE data."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    title: str = Field(min_length=1, max_length=200)
-    option: dict[str, Any]
-
-    @model_validator(mode="after")
-    def validate_option(self) -> "TraupixeVisualization":
-        series = self.option.get("series")
-        if isinstance(series, dict):
-            series_count = 1
-        elif isinstance(series, list):
-            series_count = len(series)
-        else:
-            series_count = 0
-        if series_count == 0:
-            raise ValueError("an ECharts option requires at least one series")
-        if series_count > 100:
-            raise ValueError("an ECharts option contains too many series")
-        try:
-            encoded = json.dumps(self.option, allow_nan=False)
-        except (TypeError, ValueError) as error:
-            raise ValueError("the ECharts option must be finite JSON") from error
-        if len(encoded.encode("utf-8")) > MAX_GENERATED_OPTION_BYTES:
-            raise ValueError("the ECharts option is too large")
-        _reject_external_resources(self.option)
-        return self
-
-
-class GeneratedVisualizationResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    answer: str = Field(min_length=1, max_length=10_000)
-    visualizations: list[TraupixeVisualization] = Field(
-        min_length=1,
-        max_length=MAX_VISUALIZATIONS,
-    )
 
 
 class TraupixeAnalysisError(RuntimeError):
@@ -101,7 +48,7 @@ class TraupixeAnalysisError(RuntimeError):
 @dataclass(frozen=True)
 class TraupixeAnalysisResult:
     answer: str
-    visualizations: tuple[TraupixeVisualization, ...]
+    visualizations: tuple[DataVisualization, ...]
     elapsed_seconds: float
     albert_calls: int
     usage: tuple[dict[str, Any], ...]
@@ -362,7 +309,7 @@ class TraupixeAlbertAnalysis:
         exchange_logger: ExchangeLogger | None,
     ) -> tuple[
         GeneratedVisualizationResponse,
-        tuple[TraupixeVisualization, ...],
+        tuple[DataVisualization, ...],
     ]:
         last_error: TraupixeAnalysisError | None = None
         base_messages = deepcopy(messages)
@@ -599,6 +546,8 @@ def _generated_response(message: dict[str, Any]) -> GeneratedVisualizationRespon
         content = message["content"]
         payload = json.loads(content) if isinstance(content, str) else content
         return GeneratedVisualizationResponse.model_validate(payload)
+    except ValidationError as error:
+        raise TraupixeAnalysisError(str(error)) from error
     except (KeyError, TypeError, ValueError) as error:
         raise TraupixeAnalysisError(
             "Albert returned an invalid JSON visualization response"
@@ -613,23 +562,6 @@ def _visualization_correction_message(
         f"{error}. Corrige uniquement le JSON ECharts en conservant exactement "
         "les valeurs et libellés du résultat Python."
     )
-
-
-def _reject_external_resources(value: Any) -> None:
-    if isinstance(value, dict):
-        for item in value.values():
-            _reject_external_resources(item)
-        return
-    if isinstance(value, list):
-        for item in value:
-            _reject_external_resources(item)
-        return
-    if isinstance(value, str) and value.lstrip().casefold().startswith(
-        ("http://", "https://", "data:", "image://")
-    ):
-        raise TraupixeAnalysisError(
-            "The generated ECharts option references an external resource"
-        )
 
 
 def _emit_exchange(

@@ -1,15 +1,13 @@
-from .selection import (
+from .format import (
     MAX_SOURCE_SIZE_BYTES,
     TRAUPIXE_EXTENSION,
     TRAUPIXE_NAME_MARKER,
-    is_traupixe_workbook,
-    select_traupixe_workbooks,
+    is_traupixe_path,
 )
 
 __all__ = [
     "MAX_SOURCE_SIZE_BYTES",
     "TRAUPIXE_EXTENSION",
     "TRAUPIXE_NAME_MARKER",
-    "is_traupixe_workbook",
-    "select_traupixe_workbooks",
+    "is_traupixe_path",
 ]

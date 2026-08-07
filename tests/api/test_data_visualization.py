@@ -14,24 +14,24 @@ from fastapi.testclient import TestClient
 from aglae.traupixe.analysis import (
     TraupixeAnalysisError,
     TraupixeAnalysisResult,
-    TraupixeVisualization,
 )
-from aglae.traupixe.selection import MAX_SOURCE_SIZE_BYTES
+from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
 from clients.albert import AlbertClient
 from clients.data_client import AbstractDataClient
+from data_visualization.models import DataVisualization
 from dependencies import (
+    get_data_visualization_llm_client,
+    get_data_visualization_python_sessions_client,
     get_project_data_client,
-    get_traupixe_llm_client,
-    get_traupixe_python_sessions_client,
 )
 
 PROJECT_SLUG = "project-01"
 WORKBOOK_PATH = "projects/project-01/runs/run-01/raw_data/" "TRAUPIXE-example.xlsx"
-ENDPOINT = f"/aglae/{PROJECT_SLUG}/visualizations"
+ENDPOINT = f"/data/{PROJECT_SLUG}/visualizations"
 
 
 @pytest.fixture
-def aglae_dependencies(
+def visualization_dependencies(
     app: FastAPI,
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -42,13 +42,13 @@ def aglae_dependencies(
     llm_client = MagicMock(spec=AlbertClient)
     python_sessions = MagicMock()
     previous_data = app.dependency_overrides.get(get_project_data_client)
-    previous_llm = app.dependency_overrides.get(get_traupixe_llm_client)
+    previous_llm = app.dependency_overrides.get(get_data_visualization_llm_client)
     previous_sessions = app.dependency_overrides.get(
-        get_traupixe_python_sessions_client
+        get_data_visualization_python_sessions_client
     )
     app.dependency_overrides[get_project_data_client] = lambda: data_client
-    app.dependency_overrides[get_traupixe_llm_client] = lambda: llm_client
-    app.dependency_overrides[get_traupixe_python_sessions_client] = (
+    app.dependency_overrides[get_data_visualization_llm_client] = lambda: llm_client
+    app.dependency_overrides[get_data_visualization_python_sessions_client] = (
         lambda: python_sessions
     )
     yield data_client, llm_client, python_sessions
@@ -57,25 +57,27 @@ def aglae_dependencies(
     else:
         app.dependency_overrides[get_project_data_client] = previous_data
     if previous_llm is None:
-        app.dependency_overrides.pop(get_traupixe_llm_client, None)
+        app.dependency_overrides.pop(get_data_visualization_llm_client, None)
     else:
-        app.dependency_overrides[get_traupixe_llm_client] = previous_llm
+        app.dependency_overrides[get_data_visualization_llm_client] = previous_llm
     if previous_sessions is None:
-        app.dependency_overrides.pop(get_traupixe_python_sessions_client, None)
+        app.dependency_overrides.pop(
+            get_data_visualization_python_sessions_client, None
+        )
     else:
-        app.dependency_overrides[get_traupixe_python_sessions_client] = (
+        app.dependency_overrides[get_data_visualization_python_sessions_client] = (
             previous_sessions
         )
 
 
 @pytest.fixture(autouse=True)
 def albert_exchange_log_writer() -> Iterator[MagicMock]:
-    with patch("api.aglae.write_albert_exchange") as writer:
+    with patch("api.data_visualization.write_albert_exchange") as writer:
         yield writer
 
 
-def _visualization() -> TraupixeVisualization:
-    return TraupixeVisualization.model_validate(
+def _visualization() -> DataVisualization:
+    return DataVisualization.model_validate(
         {
             "title": "Fer",
             "option": {
@@ -115,11 +117,11 @@ def _post(client: TestClient, **overrides: object):
 
 def test_creates_a_visualization_from_the_selected_project_file(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
     albert_exchange_log_writer: MagicMock,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    data_client, llm_client, python_sessions = aglae_dependencies
+    data_client, llm_client, python_sessions = visualization_dependencies
     analysis = MagicMock()
 
     def run(
@@ -146,9 +148,9 @@ def test_creates_a_visualization_from_the_selected_project_file(
     analysis.run.side_effect = run
     with (
         patch(
-            "api.aglae.TraupixeAlbertAnalysis", return_value=analysis
+            "api.data_visualization.TraupixeAlbertAnalysis", return_value=analysis
         ) as analysis_class,
-        caplog.at_level(logging.INFO, logger="api.aglae"),
+        caplog.at_level(logging.INFO, logger="api.data_visualization"),
     ):
         response = _post(client)
 
@@ -159,12 +161,11 @@ def test_creates_a_visualization_from_the_selected_project_file(
     assert payload["answer"] == "Réponse du modèle"
     assert payload["visualizations"] == [_visualization().model_dump(mode="json")]
     assert "visualization" not in payload
-    assert "model_variant_failed" not in payload
     data_client.download_run_file.assert_called_once_with(WORKBOOK_PATH)
     analysis_class.assert_called_once_with(llm_client, python_sessions)
     analysis.run.assert_called_once()
-    assert "traupixe_visualization_exchange" in caplog.text
-    assert "traupixe_visualization_completed" in caplog.text
+    assert "data_visualization_exchange" in caplog.text
+    assert "data_visualization_completed" in caplog.text
     assert "total_tokens=300" in caplog.text
     visualization_log = next(
         record.message
@@ -187,9 +188,9 @@ def test_creates_a_visualization_from_the_selected_project_file(
 
 def test_rejects_a_file_from_another_project(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
-    data_client, _, _ = aglae_dependencies
+    data_client, _, _ = visualization_dependencies
 
     response = _post(
         client,
@@ -208,12 +209,12 @@ def test_rejects_a_file_from_another_project(
         "projects/project-01/runs/run-01/raw_data/../TRAUPIXE-example.xlsx",
     ],
 )
-def test_rejects_files_outside_the_traupixe_scope(
+def test_rejects_files_outside_the_current_traupixe_scope(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
     path: str,
 ) -> None:
-    data_client, _, _ = aglae_dependencies
+    data_client, _, _ = visualization_dependencies
 
     response = _post(client, path=path)
 
@@ -223,9 +224,9 @@ def test_rejects_files_outside_the_traupixe_scope(
 
 def test_rejects_an_oversized_workbook_before_reading_it(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
-    data_client, _, _ = aglae_dependencies
+    data_client, _, _ = visualization_dependencies
     workbook_file = MagicMock()
     workbook_file.content_length = MAX_SOURCE_SIZE_BYTES + 1
     data_client.download_run_file.return_value = workbook_file
@@ -239,9 +240,9 @@ def test_rejects_an_oversized_workbook_before_reading_it(
 
 def test_returns_a_simple_error_when_the_workbook_cannot_be_downloaded(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
-    data_client, _, _ = aglae_dependencies
+    data_client, _, _ = visualization_dependencies
     data_client.download_run_file.side_effect = RuntimeError("storage details")
 
     response = _post(client)
@@ -256,16 +257,16 @@ def test_returns_a_simple_error_when_the_workbook_cannot_be_downloaded(
 
 def test_returns_debug_information_when_the_model_response_is_invalid(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
     albert_exchange_log_writer: MagicMock,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with (
         patch(
-            "api.aglae.TraupixeAlbertAnalysis.run",
+            "api.data_visualization.TraupixeAlbertAnalysis.run",
             side_effect=TraupixeAnalysisError("invalid analysis plan"),
         ),
-        caplog.at_level(logging.INFO, logger="api.aglae"),
+        caplog.at_level(logging.INFO, logger="api.data_visualization"),
     ):
         response = _post(client)
 
@@ -291,15 +292,15 @@ def test_returns_debug_information_when_the_model_response_is_invalid(
 
 def test_hides_workbook_parser_details_from_the_client(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with (
         patch(
-            "api.aglae.TraupixeAlbertAnalysis.run",
+            "api.data_visualization.TraupixeAlbertAnalysis.run",
             side_effect=ValueError("private path: /tmp/workbook.xlsx"),
         ),
-        caplog.at_level(logging.INFO, logger="api.aglae"),
+        caplog.at_level(logging.INFO, logger="api.data_visualization"),
     ):
         response = _post(client)
 
@@ -313,10 +314,10 @@ def test_hides_workbook_parser_details_from_the_client(
 
 def test_returns_a_simple_error_when_the_model_times_out(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
     with patch(
-        "api.aglae.TraupixeAlbertAnalysis.run",
+        "api.data_visualization.TraupixeAlbertAnalysis.run",
         side_effect=httpx.ReadTimeout("timeout"),
     ):
         response = _post(client)
@@ -330,12 +331,12 @@ def test_returns_a_simple_error_when_the_model_times_out(
 
 def test_requires_project_membership(
     client: TestClient,
-    aglae_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
-    data_client, _, _ = aglae_dependencies
+    data_client, _, _ = visualization_dependencies
 
     response = client.post(
-        "/aglae/project-02/visualizations",
+        "/data/project-02/visualizations",
         json={
             "path": (
                 "projects/project-02/runs/run-01/raw_data/" "TRAUPIXE-example.xlsx"

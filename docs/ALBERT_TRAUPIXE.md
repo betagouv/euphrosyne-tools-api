@@ -1,9 +1,10 @@
-# Visualisation Albert / TRAUPIXE
+# Visualisation de données — support TRAUPIXE
 
 ## Version actuelle
 
-Cette première version permet de questionner un classeur TRAUPIXE depuis le cahier
-de laboratoire et d'afficher les visualisations proposées par Albert.
+Le service de visualisation est indépendant du format de données. Cette première
+version permet de questionner un classeur TRAUPIXE depuis le cahier de laboratoire
+et d'afficher les visualisations proposées par Albert.
 
 Le périmètre est volontairement limité :
 
@@ -113,7 +114,7 @@ le remplacement des valeurs nulles.
 ## Endpoint
 
 ```http
-POST /aglae/{project_slug}/visualizations
+POST /data/{project_slug}/visualizations
 Content-Type: application/json
 
 {

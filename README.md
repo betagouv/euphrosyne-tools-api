@@ -27,8 +27,8 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 | DATA_PROJECTS_LOCATION_PREFIX     | Optionnel. Préfixe du chemin de base des projets pour HOT.                                                                                                                                         |
 | AZURE_STORAGE_DATA_CONTAINER      | Nom du container Blob utilisé pour les données projets (requis si `DATA_BACKEND=azure_blob`).                                                                                                      |
 | AZURE_STORAGE_DATA_CONTAINER_COOL | Nom du container Blob utilisé pour les données projets COOL (requis si `DATA_BACKEND_COOL=azure_blob`).                                                                                            |
-| ALBERT_API_KEY                    | Clé API Albert utilisée par l'endpoint de visualisation TRAUPIXE.                                                                                                                               |
-| ALBERT_MODEL                      | Modèle Albert utilisé par l'endpoint de visualisation TRAUPIXE. Exemple : `openai/gpt-oss-120b`.                                                                                                  |
+| ALBERT_API_KEY                    | Clé API Albert utilisée par le service de visualisation de données.                                                                                                                               |
+| ALBERT_MODEL                      | Modèle Albert utilisé par le service de visualisation de données. Exemple : `openai/gpt-oss-120b`.                                                                                                |
 | AZURE_IMAGE_GALLERY               | Nom de la _Azure compute gallery_ qui stock les différentes images                                                                                                                                 |
 | AZURE_IMAGE_DEFINITION            | Nom de la _VM image definition_ qui est l'image pré-configurée pour les VM Euphrosyne                                                                                                              |
 | CORS_ALLOWED_ORIGIN               | Origines des frontends autorisées à utiliser l'API. Séparer les origines par des espaces.                                                                                                          |
@@ -55,9 +55,11 @@ Le préfixe `DATA_PROJECTS_LOCATION_PREFIX` s'applique au chemin de base des pro
 
 Pour la documentation technique du stockage HOT/COOL, du routage par cycle de vie et des opérations COOL/RESTORE, voir [DATA_LIFECYCLE.md](./DATA_LIFECYCLE.md).
 
-## Visualisation Albert / TRAUPIXE
+## Visualisation de données avec Albert
 
-Le périmètre, l'architecture et les prochains jalons sont décrits dans
+Le visualiseur expose un contrat générique, mais n'accepte actuellement que les
+fichiers TRAUPIXE. Le périmètre de ce premier format, l'architecture et les
+prochains jalons sont décrits dans
 [ALBERT_TRAUPIXE.md](./docs/ALBERT_TRAUPIXE.md).
 
 L'endpoint utilise une interprétation TRAUPIXE minimale des concentrations,
@@ -71,7 +73,7 @@ L'endpoint synchrone authentifié utilise le modèle Albert configuré par
 `ALBERT_API_KEY` et `ALBERT_MODEL` :
 
 ```http
-POST /aglae/{project_slug}/visualizations
+POST /data/{project_slug}/visualizations
 Content-Type: application/json
 
 {

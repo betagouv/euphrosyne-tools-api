@@ -23,7 +23,7 @@ from data_lifecycle.storage_resolver import resolve_backend
 from data_lifecycle.storage_types import StorageBackend, StorageRole
 from path import ProjectRef
 
-TRAUPIXE_LLM_TIMEOUT_SECONDS = 300
+DATA_VISUALIZATION_TIMEOUT_SECONDS = 300
 
 
 @lru_cache()
@@ -104,7 +104,7 @@ def get_image_storage_client(project_slug: str) -> ImageStorageClient:
 
 
 @lru_cache()
-def get_traupixe_llm_client() -> AlbertClient:
+def get_data_visualization_llm_client() -> AlbertClient:
     api_key = os.getenv("ALBERT_API_KEY")
     model = os.getenv("ALBERT_MODEL")
     if not api_key or not model:
@@ -115,12 +115,12 @@ def get_traupixe_llm_client() -> AlbertClient:
     return AlbertClient(
         api_key=api_key,
         model=model,
-        timeout_seconds=TRAUPIXE_LLM_TIMEOUT_SECONDS,
+        timeout_seconds=DATA_VISUALIZATION_TIMEOUT_SECONDS,
     )
 
 
 @lru_cache()
-def get_traupixe_python_sessions_client() -> LocalPythonSessionsClient:
+def get_data_visualization_python_sessions_client() -> LocalPythonSessionsClient:
     return LocalPythonSessionsClient(
-        execution_timeout_seconds=TRAUPIXE_LLM_TIMEOUT_SECONDS
+        execution_timeout_seconds=DATA_VISUALIZATION_TIMEOUT_SECONDS
     )

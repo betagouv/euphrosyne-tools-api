@@ -5,7 +5,7 @@ import stat
 from pathlib import Path
 from uuid import uuid4
 
-from aglae.exchange_log import write_albert_exchange
+from data_visualization.exchange_log import write_albert_exchange
 
 
 def test_writes_complete_jsonl_exchanges_outside_the_project(tmp_path: Path) -> None:
@@ -17,7 +17,7 @@ def test_writes_complete_jsonl_exchanges_outside_the_project(tmp_path: Path) -> 
             "tool_calls": [
                 {
                     "function": {
-                        "name": "build_traupixe_visualizations",
+                        "name": "execute_python",
                         "arguments": {"option": {"series": [{"data": [1, 2]}]}},
                     }
                 }

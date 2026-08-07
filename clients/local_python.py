@@ -5,10 +5,11 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
+
+from clients.python_sessions import PythonExecutionResult
 
 OUTPUT_MAX_LENGTH = 20_000
 PASSTHROUGH_ENVIRONMENT = (
@@ -28,24 +29,8 @@ class LocalPythonExecutionError(RuntimeError):
     """Raised when a local execution session cannot be used."""
 
 
-@dataclass(frozen=True)
-class PythonExecutionResult:
-    status: str
-    stdout: str
-    stderr: str
-    duration_ms: int
-
-    def tool_output(self) -> dict[str, Any]:
-        return {
-            "status": self.status,
-            "stdout": self.stdout,
-            "stderr": self.stderr,
-            "execution_time_ms": self.duration_ms,
-        }
-
-
 class LocalPythonSessionsClient:
-    """Execute generated Python locally during TRAUPIXE development."""
+    """Execute generated Python locally during visualization development."""
 
     data_directory = "."
 
@@ -57,7 +42,7 @@ class LocalPythonSessionsClient:
         safe_name = _safe_filename(filename)
         directory = self._sessions.get(session_id)
         if directory is None:
-            directory = TemporaryDirectory(prefix="traupixe-local-")
+            directory = TemporaryDirectory(prefix="data-visualization-local-")
             self._sessions[session_id] = directory
         Path(directory.name, safe_name).write_bytes(content)
 
