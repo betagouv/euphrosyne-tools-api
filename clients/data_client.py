@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import abc
 import io
+from collections.abc import AsyncIterator
 from functools import wraps
-from typing import AsyncIterator
 
 from data_lifecycle.storage_types import StorageRole
 from exceptions import StorageWriteNotAllowedError
@@ -207,5 +207,5 @@ class AbstractDataClient(WriteMethodsGuardClass):
             for method in write_methods:
                 if permission.get(method, False):
                     raise StorageWriteNotAllowedError(
-                        f"Write permissions are not allowed for storage role {self.storage_role} in {type(self).__name__}."  # noqa: E501
+                        f"Write permissions are not allowed for storage role {self.storage_role} in {type(self).__name__}."
                     )

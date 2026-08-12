@@ -7,7 +7,8 @@ shut it down and destroy the connection in Guacamole
 
 import argparse
 import asyncio
-from typing import Any, Coroutine
+from collections.abc import Coroutine
+from typing import Any
 
 from clients.guacamole import GuacamoleClient
 from scripts.delete_vm import delete_vm
@@ -38,14 +39,9 @@ async def kill_unused_vm():
         logger.info("No VM to shutdown")
         return
 
-    tasks_to_shutdown: list[Coroutine[Any, Any, None]] = list(
-        map(
-            lambda project_name: async_delete_vm(
+    tasks_to_shutdown: list[Coroutine[Any, Any, None]] = [async_delete_vm(
                 project_name, guacamole_client=guacamole_client
-            ),
-            projects_to_shutdown,
-        )
-    )
+            ) for project_name in projects_to_shutdown]
 
     await asyncio.gather(*tasks_to_shutdown)
     logger.info("Done shutting down vm")

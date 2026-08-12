@@ -29,7 +29,7 @@ def fixture_client():
 def test_list_image_definitions(client: TestClient):
     app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         spec=VMAzureClient,
-        **{"list_vm_image_definitions": MagicMock(return_value=["image1", "image2"])}
+        list_vm_image_definitions=MagicMock(return_value=["image1", "image2"])
     )
 
     response = client.get("vms/image-definitions")
@@ -40,7 +40,7 @@ def test_list_image_definitions(client: TestClient):
 
 def test_list_vms(client: TestClient):
     app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
-        spec=VMAzureClient, **{"list_vms": MagicMock(return_value=["vm1", "vm2"])}
+        spec=VMAzureClient, list_vms=MagicMock(return_value=["vm1", "vm2"])
     )
     response = client.get("vms/")
 
@@ -51,20 +51,20 @@ def test_list_vms(client: TestClient):
 def test_list_vms_created_before(client: TestClient):
     list_vms_mock = MagicMock()
     app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
-        spec=VMAzureClient, **{"list_vms": list_vms_mock}
+        spec=VMAzureClient, list_vms=list_vms_mock
     )
-    response = client.get("vms?created_before=2022-01-01T00:00:00")
+    response = client.get("vms?created_before=2022-01-01T00:00:00Z")
 
     assert response.status_code == 200
     assert list_vms_mock.call_args.kwargs["created_before"] == datetime.datetime(
-        2022, 1, 1, 0, 0
+        2022, 1, 1, 0, 0, tzinfo=datetime.timezone.utc
     )
 
 
 def test_get_vm(client: TestClient):
     app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
         spec=VMAzureClient,
-        **{"get_vm": MagicMock(return_value=MagicMock(provisioning_state="state"))}
+        get_vm=MagicMock(return_value=MagicMock(provisioning_state="state"))
     )
 
     response = client.get("vms/project_name")
@@ -75,7 +75,7 @@ def test_get_vm(client: TestClient):
 
 def test_get_vm_not_found(client: TestClient):
     app.dependency_overrides[get_vm_azure_client] = lambda: MagicMock(
-        spec=VMAzureClient, **{"get_vm": MagicMock(side_effect=VMNotFound)}
+        spec=VMAzureClient, get_vm=MagicMock(side_effect=VMNotFound)
     )
 
     response = client.get("vms/project_name")

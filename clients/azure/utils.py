@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator, Iterable, TypeVar, cast
+from collections.abc import AsyncIterator, Iterable
+from typing import TypeVar, cast
 
 _T = TypeVar("_T")
 

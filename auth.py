@@ -1,6 +1,6 @@
 import os
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
@@ -45,12 +45,12 @@ class User(BaseModel):
 
 
 async def get_current_user(
-    jwt_token: Optional[str] = Depends(oauth2_scheme),
-    api_token: Optional[str] = Depends(api_key_header_auth),
+    jwt_token: str | None = Depends(oauth2_scheme),
+    api_token: str | None = Depends(api_key_header_auth),
 ):
     """Defines two way to authenticate. Default is JWT token. API token can be used -
     for example for development or endpoint test via OpenAPI - by setting API_TOKEN env variable.
-    """  # noqa: E501
+    """
     if not jwt_token:
         if os.getenv("API_TOKEN") and api_token == os.getenv("API_TOKEN"):
             return User(id="0", projects=[], is_admin=True)
@@ -83,7 +83,7 @@ def _is_euphrosyne_backend(jwt_token: str):
     return payload.get("user_id") == EUPHROSYNE_TOKEN_USER_ID_VALUE
 
 
-def verify_is_euphrosyne_backend(jwt_token: Optional[str] = Depends(oauth2_scheme)):
+def verify_is_euphrosyne_backend(jwt_token: str | None = Depends(oauth2_scheme)):
     """For euphrosyne - euphro tools communication, verify JWT token."""
     if not jwt_token:
         raise JWT_CREDENTIALS_EXCEPTION
@@ -92,7 +92,7 @@ def verify_is_euphrosyne_backend(jwt_token: Optional[str] = Depends(oauth2_schem
 
 
 def verify_is_euphrosyne_backend_or_admin(
-    jwt_token: Optional[str] = Depends(oauth2_scheme),
+    jwt_token: str | None = Depends(oauth2_scheme),
 ):
     """For euphrosyne - euphro tools communication, verify JWT token or admin user."""
     if not jwt_token:
@@ -109,7 +109,7 @@ def verify_is_euphrosyne_backend_or_admin(
     raise HTTPException(status_code=403, detail="Not allowed")
 
 
-def verify_has_azure_permission(api_key: Optional[str] = Depends(api_key_query_auth)):
+def verify_has_azure_permission(api_key: str | None = Depends(api_key_query_auth)):
     """
     For euphrosyne tools - Azure communication. Token is passed in the URL and checked
     aginst an Azure key vault.
@@ -193,7 +193,9 @@ class ExtraPayloadTokenGetter:
 
 def _generate_jwt_token(payload: dict[str, Any], expiration: datetime | None = None):
     if expiration is None:
-        expiration = datetime.now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expiration = datetime.now(timezone.utc) + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
     payload = {
         "exp": expiration,
         **payload,

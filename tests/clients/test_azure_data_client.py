@@ -1,6 +1,6 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -191,9 +191,8 @@ def test_get_project_directory_stats_raises_when_fileshare_root_is_missing(
     with patch(
         "clients.azure.data.ShareDirectoryClient.from_connection_string",
         return_value=root_dir_client,
-    ):
-        with pytest.raises(ProjectDataDirectoryNotFound):
-            client.get_project_directory_stats("project-01")
+    ), pytest.raises(ProjectDataDirectoryNotFound):
+        client.get_project_directory_stats("project-01")
 
 
 def test_get_project_directory_stats_raises_when_fileshare_child_is_missing(
@@ -213,9 +212,8 @@ def test_get_project_directory_stats_raises_when_fileshare_child_is_missing(
     with patch(
         "clients.azure.data.ShareDirectoryClient.from_connection_string",
         return_value=root_dir_client,
-    ):
-        with pytest.raises(ProjectDataDirectoryNotFound):
-            client.get_project_directory_stats("project-01")
+    ), pytest.raises(ProjectDataDirectoryNotFound):
+        client.get_project_directory_stats("project-01")
 
 
 def test_get_project_documents_with_prefix(
@@ -228,7 +226,7 @@ def test_get_project_documents_with_prefix(
             for p in [
                 ProjectFile(
                     name="file-1.txt",
-                    last_modified=datetime(2022, 6, 22, 11, 22, 33),
+                    last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc),
                     size=222,
                     path="/prefix/project/documents/file-1.txt",
                 )
@@ -539,13 +537,13 @@ def test_list_files_recursive_with_detailed_info(
     share_file_client.get_file_properties.side_effect = [
         azure_factories.file_properties_factory(
             name="file-1.txt",
-            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc),
             size=123,
             path="/file-1.txt",
         ),
         azure_factories.file_properties_factory(
             name="file-3.txt",
-            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc),
             size=123,
             path="directory-1/file-2.txt",
         ),
@@ -767,7 +765,7 @@ def test_is_project_data_available_when_run_dir_empty(
     ), patch.object(
         ShareDirectoryClient,
         "get_subdirectory_client",
-        return_value=MagicMock(list_directories_and_files=lambda: []),
+        return_value=MagicMock(list_directories_and_files=list),
     ):
         result = client.is_project_data_available("test_project")
         assert not result

@@ -67,11 +67,11 @@ class RunDataTypeRef(RunRef):
     @staticmethod
     def validate_path(path: Path):
         if not re.match(
-            rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data|HDF5)",  # noqa: E501
+            rf"^{_get_projects_path()}\/[\w\- ]+\/runs\/[\w\- ]+\/(raw_data|processed_data|HDF5)",
             str(path),
         ):
             raise IncorrectDataFilePath(
-                "path must start with {projects_path_prefix}/<project_slug>/runs/<run_name>/(processed_data|raw_data|HDF5)/"  # noqa: E501
+                "path must start with {projects_path_prefix}/<project_slug>/runs/<run_name>/(processed_data|raw_data|HDF5)/"
             )
 
 

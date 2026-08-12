@@ -3,7 +3,6 @@ import hashlib
 import hmac
 import os
 from datetime import datetime, timedelta
-from typing import Optional
 
 import requests
 from dotenv import load_dotenv
@@ -98,7 +97,7 @@ class GuacamoleClient:
         username: str,
         password: str,
         port: str = "3389",
-        vm_size: Optional[VMSizes] = None,
+        vm_size: VMSizes | None = None,
     ):  # pylint: disable=too-many-arguments
         """Creates a connection and returns its ID."""
         token = self._get_admin_token()
@@ -134,7 +133,7 @@ class GuacamoleClient:
             timeout=5,
         )
         if response.ok:
-            return None
+            return
         if response.status_code == 404:
             raise GuacamoleConnectionNotFound()
         raise GuacamoleHttpError(f"{response.text} [{response.status_code}]")
@@ -180,21 +179,20 @@ class GuacamoleClient:
                 username=user_id, key=os.environ["GUACAMOLE_SECRET_KEY"]
             ),
         )
-        bytes_to_encode = bytes("\0".join([connection_id, "c", "mysql"]), "utf-8")
+        bytes_to_encode = bytes(f"{connection_id}\x00c\x00mysql", "utf-8")
         client_identifier = base64.b64encode(bytes_to_encode).decode("utf-8")
-        return f"{os.environ['GUACAMOLE_ROOT_URL']}/#/client/{client_identifier}?token={token}"  # noqa: E501
+        return f"{os.environ['GUACAMOLE_ROOT_URL']}/#/client/{client_identifier}?token={token}"
 
     def get_connections_and_groups(self) -> GuacamoleConnectionsAndGroupsResponse:
         token = self._get_admin_token()
 
         resp = requests.get(
-            f"{self._guamacole_root_url}/api/session/data/mysql/connectionGroups/ROOT/tree?token={token}",  # noqa: E501
+            f"{self._guamacole_root_url}/api/session/data/mysql/connectionGroups/ROOT/tree?token={token}",
             timeout=5,
         )
 
         if not resp.ok:
-            # pylint: disable=broad-exception-raised
-            raise Exception(
+            raise GuacamoleHttpError(
                 f"Error getting response ({resp.status_code}): {resp.json()['message']}"
             )
 
@@ -260,7 +258,7 @@ class GuacamoleClient:
                     # Nobody has been connected to this VM
                     continue
 
-                # Make sure the `now` and `connection.last_active` are on the same timezone # noqa: E501
+                # Make sure the `now` and `connection.last_active` are on the same timezone
                 if from_date is None:
                     from_date = datetime.now(connection.last_active.tzinfo)
 

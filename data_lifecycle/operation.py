@@ -20,11 +20,11 @@ from .models import (
     FromDataDeletionOperation,
     FromDataDeletionStatus,
     LifecycleOperation,
-    LifecycleState,
     LifecycleOperationProgressStatus,
     LifecycleOperationStatus,
     LifecycleOperationStatusView,
     LifecycleOperationType,
+    LifecycleState,
 )
 from .storage_resolver import resolve_backend_client, resolve_location
 from .storage_types import StorageRole
@@ -526,7 +526,7 @@ def _execute_from_data_deletion(
         client = resolve_backend_client(deletion.storage_role)
         client.delete_project_directory(deletion.project_slug)
         succeeded = True
-    except Exception as exc:  # pylint: disable=broad-except
+    except Exception as exc:  # noqa: BLE001 - operation failures are reported by callback
         message = str(exc) or exc.__class__.__name__
         callback.from_data_deletion_status = FromDataDeletionStatus.FAILED
         callback.error = FromDataDeletionError(
@@ -617,7 +617,7 @@ def _execute_lifecycle_operation(
             operation=operation,
         )
         operation.status = LifecycleOperationStatus.SUCCEEDED
-    except Exception as exc:  # pylint: disable=broad-except
+    except Exception as exc:  # noqa: BLE001 - operation failures are reported by callback
         operation.status = LifecycleOperationStatus.FAILED
         operation.error_message = str(exc)
         operation.error_details = _build_error_details(

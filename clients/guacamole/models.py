@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -16,15 +15,15 @@ class GuacamoleAuthGenerateTokenResponse(BaseModel):
 
 # Connections
 class GuacamoleConnectionsListDataAttributes(BaseModel):
-    guacd_encryption: Optional[str] = Field(None, alias="guacd-encryption")
-    failover_only: Optional[str] = Field(None, alias="failover-only")
-    weight: Optional[str] = None
-    max_connections: Optional[str] = Field(None, alias="max-connections")
-    max_connections_per_user: Optional[str] = Field(
+    guacd_encryption: str | None = Field(None, alias="guacd-encryption")
+    failover_only: str | None = Field(None, alias="failover-only")
+    weight: str | None = None
+    max_connections: str | None = Field(None, alias="max-connections")
+    max_connections_per_user: str | None = Field(
         None, alias="max-connections-per-user"
     )
-    guacd_hostname: Optional[str] = Field(None, alias="guacd-hostname")
-    guacd_port: Optional[str] = Field(None, alias="guacd-port")
+    guacd_hostname: str | None = Field(None, alias="guacd-hostname")
+    guacd_port: str | None = Field(None, alias="guacd-port")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -35,7 +34,7 @@ class GuacamoleConnectionsListData(BaseModel):
     parent_identifier: str = Field("", alias="parentIdentifier")
     protocol: str
     active_connections: int = Field(0, alias="activeConnections")
-    last_active: Optional[datetime] = Field(None, alias="lastActive")
+    last_active: datetime | None = Field(None, alias="lastActive")
     attributes: GuacamoleConnectionsListDataAttributes
 
     model_config = ConfigDict(populate_by_name=True)
@@ -54,8 +53,8 @@ class GuacamoleConnectionsListResponse(RootModel):
 
 
 class GuacamoleConnectionGroupAttribute(BaseModel):
-    max_connections: Optional[str] = Field(None, alias="max-connections")
-    max_connections_per_user: Optional[str] = Field(
+    max_connections: str | None = Field(None, alias="max-connections")
+    max_connections_per_user: str | None = Field(
         None, alias="max-connections-per-user"
     )
     enable_session_affinity: str = Field("", alias="enable-session-affinity")
@@ -197,7 +196,7 @@ class GuacamoleUserAttributes(BaseModel):
     access_window_end: str = Field("", alias="access-window-end")
     valid_from: str = Field("", alias="valid-from")
     valid_until: str = Field("", alias="valid-until")
-    timezone: Optional[str] = Field(None)
+    timezone: str | None = Field(None)
     guac_full_name: str = Field("", alias="guac-full-name")
     guac_organization: str = Field("", alias="guac-organization")
     guac_organization_role: str = Field("", alias="guac-organization-role")
