@@ -6,7 +6,6 @@ import io
 import os
 from datetime import datetime, timedelta, timezone
 from io import SEEK_CUR, SEEK_END, SEEK_SET
-from typing import TYPE_CHECKING
 
 import sentry_sdk
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -28,9 +27,6 @@ from dotenv import load_dotenv
 from slugify import slugify
 
 from data_lifecycle.storage_types import StorageRole
-
-if TYPE_CHECKING:
-    pass
 
 # pylint: disable=wrong-import-position
 from ..data_client import AbstractDataClient, ProjectDataDirectoryNotFound
@@ -89,9 +85,9 @@ class AzureFileShareFile(io.BytesIO):
         self.share_name = share_name
         self.directory_name = directory_name
         self.file_name = file_name
+        self._read_chunk_cached = functools.lru_cache()(self._read_chunk)
         super().__init__()
 
-    @functools.lru_cache
     def _read_chunk(self, start_range: int, end_range: int) -> tuple[bytes, int]:
         file = self.file_service.get_file_to_bytes(
             self.share_name,
@@ -106,7 +102,7 @@ class AzureFileShareFile(io.BytesIO):
         if not size:
             return b""
         end_range = self._offset + size - 1 if size > -1 else None
-        content, file_content_length = self._read_chunk(self._offset, end_range)
+        content, file_content_length = self._read_chunk_cached(self._offset, end_range)
         self._offset = (
             self._offset + size if end_range is not None else file_content_length
         )
@@ -440,14 +436,14 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
             directory_name=dir_path,
             file_name=file_name,
             permission=permission,
-            expiry=datetime.utcnow() + timedelta(minutes=5),
-            start=datetime.utcnow(),
+            expiry=datetime.now(timezone.utc) + timedelta(minutes=5),
+            start=datetime.now(timezone.utc),
         )
         # pylint: disable=line-too-long
         return f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{dir_path}/{file_name}?{sas_params}"
 
     def init_project_directory(self, project_name: str):
-        """Create project folder on Fileshare with empty children folders (documents, runs)."""  # noqa: E501
+        """Create project folder on Fileshare with empty children folders (documents, runs)."""
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=self.share_name,

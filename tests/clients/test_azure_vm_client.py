@@ -242,19 +242,9 @@ def test_create_image_without_version(client: VMAzureClient):
 @patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
 def test_create_image__image_definition_creation(client: VMAzureClient):
     default_image_mock = MagicMock(
-        **{
-            "location": "location",
-            "os_state": "os_state",
-            "os_type": "os_type",
-            "hyper_v_generation": "hyper_v_generation",
-            "identifier": MagicMock(
-                **{
-                    "publisher": "publisher",
-                    "offer": "offer",
-                    "sku": "sku",
-                }
-            ),
-        }
+        location="location", os_state="os_state", os_type="os_type", hyper_v_generation="hyper_v_generation", identifier=MagicMock(
+                publisher="publisher", offer="offer", sku="sku"
+            )
     )
 
     def effect(*args, **kwargs):
@@ -383,11 +373,14 @@ def test_get_deployment_raises_if_deployment_absent(client: VMAzureClient):
 def test_get_latest_ongoing_deployment_for_project(client: VMAzureClient):
     ongoing_deployments = [
         MagicMock(
-            properties=MagicMock(timestamp=datetime.datetime.now()),
+            properties=MagicMock(
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            ),
         ),
         MagicMock(
             properties=MagicMock(
-                timestamp=datetime.datetime.now() + datetime.timedelta(days=1)
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+                + datetime.timedelta(days=1)
             ),
         ),
     ]
@@ -426,7 +419,7 @@ def test_get_ongoing_deployments(client: VMAzureClient):
     assert method_mock.call_count == len(statuses)
     filters_args = [call.kwargs["filter"] for call in method_mock.call_args_list]
     assert all(
-        [f"provisioningState eq '{status}'" in filters_args for status in statuses]
+        f"provisioningState eq '{status}'" in filters_args for status in statuses
     )
 
 

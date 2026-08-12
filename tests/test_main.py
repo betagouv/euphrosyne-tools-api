@@ -171,7 +171,7 @@ def test_list_run_data(app: FastAPI, client: TestClient, data_type: tuple[str]):
         for i in range(4):
             yield ProjectFileOrDirectory(
                 name=f"file-{i}.txt",
-                last_modified=datetime(2022, 6, 22, 11, 22, 33),
+                last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc),
                 size=i * 222,
                 path=f"somepath/file-{i}.txt",
                 type="file",

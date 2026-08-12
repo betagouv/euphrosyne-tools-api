@@ -29,7 +29,7 @@ class InfraAzureClient:
         settings = self.list_guacamole_webapp_settings()
         if settings["GUACD_HOSTNAME"] == new_hostname:
             logger.info("guacd hostname in guacamole is ok.")
-            return None
+            return
         logger.warning("guacd hostname in guacamole is NOT ok. Updating...")
         settings["GUACD_HOSTNAME"] = new_hostname
         self._update_webapp_settings(
@@ -37,7 +37,7 @@ class InfraAzureClient:
         )
         self.restart_guacamole_weppapp()
         logger.warning("hostname has been updated and app restarted.")
-        return None
+        return
 
     def list_guacamole_webapp_settings(self) -> dict[str, str]:
         return self._list_webapp_settings(

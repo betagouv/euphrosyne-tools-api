@@ -5,7 +5,6 @@ import os
 import posixpath
 import time
 
-
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import (
     BlobPrefix,
@@ -16,9 +15,9 @@ from azure.storage.blob import (
     generate_container_sas,
 )
 
+from ..data_models import ProjectFileOrDirectory
 from ._storage import BaseStorageAzureClient
 from .data import FolderCreationError
-from ..data_models import ProjectFileOrDirectory
 
 
 class BlobAzureClient(BaseStorageAzureClient):

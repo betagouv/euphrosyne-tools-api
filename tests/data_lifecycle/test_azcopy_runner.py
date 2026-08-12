@@ -4,7 +4,7 @@ from unittest import mock
 
 import pytest
 
-import data_lifecycle.azcopy_runner as azcopy_runner
+from data_lifecycle import azcopy_runner
 
 
 class FakePopen:

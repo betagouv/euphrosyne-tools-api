@@ -29,7 +29,7 @@ from exceptions import NoProjectMembershipException
 
 def _generate_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=15)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, "secret", algorithm=ALGORITHM)
     return encoded_jwt
@@ -101,7 +101,7 @@ async def test_jwt_takes_precedence_over_api_key(monkeypatch):
 
 def test_verify_project_membership_passes_for_ownership():
     # pylint: disable=expression-not-assigned
-    verify_project_membership(
+    assert verify_project_membership(
         "hello-world",
         User(
             id="1",
@@ -116,7 +116,7 @@ def test_verify_project_membership_passes_for_ownership():
 
 def test_verify_project_membership_passes_for_admin():
     # pylint: disable=expression-not-assigned
-    verify_project_membership(
+    assert verify_project_membership(
         "hello-world",
         User(
             id="1",
@@ -225,8 +225,8 @@ def test_generate_jwt_token(monkeypatch: pytest.MonkeyPatch):
         token = _generate_jwt_token({"test": "test"})
     assert isinstance(token, str)
     decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
-    decoded_token["test"] == "test"
-    decoded_token["exp"] == (
+    assert decoded_token["test"] == "test"
+    assert decoded_token["exp"] == (
         utcnow + timedelta(ACCESS_TOKEN_EXPIRE_MINUTES)
     ).timestamp()
 
@@ -254,7 +254,10 @@ def test_generate_token_for_euphrosyne_backend(monkeypatch: pytest.MonkeyPatch):
 
 def test_extra_payload_token_getter():
     token = jwt.encode(
-        {"test": "value", "exp": datetime.now() + timedelta(minutes=15)},
+        {
+            "test": "value",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
+        },
         "secret",
         algorithm=ALGORITHM,
     )

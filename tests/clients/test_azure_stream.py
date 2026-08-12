@@ -1,6 +1,7 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from stat import S_IFREG
+
 from clients.azure.stream import (
     iter_files_zip_attr_async,
     stream_zip_from_azure_files_async,
@@ -29,9 +30,15 @@ async def get_files_async():
         return f
 
     for file in [
-        MockStorageStreamDownloader("file1.txt", datetime(2022, 1, 1), 100),
-        MockStorageStreamDownloader("file2.txt", datetime(2022, 1, 2), 200),
-        MockStorageStreamDownloader("file3.txt", datetime(2022, 1, 3), 300),
+        MockStorageStreamDownloader(
+            "file1.txt", datetime(2022, 1, 1, tzinfo=timezone.utc), 100
+        ),
+        MockStorageStreamDownloader(
+            "file2.txt", datetime(2022, 1, 2, tzinfo=timezone.utc), 200
+        ),
+        MockStorageStreamDownloader(
+            "file3.txt", datetime(2022, 1, 3, tzinfo=timezone.utc), 300
+        ),
     ]:
         yield get_file_async(file)
 
@@ -52,7 +59,7 @@ def test_iter_files_zip_attr():
     # Check the result
     assert len(result) == 3
     assert result[0][0] == "file1.txt"
-    assert result[0][1] == datetime(2022, 1, 1)
+    assert result[0][1] == datetime(2022, 1, 1, tzinfo=timezone.utc)
     assert result[0][2] == S_IFREG | 0o600
     assert list(async_gen_to_sync(result[0][4])) == [b"chunk1"]
 

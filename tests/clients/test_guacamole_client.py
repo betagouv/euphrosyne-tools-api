@@ -191,37 +191,36 @@ def test_get_connections_and_groups(client: GuacamoleClient):
 
 
 def test_vm_to_shutdown(client: GuacamoleClient):
-    with patch.object(client, "_get_admin_token"):
-        with patch.object(
-            client,
-            "get_connections_and_groups",
-            return_value=GuacamoleConnectionsAndGroupsResponse.model_validate(
-                GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE
-            ),
-        ):
-            fake_now = datetime.fromtimestamp(
-                1662369688000 / 1000, tz=timezone.utc
-            ) + timedelta(minutes=35)
+    with patch.object(client, "_get_admin_token"), patch.object(
+        client,
+        "get_connections_and_groups",
+        return_value=GuacamoleConnectionsAndGroupsResponse.model_validate(
+            GUACAMOLE_CONNECTIONS_AND_GROUPS_RESPONSE
+        ),
+    ):
+        fake_now = datetime.fromtimestamp(
+            1662369688000 / 1000, tz=timezone.utc
+        ) + timedelta(minutes=35)
 
-            projects_to_shutdown = client.get_vm_to_shutdown(from_date=fake_now)
-            assert projects_to_shutdown == []
+        projects_to_shutdown = client.get_vm_to_shutdown(from_date=fake_now)
+        assert projects_to_shutdown == []
 
-            projects_to_shutdown = client.get_vm_to_shutdown(
-                skip_groups=["default"], from_date=fake_now
-            )
-            assert projects_to_shutdown == ["update-setup"]
+        projects_to_shutdown = client.get_vm_to_shutdown(
+            skip_groups=["default"], from_date=fake_now
+        )
+        assert projects_to_shutdown == ["update-setup"]
 
-            fake_now_before_shutdown = datetime.fromtimestamp(
-                1662369688000 / 1000, tz=timezone.utc
-            ) + timedelta(minutes=20)
-            projects_to_shutdown = client.get_vm_to_shutdown(
-                skip_groups=["default"], from_date=fake_now_before_shutdown
-            )
-            assert projects_to_shutdown == []
+        fake_now_before_shutdown = datetime.fromtimestamp(
+            1662369688000 / 1000, tz=timezone.utc
+        ) + timedelta(minutes=20)
+        projects_to_shutdown = client.get_vm_to_shutdown(
+            skip_groups=["default"], from_date=fake_now_before_shutdown
+        )
+        assert projects_to_shutdown == []
 
-            projects_to_shutdown = client.get_vm_to_shutdown(
-                skip_groups=["default"],
-                from_date=fake_now_before_shutdown,
-                kill_no_connection=True,
-            )
-            assert projects_to_shutdown == ["update-setup-clone"]
+        projects_to_shutdown = client.get_vm_to_shutdown(
+            skip_groups=["default"],
+            from_date=fake_now_before_shutdown,
+            kill_no_connection=True,
+        )
+        assert projects_to_shutdown == ["update-setup-clone"]

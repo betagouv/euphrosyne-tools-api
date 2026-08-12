@@ -1,6 +1,5 @@
 import functools
 import json
-from typing import Optional
 
 from azure.storage.blob import BlobClient, BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
@@ -37,19 +36,19 @@ class ConfigAzureClient(BaseStorageAzureClient):
         return None
 
     def set_project_vm_size(
-        self, project_name: str, project_vm_size: Optional[VMSizes] = None
+        self, project_name: str, project_vm_size: VMSizes | None = None
     ):
         """
         Add the project name to a VM size category (imagery, ...). If project_vm_size is
         None, the project will be removed from its current category. Setting a vm size for
         a project overrides any previous configuration, i.e a project can not be added to
         several category.
-        """  # noqa: E501
+        """
         project_slug = slugify(project_name)
         if project_vm_size is not None and not isinstance(project_vm_size, VMSizes):
             raise TypeError("project_vm_size must be an enum of VMSizes type.")
         project_vm_sizes = self._get_project_vm_sizes_conf()
-        for _, project_names in project_vm_sizes.items():
+        for project_names in project_vm_sizes.values():
             if project_slug in project_names:
                 project_names.remove(project_slug)
         if project_vm_size is not None:
@@ -88,7 +87,7 @@ class ConfigAzureClient(BaseStorageAzureClient):
         several category.
         """
         project_image_definitions = self._get_project_image_definitions_conf()
-        for _, project_names in project_image_definitions.items():
+        for project_names in project_image_definitions.values():
             if project_name in project_names:
                 project_names.remove(project_name)
         if image_definition is not None:
@@ -106,12 +105,12 @@ class ConfigAzureClient(BaseStorageAzureClient):
         # pylint: disable=no-member
         self._get_project_image_definitions_conf.cache_clear()
 
-    @functools.lru_cache
+    @functools.lru_cache  # noqa: B019 - dependency-managed clients are singletons
     def _get_project_vm_sizes_conf(self) -> dict:
         blob_client = self._get_or_create_project_vm_sizes_blob()
         return json.loads(blob_client.download_blob().readall())
 
-    @functools.lru_cache
+    @functools.lru_cache  # noqa: B019 - dependency-managed clients are singletons
     def _get_project_image_definitions_conf(self) -> dict:
         blob_client = self._get_or_create_project_image_definitions_blob()
         return json.loads(blob_client.download_blob().readall())
@@ -128,7 +127,7 @@ class ConfigAzureClient(BaseStorageAzureClient):
             "{}",
         )
 
-    @functools.lru_cache
+    @functools.lru_cache  # noqa: B019 - dependency-managed clients are singletons
     def _get_or_create_blob(
         self, container_client: ContainerClient, blob_name: str, initial_data: str
     ) -> BlobClient:

@@ -1,5 +1,6 @@
 import datetime
-from typing import Any, Callable, Generator
+from collections.abc import Callable, Generator
+from typing import Any
 
 def NO_COMPRESSION_32(uncompressed_size, crc_32): ...
 def NO_COMPRESSION_64(uncompressed_size, crc_32): ...
@@ -8,12 +9,8 @@ def ZIP_64(offset, default_get_compressobj): ...
 def ZIP_AUTO(uncompressed_size, level: int = ...): ...
 def stream_zip(
     files: (
-        Generator[
-            tuple[str, datetime.datetime, int, Callable, Generator[bytes, Any, None]],
-            Any,
-            None,
-        ]
-        | tuple[str, datetime.datetime, int, Callable, Generator[bytes, Any, None]]
+        Generator[tuple[str, datetime.datetime, int, Callable, Generator[bytes, Any]], Any]
+        | tuple[str, datetime.datetime, int, Callable, Generator[bytes, Any]]
         | tuple[str, datetime.datetime, int, Callable, bytes]
     ),
     chunk_size: int = ...,
