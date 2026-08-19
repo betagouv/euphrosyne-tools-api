@@ -35,7 +35,7 @@ Lecture TRAUPIXE minimale et JSON normalisé
         ↓
 Albert génère un calcul Python
         ↓
-Exécution Python locale
+Exécution Python dans Azure Dynamic Sessions
         ↓
 Résultat de calcul JSON
         ↓
@@ -62,11 +62,16 @@ nombre de séries bornés, présence d'au moins une série et absence de ressour
 externes. Le frontend ajoute seulement des valeurs de présentation par défaut
 (marges, lisibilité des axes et infobulles) avant de transmettre l'option à ECharts.
 
-## Exécution locale et journalisation
+## Exécution Python et journalisation
 
-L'exécution Python locale est un outil de développement non isolé. Le sous-processus
-ne reçoit qu'une liste limitée de variables nécessaires à Python et ne doit pas être
-activé en production.
+`AZURE_SESSION_POOL_ENDPOINT` configure le pool Azure. `DefaultAzureCredential`
+authentifie Tools API auprès de l'API data-plane ; son identité doit posséder le rôle
+`Azure ContainerApps Session Executor` sur le pool. Seul le jeu de données TRAUPIXE
+normalisé est placé dans `/mnt/data` ; le classeur original reste dans Tools API. Le
+résultat JSON est récupéré puis la session est supprimée.
+
+Sans endpoint, l'exécuteur local non isolé n'est autorisé que lorsque
+`EUPHROSYNE_TOOLS_ENVIRONMENT` vaut `dev`, `development`, `local` ou `test`.
 
 Les échanges complets sont enregistrés hors du dépôt dans un fichier JSONL rotatif.
 Sur macOS :
@@ -80,19 +85,6 @@ Ils contiennent la question, le code Python et les réponses du modèle et doive
 l'identifiant de requête, le type d'événement et les informations de synthèse.
 
 ## Jalons suivants
-
-### Exécution Python isolée sur Azure
-
-Ce jalon remplacera l'exécuteur local par Azure Dynamic Sessions sans modifier le
-contrat fonctionnel. Il sera engagé lorsque le Session Pool sera disponible.
-
-Critères de sortie :
-
-- transfert du classeur et récupération du résultat JSON ;
-- interface et tests de contrat communs aux exécuteurs ;
-- limites de temps et de ressources, nettoyage des sessions et erreurs maîtrisées ;
-- corrélation des journaux sans exposition de données sensibles ;
-- suppression de l'exécution locale dans les environnements déployés.
 
 ### Analyses scientifiques AGLAE
 

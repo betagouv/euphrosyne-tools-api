@@ -10,7 +10,6 @@ from aglae.traupixe.analysis import (
     DATASET_FILENAME,
     MAX_VISUALIZATION_ATTEMPTS,
     PYTHON_TOOL,
-    WORKBOOK_FILENAME,
     TraupixeAlbertAnalysis,
     TraupixeAnalysisError,
 )
@@ -135,7 +134,7 @@ def test_executes_python_then_generates_echarts_json(
     )
 
     uploaded_names = [call.args[1] for call in sessions.upload_file.call_args_list]
-    assert uploaded_names == [WORKBOOK_FILENAME, DATASET_FILENAME]
+    assert uploaded_names == [DATASET_FILENAME]
     executed_code = sessions.execute.call_args.args[1]
     assert "json.dumps(result" in executed_code
     assert CALCULATION_RESULT_FILENAME in executed_code

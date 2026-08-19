@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -25,7 +26,6 @@ from .dataset import (
 
 RESPONSE_FORMAT_NAME = "data_visualizations"
 PYTHON_TOOL_NAME = "execute_python"
-WORKBOOK_FILENAME = "TRAUPIXE.xlsx"
 DATASET_FILENAME = "traupixe_data.json"
 CALCULATION_RESULT_FILENAME = "analysis_result.json"
 MAX_PYTHON_EXECUTIONS = 6
@@ -95,8 +95,8 @@ PYTHON_TOOL = {
     "function": {
         "name": PYTHON_TOOL_NAME,
         "description": (
-            "Exécute du code Python dans la session contenant le classeur et "
-            "les données TRAUPIXE normalisées."
+            "Exécute du code Python dans la session contenant les données "
+            "TRAUPIXE normalisées."
         ),
         "strict": True,
         "parameters": _inline_json_schema(PythonExecutionRequest.model_json_schema()),
@@ -107,9 +107,8 @@ PYTHON_TOOL = {
 def _calculation_system_prompt(data_directory: str) -> str:
     return f"""
 Tu prépares par Python les données nécessaires pour répondre à une question de
-visualisation TRAUPIXE. La session contient le classeur original dans
-{data_directory}/{WORKBOOK_FILENAME} et sa représentation normalisée dans
-{data_directory}/{DATASET_FILENAME}.
+visualisation TRAUPIXE. La session contient uniquement la représentation normalisée
+du classeur dans {data_directory}/{DATASET_FILENAME}.
 
 Appelle execute_python avec un calcul complet dès le premier appel. Chaque appel doit
 définir result : n'utilise jamais l'outil seulement pour explorer ou afficher le
@@ -251,7 +250,7 @@ class TraupixeAlbertAnalysis:
 
         session_id = f"traupixe-{uuid4().hex}"
         try:
-            self._upload_session_files(session_id, workbook, encoded_dataset)
+            self._upload_session_files(session_id, encoded_dataset)
             calculation_result = self._calculate(
                 session_id,
                 question.strip(),
@@ -280,7 +279,7 @@ class TraupixeAlbertAnalysis:
         finally:
             try:
                 self._sessions.delete_session(session_id)
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001 - cleanup must not mask response
                 _emit_exchange(
                     exchange_logger,
                     "python_session_cleanup_error",
@@ -362,11 +361,9 @@ class TraupixeAlbertAnalysis:
     def _upload_session_files(
         self,
         session_id: str,
-        workbook: bytes,
         encoded_dataset: str,
     ) -> None:
         try:
-            self._sessions.upload_file(session_id, WORKBOOK_FILENAME, workbook)
             self._sessions.upload_file(
                 session_id,
                 DATASET_FILENAME,

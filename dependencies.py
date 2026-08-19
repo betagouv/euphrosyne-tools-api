@@ -14,9 +14,11 @@ from clients.azure import (
     VMAzureClient,
 )
 from clients.azure.images import ImageStorageClient
+from clients.azure.python_sessions import AzurePythonSessionsClient
 from clients.data_client import AbstractDataClient
 from clients.guacamole import GuacamoleClient
 from clients.local_python import LocalPythonSessionsClient
+from clients.python_sessions import PythonSessionsClient
 from data_lifecycle.dependencies import fetch_project_lifecycle
 from data_lifecycle.models import LifecycleState
 from data_lifecycle.storage_resolver import resolve_backend
@@ -120,7 +122,19 @@ def get_data_visualization_llm_client() -> AlbertClient:
 
 
 @lru_cache()
-def get_data_visualization_python_sessions_client() -> LocalPythonSessionsClient:
+def get_data_visualization_python_sessions_client() -> PythonSessionsClient:
+    endpoint = os.getenv("AZURE_SESSION_POOL_ENDPOINT")
+    if endpoint:
+        return AzurePythonSessionsClient(
+            endpoint,
+            execution_timeout_seconds=DATA_VISUALIZATION_TIMEOUT_SECONDS,
+        )
+    environment = os.getenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "dev").lower()
+    if environment not in {"dev", "development", "local", "test"}:
+        raise HTTPException(
+            status_code=503,
+            detail="Le service d'exécution Python isolé n'est pas configuré.",
+        )
     return LocalPythonSessionsClient(
         execution_timeout_seconds=DATA_VISUALIZATION_TIMEOUT_SECONDS
     )

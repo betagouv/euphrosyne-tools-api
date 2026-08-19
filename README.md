@@ -27,8 +27,10 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 | DATA_PROJECTS_LOCATION_PREFIX     | Optionnel. Préfixe du chemin de base des projets pour HOT.                                                                                                                                         |
 | AZURE_STORAGE_DATA_CONTAINER      | Nom du container Blob utilisé pour les données projets (requis si `DATA_BACKEND=azure_blob`).                                                                                                      |
 | AZURE_STORAGE_DATA_CONTAINER_COOL | Nom du container Blob utilisé pour les données projets COOL (requis si `DATA_BACKEND_COOL=azure_blob`).                                                                                            |
+| AZURE_SESSION_POOL_ENDPOINT       | Endpoint de gestion du Session Pool Azure utilisé pour isoler l'exécution Python des visualisations. Requis hors environnement de développement.                                                   |
 | ALBERT_API_KEY                    | Clé API Albert utilisée par le service de visualisation de données.                                                                                                                               |
 | ALBERT_MODEL                      | Modèle Albert utilisé par le service de visualisation de données. Exemple : `openai/gpt-oss-120b`.                                                                                                |
+| EUPHROSYNE_TOOLS_ENVIRONMENT      | Environnement d'exécution (`dev`, `staging`, `production`). L'exécuteur Python local n'est autorisé qu'en développement.                                                                          |
 | AZURE_IMAGE_GALLERY               | Nom de la _Azure compute gallery_ qui stock les différentes images                                                                                                                                 |
 | AZURE_IMAGE_DEFINITION            | Nom de la _VM image definition_ qui est l'image pré-configurée pour les VM Euphrosyne                                                                                                              |
 | CORS_ALLOWED_ORIGIN               | Origines des frontends autorisées à utiliser l'API. Séparer les origines par des espaces.                                                                                                          |
@@ -64,8 +66,9 @@ prochains jalons sont décrits dans
 
 L'endpoint utilise une interprétation TRAUPIXE minimale des concentrations,
 non-détections et détecteurs. Albert calcule les données nécessaires dans un
-processus Python local puis produit entre une et huit options ECharts. Le frontend
-reste agnostique du type de graphique.
+Session Pool Azure isolé puis produit entre une et huit options ECharts. En
+développement uniquement, l'absence de `AZURE_SESSION_POOL_ENDPOINT` active
+l'exécuteur local. Le frontend reste agnostique du type de graphique.
 
 ### Endpoint de visualisation
 
