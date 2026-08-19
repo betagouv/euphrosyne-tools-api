@@ -188,26 +188,6 @@ def test_get_data_visualization_llm_client_requires_configuration(
     assert error.value.detail == "Le service de visualisation n'est pas configuré."
 
 
-def test_get_data_visualization_python_sessions_client_uses_local_execution(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.delenv("AZURE_SESSION_POOL_ENDPOINT", raising=False)
-    monkeypatch.setenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "dev")
-    sessions = object()
-
-    with patch.object(
-        dependencies,
-        "LocalPythonSessionsClient",
-        return_value=sessions,
-    ) as client_class:
-        result = dependencies.get_data_visualization_python_sessions_client()
-
-    assert result is sessions
-    client_class.assert_called_once_with(
-        execution_timeout_seconds=dependencies.DATA_VISUALIZATION_TIMEOUT_SECONDS
-    )
-
-
 def test_get_data_visualization_python_sessions_client_uses_azure_pool(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -228,11 +208,10 @@ def test_get_data_visualization_python_sessions_client_uses_azure_pool(
     )
 
 
-def test_get_data_visualization_python_sessions_client_rejects_local_in_staging(
+def test_get_data_visualization_python_sessions_client_requires_azure_pool(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.delenv("AZURE_SESSION_POOL_ENDPOINT", raising=False)
-    monkeypatch.setenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "staging")
 
     with pytest.raises(HTTPException) as error:
         dependencies.get_data_visualization_python_sessions_client()

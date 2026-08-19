@@ -115,33 +115,6 @@ def test_manages_session_files_and_cleanup() -> None:
     ]
 
 
-def test_normalizes_legacy_file_metadata() -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "value": [
-                    {
-                        "properties": {
-                            "filename": "result.json",
-                            "size": 42,
-                        }
-                    }
-                ]
-            },
-        )
-
-    client, _ = _client(handler)
-
-    assert client.list_files("session-1234") == [
-        {
-            "name": "result.json",
-            "contentType": "application/octet-stream",
-            "sizeInBytes": 42,
-        }
-    ]
-
-
 def test_rejects_filename_paths() -> None:
     client, _ = _client(lambda _request: httpx.Response(200))
 

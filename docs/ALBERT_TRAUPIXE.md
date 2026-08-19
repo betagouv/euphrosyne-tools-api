@@ -69,9 +69,8 @@ authentifie Tools API auprès de l'API data-plane ; son identité doit posséder
 `Azure ContainerApps Session Executor` sur le pool. Seul le jeu de données TRAUPIXE
 normalisé est placé dans `/mnt/data` ; le classeur original reste dans Tools API. Le
 résultat JSON est récupéré puis la session est supprimée.
-
-Sans endpoint, l'exécuteur local non isolé n'est autorisé que lorsque
-`EUPHROSYNE_TOOLS_ENVIRONMENT` vaut `dev`, `development`, `local` ou `test`.
+L'absence de `AZURE_SESSION_POOL_ENDPOINT` désactive la visualisation avec une
+erreur 503.
 
 Les échanges complets sont enregistrés hors du dépôt dans un fichier JSONL rotatif.
 Sur macOS :

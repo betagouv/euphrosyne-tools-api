@@ -8,14 +8,14 @@ from aglae.traupixe.analysis import (
     ALBERT_RESPONSE_FORMAT,
     CALCULATION_RESULT_FILENAME,
     DATASET_FILENAME,
+    MAX_PYTHON_EXECUTIONS,
     MAX_VISUALIZATION_ATTEMPTS,
     PYTHON_TOOL,
     TraupixeAlbertAnalysis,
     TraupixeAnalysisError,
 )
 from clients.albert import AlbertClient, AlbertCompletion
-from clients.local_python import LocalPythonSessionsClient
-from clients.python_sessions import PythonExecutionResult
+from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
 
 
 def _final_completion(payload: dict[str, Any]) -> AlbertCompletion:
@@ -59,7 +59,7 @@ def _sessions(calculation: dict[str, Any] | None = None) -> MagicMock:
             }
         ],
     }
-    sessions = MagicMock(spec=LocalPythonSessionsClient)
+    sessions = MagicMock(spec=PythonSessionsClient)
     sessions.data_directory = "."
     sessions.execute.return_value = PythonExecutionResult(
         status="Succeeded",
@@ -182,6 +182,27 @@ def test_retries_python_after_a_failed_execution(traupixe_workbook: bytes) -> No
     assert sessions.execute.call_count == 2
     second_messages = albert.complete.call_args_list[1].args[0]
     assert "ValueError: first" in second_messages[-1]["content"]
+
+
+def test_stops_after_python_execution_budget(traupixe_workbook: bytes) -> None:
+    albert = MagicMock(spec=AlbertClient)
+    albert.complete.return_value = _python_completion("raise ValueError('invalid')")
+    sessions = _sessions()
+    sessions.execute.return_value = PythonExecutionResult(
+        status="Failed",
+        stdout="",
+        stderr="ValueError: invalid",
+        duration_ms=10,
+    )
+
+    with pytest.raises(TraupixeAnalysisError, match="valid Python calculation"):
+        TraupixeAlbertAnalysis(albert, sessions).run(
+            traupixe_workbook,
+            "Question",
+        )
+
+    assert albert.complete.call_count == MAX_PYTHON_EXECUTIONS
+    assert sessions.execute.call_count == MAX_PYTHON_EXECUTIONS
 
 
 def test_retries_an_invalid_visualization(traupixe_workbook: bytes) -> None:

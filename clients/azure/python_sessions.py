@@ -65,8 +65,7 @@ class AzurePythonSessionsClient:
             },
         )
         response.raise_for_status()
-        payload = response.json()
-        execution = payload.get("properties", payload)
+        execution = response.json()
         result = execution.get("result") or {}
         stderr = str(result.get("stderr") or "")
         if not stderr and execution.get("error"):
@@ -81,8 +80,7 @@ class AzurePythonSessionsClient:
     def list_files(self, session_id: str) -> list[dict[str, Any]]:
         response = self._request("GET", "files", session_id)
         response.raise_for_status()
-        files = response.json().get("value", [])
-        return [_normalized_file(file) for file in files]
+        return response.json().get("value", [])
 
     def download_file(self, session_id: str, filename: str) -> bytes:
         safe_name = quote(_safe_filename(filename), safe="")
@@ -121,14 +119,3 @@ def _safe_filename(filename: str) -> str:
     if safe_name != filename or not safe_name:
         raise ValueError("The filename must not contain a path")
     return safe_name
-
-
-def _normalized_file(file: dict[str, Any]) -> dict[str, Any]:
-    properties = file.get("properties")
-    if not isinstance(properties, dict):
-        return file
-    return {
-        "name": properties.get("filename"),
-        "contentType": properties.get("contentType", "application/octet-stream"),
-        "sizeInBytes": properties.get("size"),
-    }
