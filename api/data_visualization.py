@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Annotated, Any, BinaryIO
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -67,10 +67,14 @@ def create_data_visualization(
     project_slug: str,
     query: DataVisualizationQuery,
     response: Response,
-    data_client: AbstractDataClient = Depends(get_project_data_client),
-    visualization_service: DataVisualizationService = Depends(
-        get_data_visualization_service
-    ),
+    data_client: Annotated[
+        AbstractDataClient,
+        Depends(get_project_data_client),
+    ],
+    visualization_service: Annotated[
+        DataVisualizationService,
+        Depends(get_data_visualization_service),
+    ],
 ) -> DataVisualizationResponse:
     request_id = uuid4()
     response.headers["X-Request-ID"] = str(request_id)
