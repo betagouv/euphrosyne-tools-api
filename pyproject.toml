@@ -43,7 +43,3 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module="h5grove.*"
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module="openpyxl.*"
-ignore_missing_imports = true
