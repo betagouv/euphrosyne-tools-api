@@ -80,7 +80,9 @@ def test_serializes_an_aligned_compact_model_payload(
 
 def test_rejects_a_workbook_without_a_supported_concentration_sheet() -> None:
     workbook = Workbook()
-    workbook.active.title = "Other"
+    active_sheet = workbook.active
+    assert active_sheet is not None
+    active_sheet.title = "Other"
     output = BytesIO()
     workbook.save(output)
     workbook.close()

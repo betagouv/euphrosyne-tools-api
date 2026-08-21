@@ -26,6 +26,7 @@ ANALYTES = [
 def traupixe_workbook() -> bytes:
     workbook = Workbook()
     concentrations = workbook.active
+    assert concentrations is not None
     concentrations.title = "S_Conc. %"
     concentrations.append([None, None, *([None] * len(ANALYTES))])
     concentrations.append([None, None, *ANALYTES])
