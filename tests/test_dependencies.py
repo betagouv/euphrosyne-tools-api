@@ -20,6 +20,7 @@ def clear_dependency_caches():
     dependencies.get_image_storage_client.cache_clear()
     dependencies.get_data_visualization_llm_client.cache_clear()
     dependencies.get_data_visualization_python_sessions_client.cache_clear()
+    dependencies.get_data_visualization_service.cache_clear()
     yield
     dependencies.get_project_data_client.cache_clear()
     dependencies.get_hot_project_data_client.cache_clear()
@@ -30,6 +31,7 @@ def clear_dependency_caches():
     dependencies.get_image_storage_client.cache_clear()
     dependencies.get_data_visualization_llm_client.cache_clear()
     dependencies.get_data_visualization_python_sessions_client.cache_clear()
+    dependencies.get_data_visualization_service.cache_clear()
 
 
 def test_get_project_from_path_or_param_prefers_project_slug():
@@ -220,3 +222,31 @@ def test_get_data_visualization_python_sessions_client_requires_azure_pool(
     assert error.value.detail == (
         "Le service d'exécution Python isolé n'est pas configuré."
     )
+
+
+def test_get_data_visualization_service_composes_its_clients():
+    llm = object()
+    sessions = object()
+    service = object()
+
+    with (
+        patch.object(
+            dependencies,
+            "get_data_visualization_llm_client",
+            return_value=llm,
+        ),
+        patch.object(
+            dependencies,
+            "get_data_visualization_python_sessions_client",
+            return_value=sessions,
+        ),
+        patch.object(
+            dependencies,
+            "DataVisualizationService",
+            return_value=service,
+        ) as service_class,
+    ):
+        result = dependencies.get_data_visualization_service()
+
+    assert result is service
+    service_class.assert_called_once_with(llm, sessions)

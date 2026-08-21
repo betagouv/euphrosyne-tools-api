@@ -2,31 +2,31 @@ from __future__ import annotations
 
 import logging
 import traceback
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, BinaryIO, Callable
+from typing import Any, BinaryIO
 from uuid import UUID, uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from aglae.traupixe.analysis import (
-    TraupixeAlbertAnalysis,
-    TraupixeAnalysisError,
-)
-from aglae.traupixe.format import (
-    MAX_SOURCE_SIZE_BYTES,
-    is_traupixe_path,
-)
 from auth import verify_project_membership
-from clients.albert import AlbertAPIError, AlbertClient
+from clients.albert import AlbertAPIError
 from clients.data_client import AbstractDataClient
-from clients.python_sessions import PythonSessionsClient
 from data_visualization.exchange_log import write_albert_exchange
+from data_visualization.handlers import (
+    DataVisualizationHandler,
+    UnsupportedDataVisualizationFile,
+    resolve_data_visualization_handler,
+)
 from data_visualization.models import DataVisualization
+from data_visualization.service import (
+    DataVisualizationError,
+    DataVisualizationService,
+)
 from dependencies import (
-    get_data_visualization_llm_client,
-    get_data_visualization_python_sessions_client,
+    get_data_visualization_service,
     get_project_data_client,
 )
 from path import IncorrectDataFilePath, RunDataTypeRef
@@ -64,9 +64,8 @@ def create_data_visualization(
     query: DataVisualizationQuery,
     response: Response,
     data_client: AbstractDataClient = Depends(get_project_data_client),
-    llm_client: AlbertClient = Depends(get_data_visualization_llm_client),
-    python_sessions: PythonSessionsClient = Depends(
-        get_data_visualization_python_sessions_client
+    visualization_service: DataVisualizationService = Depends(
+        get_data_visualization_service
     ),
 ) -> DataVisualizationResponse:
     request_id = uuid4()
@@ -87,8 +86,12 @@ def create_data_visualization(
         }
     )
     try:
-        _validate_traupixe_path(project_slug, query.path)
-        workbook = _download_workbook(data_client, query.path)
+        handler = _resolve_handler(project_slug, query.path)
+        workbook = _download_workbook(
+            data_client,
+            query.path,
+            handler.max_source_size_bytes,
+        )
     except HTTPException as error:
         exchange_logger(
             {
@@ -108,8 +111,9 @@ def create_data_visualization(
         )
         raise
     try:
-        result = TraupixeAlbertAnalysis(llm_client, python_sessions).run(
-            workbook,
+        prepared = handler.prepare(workbook)
+        result = visualization_service.run(
+            prepared,
             query.question,
             exchange_logger=exchange_logger,
         )
@@ -136,11 +140,11 @@ def create_data_visualization(
             detail=USER_ERROR,
             headers={"X-Request-ID": str(request_id)},
         ) from error
-    except (TraupixeAnalysisError, OSError, ValueError) as error:
+    except (DataVisualizationError, OSError, ValueError) as error:
         _log_exchange_failure(exchange_logger, "analysis_rejected", error)
         public_reason = (
             str(error)
-            if isinstance(error, TraupixeAnalysisError)
+            if isinstance(error, DataVisualizationError)
             else TRAUPIXE_WORKBOOK_ERROR
         )
         logger.info(
@@ -177,7 +181,7 @@ def create_data_visualization(
     exchange_logger(
         {
             "event": "request_completed",
-            "calls": result.albert_calls,
+            "calls": result.llm_calls,
             "elapsed_seconds": result.elapsed_seconds,
             "total_tokens": total_tokens,
         }
@@ -186,7 +190,7 @@ def create_data_visualization(
         "data_visualization_completed request_id=%s calls=%s "
         "elapsed_seconds=%.3f total_tokens=%s",
         request_id,
-        result.albert_calls,
+        result.llm_calls,
         result.elapsed_seconds,
         total_tokens,
     )
@@ -197,7 +201,10 @@ def create_data_visualization(
     )
 
 
-def _validate_traupixe_path(project_slug: str, path: str) -> None:
+def _resolve_handler(
+    project_slug: str,
+    path: str,
+) -> DataVisualizationHandler:
     workbook_path = Path(path)
     if ".." in workbook_path.parts:
         raise HTTPException(status_code=422, detail="Chemin de fichier invalide.")
@@ -209,14 +216,20 @@ def _validate_traupixe_path(project_slug: str, path: str) -> None:
         ) from error
     if reference.project_slug != project_slug:
         raise HTTPException(status_code=422, detail="Chemin de fichier invalide.")
-    if not is_traupixe_path(workbook_path):
+    try:
+        return resolve_data_visualization_handler(workbook_path)
+    except UnsupportedDataVisualizationFile as error:
         raise HTTPException(
             status_code=422,
             detail="Le fichier sélectionné doit être un classeur TRAUPIXE.",
-        )
+        ) from error
 
 
-def _download_workbook(data_client: AbstractDataClient, path: str) -> bytes:
+def _download_workbook(
+    data_client: AbstractDataClient,
+    path: str,
+    max_source_size_bytes: int,
+) -> bytes:
     workbook_file: BinaryIO | None = None
     try:
         workbook_file = data_client.download_run_file(path)
@@ -224,13 +237,13 @@ def _download_workbook(data_client: AbstractDataClient, path: str) -> bytes:
         if (
             isinstance(content_length, int)
             and not isinstance(content_length, bool)
-            and content_length > MAX_SOURCE_SIZE_BYTES
+            and content_length > max_source_size_bytes
         ):
             raise HTTPException(
                 status_code=413,
                 detail="Le classeur TRAUPIXE dépasse la taille autorisée.",
             )
-        workbook = workbook_file.read(MAX_SOURCE_SIZE_BYTES + 1)
+        workbook = workbook_file.read(max_source_size_bytes + 1)
     except HTTPException:
         raise
     except Exception as error:
@@ -240,7 +253,7 @@ def _download_workbook(data_client: AbstractDataClient, path: str) -> bytes:
             workbook_file.close()
     if not isinstance(workbook, bytes) or not workbook:
         raise HTTPException(status_code=422, detail=USER_ERROR)
-    if len(workbook) > MAX_SOURCE_SIZE_BYTES:
+    if len(workbook) > max_source_size_bytes:
         raise HTTPException(
             status_code=413,
             detail="Le classeur TRAUPIXE dépasse la taille autorisée.",

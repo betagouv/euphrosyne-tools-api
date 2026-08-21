@@ -22,6 +22,7 @@ from data_lifecycle.dependencies import fetch_project_lifecycle
 from data_lifecycle.models import LifecycleState
 from data_lifecycle.storage_resolver import resolve_backend
 from data_lifecycle.storage_types import StorageBackend, StorageRole
+from data_visualization.service import DataVisualizationService
 from path import ProjectRef
 
 DATA_VISUALIZATION_TIMEOUT_SECONDS = 300
@@ -131,4 +132,12 @@ def get_data_visualization_python_sessions_client() -> PythonSessionsClient:
     return AzurePythonSessionsClient(
         endpoint,
         execution_timeout_seconds=DATA_VISUALIZATION_TIMEOUT_SECONDS,
+    )
+
+
+@lru_cache()
+def get_data_visualization_service() -> DataVisualizationService:
+    return DataVisualizationService(
+        get_data_visualization_llm_client(),
+        get_data_visualization_python_sessions_client(),
     )

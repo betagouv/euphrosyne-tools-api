@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from copy import deepcopy
@@ -11,22 +12,21 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from clients.albert import AlbertClient, AlbertCompletion
 from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
+from data_visualization.llm import (
+    DataVisualizationCompletion,
+    DataVisualizationLlmClient,
+)
 from data_visualization.models import (
     DataVisualization,
     GeneratedVisualizationResponse,
 )
 
-from .dataset import (
-    TraupixeDataset,
-    load_traupixe_dataset,
-    serialize_traupixe_for_model,
-)
+logger = logging.getLogger(__name__)
 
+DATA_VISUALIZATION_TIMEOUT_SECONDS = 300
 RESPONSE_FORMAT_NAME = "data_visualizations"
 PYTHON_TOOL_NAME = "execute_python"
-DATASET_FILENAME = "traupixe_data.json"
 CALCULATION_RESULT_FILENAME = "analysis_result.json"
 MAX_PYTHON_EXECUTIONS = 3
 MAX_VISUALIZATION_ATTEMPTS = 2
@@ -41,16 +41,25 @@ class PythonExecutionRequest(BaseModel):
     code: str = Field(min_length=1, max_length=50_000)
 
 
-class TraupixeAnalysisError(RuntimeError):
-    """Raised when the normalized dataset or model response cannot be used."""
+class DataVisualizationError(RuntimeError):
+    """Raised when normalized data or a model response cannot be used."""
 
 
 @dataclass(frozen=True)
-class TraupixeAnalysisResult:
+class PreparedDataVisualization:
+    filename: str
+    content: bytes
+    descriptor: dict[str, Any]
+    calculation_instructions: str = ""
+    visualization_instructions: str = ""
+
+
+@dataclass(frozen=True)
+class DataVisualizationResult:
     answer: str
     visualizations: tuple[DataVisualization, ...]
     elapsed_seconds: float
-    albert_calls: int
+    llm_calls: int
     usage: tuple[dict[str, Any], ...]
 
 
@@ -74,13 +83,13 @@ def _inline_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return expand(schema)
 
 
-ALBERT_RESPONSE_FORMAT = {
+VISUALIZATION_RESPONSE_FORMAT = {
     "type": "json_schema",
     "json_schema": {
         "name": RESPONSE_FORMAT_NAME,
         "description": (
-            "Réponse à une question sur des données TRAUPIXE normalisées avec "
-            "des visualisations ECharts autonomes."
+            "Réponse à une question sur des données normalisées avec des "
+            "visualisations ECharts autonomes."
         ),
         "strict": True,
         "schema": _inline_json_schema(
@@ -96,7 +105,7 @@ PYTHON_TOOL = {
         "name": PYTHON_TOOL_NAME,
         "description": (
             "Exécute du code Python dans la session contenant les données "
-            "TRAUPIXE normalisées."
+            "normalisées."
         ),
         "strict": True,
         "parameters": _inline_json_schema(PythonExecutionRequest.model_json_schema()),
@@ -104,111 +113,32 @@ PYTHON_TOOL = {
 }
 
 
-def _calculation_system_prompt(data_directory: str) -> str:
-    return f"""
-Tu prépares par Python les données nécessaires pour répondre à une question de
-visualisation TRAUPIXE. La session contient uniquement la représentation normalisée
-du classeur dans {data_directory}/{DATASET_FILENAME}.
-
-Appelle execute_python avec un calcul complet dès le premier appel. Chaque appel doit
-définir result : n'utilise jamais l'outil seulement pour explorer ou afficher le
-schéma. Lis en priorité le JSON normalisé, dont le contrat exact est :
-
-- data["analytes"] est une liste d'objets ;
-- names = [item["name"] for item in data["analytes"]] donne l'ordre des analytes ;
-- chaque objet de data["analyses"] possède identifier, label, zone, kind, puis les
-  trois LISTES parallèles values, detected et detectors, dans l'ordre de names ;
-- accède donc à un analyte avec index = names.index("Fe2O3"), puis
-  analysis["values"][index], jamais analysis["values"]["Fe2O3"] ;
-- detected[index] est un booléen : false désigne une limite de détection, pas une
-  mesure quantitative.
-
-Utilise par défaut uniquement les analyses dont kind == "object".
-Pour une matrice ou une heatmap, produis result en format long : une liste plate
-d'objets contenant les coordonnées, la valeur et les libellés de chaque cellule.
-Conserve aussi les listes ordonnées des lignes et colonnes. Pour une matrice de
-détecteurs, conserve une cellule par couple analyse d'objet × analyte, y compris
-lorsque le détecteur est absent ; ne regroupe jamais les analyses par analyte.
-
-Le code doit effectuer tous les calculs demandés et affecter à une variable globale
-nommée result un objet Python sérialisable en JSON. Le backend écrit lui-même cette
-variable dans {data_directory}/{CALCULATION_RESULT_FILENAME}. result doit contenir
-toutes les valeurs et métadonnées nécessaires à la visualisation finale, jamais un
-échantillon, une ellipse ou du code ECharts. Affiche seulement un bref résumé avec
-print.
-
-Tu peux utiliser la bibliothèque standard, pandas, numpy et openpyxl. N'installe
-aucun paquet, n'utilise pas le réseau et ne produis ni image, ni HTML, ni JavaScript.
-Si une exécution précédente a échoué ou produit un fichier invalide, corrige le code.
-N'invente aucune mesure.
-""".strip()
-
-
-def _visualization_system_prompt() -> str:
-    return """
-Tu construis une réponse et des visualisations à partir de résultats déjà calculés
-et validés par une exécution Python.
-
-Réponds exclusivement avec l'objet JSON demandé par le format de réponse structuré.
-Produis entre une et huit options ECharts 6 JSON autonomes. Respecte en priorité le
-type de graphique explicitement demandé et choisis librement tout type de série
-ECharts intégré. Utilise directement les valeurs du résultat Python et ne les
-recalcule pas. N'omet aucun point demandé. Rédige answer en texte simple et concis,
-sans titre, tableau ou autre syntaxe Markdown.
-
-Copie strictement les identifiants, labels et zones du résultat Python, caractère par
-caractère, même s'ils semblent mal encodés. Ne les corrige pas et ne les traduis pas.
-Pour une matrice de détecteurs TRAUPIXE, les deux axes sont les analyses d'objet et
-les analytes ; le détecteur est la valeur de chaque cellule, jamais un axe. Conserve
-une cellule par couple analyse × analyte, y compris les détecteurs absents. Place les
-analytes, dont les libellés sont courts, sur l'axe horizontal et les analyses sur
-l'axe vertical. Conserve les libellés complets dans les données et dans les noms des
-points pour qu'ils restent accessibles dans les infobulles. Encode les détecteurs
-comme valeurs numériques et restitue leurs libellés avec visualMap.
-
-Pour toute visualisation cartésienne, active grid.containLabel et réserve des marges
-suffisantes. Lorsque des catégories ont des libellés longs, conserve leurs valeurs
-complètes dans les données et les infobulles, mais utilise axisLabel.width,
-axisLabel.overflow="truncate" et axisLabel.hideOverlap pour éviter qu'elles se
-chevauchent.
-
-N'invente aucune mesure et conserve l'unité fournie. Produis uniquement du JSON :
-aucune fonction JavaScript, ressource externe, URL, image ou HTML.
-""".strip()
-
-
-class TraupixeAlbertAnalysis:
+class DataVisualizationService:
     def __init__(
         self,
-        albert: AlbertClient,
+        llm: DataVisualizationLlmClient,
         sessions: PythonSessionsClient,
     ) -> None:
-        self._albert = albert
+        self._llm = llm
         self._sessions = sessions
 
     def run(
         self,
-        workbook: bytes,
+        prepared: PreparedDataVisualization,
         question: str,
         *,
         exchange_logger: ExchangeLogger | None = None,
-    ) -> TraupixeAnalysisResult:
-        if not question.strip():
+    ) -> DataVisualizationResult:
+        question = question.strip()
+        if not question:
             raise ValueError("The question must not be empty")
-        started_at = time.monotonic()
-        dataset = load_traupixe_dataset(workbook)
-        encoded_dataset = json.dumps(
-            serialize_traupixe_for_model(dataset),
-            ensure_ascii=False,
-            allow_nan=False,
-            separators=(",", ":"),
-        )
-        if len(encoded_dataset.encode("utf-8")) > MAX_MODEL_DATA_BYTES:
-            raise TraupixeAnalysisError(
-                "The normalized TRAUPIXE dataset is too large for visualization"
+        if len(prepared.content) > MAX_MODEL_DATA_BYTES:
+            raise DataVisualizationError(
+                "The normalized dataset is too large for visualization"
             )
+        started_at = time.monotonic()
         usages: list[dict[str, Any]] = []
-        albert_calls = 0
+        llm_calls = 0
 
         def complete(
             messages: list[dict[str, Any]],
@@ -216,11 +146,11 @@ class TraupixeAlbertAnalysis:
             tools: list[dict[str, Any]] | None = None,
             tool_choice: str | dict[str, Any] = "auto",
             response_format: dict[str, Any] | None = None,
-        ) -> AlbertCompletion:
-            nonlocal albert_calls
+        ) -> DataVisualizationCompletion:
+            nonlocal llm_calls
             request_messages = deepcopy(messages)
             request: dict[str, Any] = {
-                "call": albert_calls + 1,
+                "call": llm_calls + 1,
                 "messages": request_messages,
             }
             if tools is not None:
@@ -228,19 +158,19 @@ class TraupixeAlbertAnalysis:
                 request["tool_choice"] = tool_choice
             if response_format is not None:
                 request["response_format"] = response_format
-            _emit_exchange(exchange_logger, "albert_request", **request)
-            completion = self._albert.complete(
+            _emit_exchange(exchange_logger, "llm_request", **request)
+            completion = self._llm.complete(
                 request_messages,
                 tools,
                 tool_choice=tool_choice,
                 response_format=response_format,
             )
-            albert_calls += 1
+            llm_calls += 1
             usages.append(completion.usage)
             _emit_exchange(
                 exchange_logger,
-                "albert_response",
-                call=albert_calls,
+                "llm_response",
+                call=llm_calls,
                 message=completion.message,
                 usage=completion.usage,
                 model=completion.model,
@@ -248,24 +178,27 @@ class TraupixeAlbertAnalysis:
             )
             return completion
 
-        session_id = f"traupixe-{uuid4().hex}"
+        session_id = f"visualization-{uuid4().hex}"
         try:
-            self._upload_session_files(session_id, encoded_dataset)
+            self._upload_dataset(session_id, prepared)
             calculation_result = self._calculate(
                 session_id,
-                question.strip(),
-                dataset,
+                question,
+                prepared,
                 complete,
                 exchange_logger,
             )
             final_messages = [
-                {"role": "system", "content": _visualization_system_prompt()},
+                {
+                    "role": "system",
+                    "content": _visualization_system_prompt(prepared),
+                },
                 {
                     "role": "user",
                     "content": (
-                        f"Question : {question.strip()}\n"
-                        "Contexte TRAUPIXE :\n"
-                        f"{json.dumps(dataset.descriptor(), ensure_ascii=False)}\n"
+                        f"Question : {question}\n"
+                        "Contexte des données :\n"
+                        f"{json.dumps(prepared.descriptor, ensure_ascii=False)}\n"
                         "Résultat calculé par Python :\n"
                         f"{calculation_result}"
                     ),
@@ -279,7 +212,8 @@ class TraupixeAlbertAnalysis:
         finally:
             try:
                 self._sessions.delete_session(session_id)
-            except Exception as error:  # noqa: BLE001 - cleanup must not mask response
+            except Exception as error:
+                logger.exception("data_visualization_session_cleanup_error")
                 _emit_exchange(
                     exchange_logger,
                     "python_session_cleanup_error",
@@ -293,36 +227,35 @@ class TraupixeAlbertAnalysis:
                 index=index,
                 visualization=visualization.model_dump(mode="json"),
             )
-        return TraupixeAnalysisResult(
+        return DataVisualizationResult(
             answer=generated.answer,
             visualizations=visualizations,
             elapsed_seconds=time.monotonic() - started_at,
-            albert_calls=albert_calls,
+            llm_calls=llm_calls,
             usage=tuple(usages),
         )
 
     def _generate_visualizations(
         self,
         messages: list[dict[str, Any]],
-        complete: Callable[..., AlbertCompletion],
+        complete: Callable[..., DataVisualizationCompletion],
         exchange_logger: ExchangeLogger | None,
     ) -> tuple[
         GeneratedVisualizationResponse,
         tuple[DataVisualization, ...],
     ]:
-        last_error: TraupixeAnalysisError | None = None
+        last_error: DataVisualizationError | None = None
         base_messages = deepcopy(messages)
         retry_messages = deepcopy(messages)
         for attempt in range(1, MAX_VISUALIZATION_ATTEMPTS + 1):
             completion = complete(
                 retry_messages,
-                response_format=ALBERT_RESPONSE_FORMAT,
+                response_format=VISUALIZATION_RESPONSE_FORMAT,
             )
             try:
                 generated = _generated_response(completion.message)
-                visualizations = tuple(generated.visualizations)
-                return generated, visualizations
-            except TraupixeAnalysisError as error:
+                return generated, tuple(generated.visualizations)
+            except DataVisualizationError as error:
                 last_error = error
                 _emit_exchange(
                     exchange_logger,
@@ -334,43 +267,27 @@ class TraupixeAlbertAnalysis:
                     break
                 correction = _visualization_correction_message(error)
                 content = completion.message.get("content")
+                retry_messages = deepcopy(base_messages)
                 if isinstance(content, str) and content.strip():
-                    retry_messages = [
-                        *deepcopy(base_messages),
-                        {
-                            "role": "assistant",
-                            "content": content,
-                        },
-                        {
-                            "role": "user",
-                            "content": correction,
-                        },
-                    ]
-                elif retry_messages == base_messages:
-                    retry_messages = [
-                        *deepcopy(base_messages),
-                        {
-                            "role": "user",
-                            "content": correction,
-                        },
-                    ]
+                    retry_messages.append({"role": "assistant", "content": content})
+                retry_messages.append({"role": "user", "content": correction})
         if last_error is not None:
             raise last_error
-        raise TraupixeAnalysisError("Albert returned no visualization")
+        raise DataVisualizationError("The model returned no visualization")
 
-    def _upload_session_files(
+    def _upload_dataset(
         self,
         session_id: str,
-        encoded_dataset: str,
+        prepared: PreparedDataVisualization,
     ) -> None:
         try:
             self._sessions.upload_file(
                 session_id,
-                DATASET_FILENAME,
-                encoded_dataset.encode("utf-8"),
+                prepared.filename,
+                prepared.content,
             )
         except Exception as error:
-            raise TraupixeAnalysisError(
+            raise DataVisualizationError(
                 "The Python execution session could not be prepared"
             ) from error
 
@@ -378,22 +295,22 @@ class TraupixeAlbertAnalysis:
         self,
         session_id: str,
         question: str,
-        dataset: TraupixeDataset,
-        complete: Callable[..., AlbertCompletion],
+        prepared: PreparedDataVisualization,
+        complete: Callable[..., DataVisualizationCompletion],
         exchange_logger: ExchangeLogger | None,
     ) -> str:
         data_directory = self._sessions.data_directory.rstrip("/")
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
-                "content": _calculation_system_prompt(data_directory),
+                "content": _calculation_system_prompt(data_directory, prepared),
             },
             {
                 "role": "user",
                 "content": (
                     f"Question : {question}\n"
-                    "Descripteur TRAUPIXE :\n"
-                    f"{json.dumps(dataset.descriptor(), ensure_ascii=False)}"
+                    "Descripteur des données :\n"
+                    f"{json.dumps(prepared.descriptor, ensure_ascii=False)}"
                 ),
             },
         ]
@@ -415,7 +332,7 @@ class TraupixeAlbertAnalysis:
                     _instrument_python(code, data_directory),
                 )
             except Exception as error:
-                raise TraupixeAnalysisError(
+                raise DataVisualizationError(
                     "The Python calculation could not be executed"
                 ) from error
             calculation_result, result_error = self._calculation_result(
@@ -437,8 +354,8 @@ class TraupixeAlbertAnalysis:
             )
             if calculation_result is not None:
                 return calculation_result
-        raise TraupixeAnalysisError(
-            "Albert could not produce a valid Python calculation result"
+        raise DataVisualizationError(
+            "The model could not produce a valid Python calculation result"
         )
 
     def _calculation_result(
@@ -469,17 +386,76 @@ class TraupixeAlbertAnalysis:
             if len(content) > MAX_CALCULATION_RESULT_BYTES:
                 return None, f"{CALCULATION_RESULT_FILENAME} is too large"
             payload = json.loads(content)
-            encoded = json.dumps(
-                payload,
-                ensure_ascii=False,
-                allow_nan=False,
-                separators=(",", ":"),
-            )
             if not isinstance(payload, (dict, list)):
                 return None, f"{CALCULATION_RESULT_FILENAME} must contain an object"
-            return encoded, None
+            return (
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    separators=(",", ":"),
+                ),
+                None,
+            )
         except (OSError, TypeError, ValueError) as error:
             return None, f"{CALCULATION_RESULT_FILENAME} is invalid: {error}"
+
+
+def _calculation_system_prompt(
+    data_directory: str,
+    prepared: PreparedDataVisualization,
+) -> str:
+    return f"""
+Tu prépares par Python les données nécessaires pour répondre à une question de
+visualisation. La session contient uniquement la représentation normalisée des
+données dans {data_directory}/{prepared.filename}.
+
+Appelle execute_python avec un calcul complet dès le premier appel. Chaque appel doit
+définir result : n'utilise jamais l'outil seulement pour explorer ou afficher le
+schéma.
+
+{prepared.calculation_instructions}
+
+Le code doit effectuer tous les calculs demandés et affecter à une variable globale
+nommée result un objet Python sérialisable en JSON. Le backend écrit lui-même cette
+variable dans {data_directory}/{CALCULATION_RESULT_FILENAME}. result doit contenir
+toutes les valeurs et métadonnées nécessaires à la visualisation finale, jamais un
+échantillon, une image ou du code ECharts. Affiche seulement un bref résumé avec
+print.
+
+Tu peux utiliser la bibliothèque standard, pandas, numpy et openpyxl. N'installe
+aucun paquet, n'utilise pas le réseau et ne produis ni image, ni HTML, ni JavaScript.
+Si une exécution précédente a échoué ou produit un fichier invalide, corrige le code.
+N'invente aucune mesure.
+""".strip()
+
+
+def _visualization_system_prompt(prepared: PreparedDataVisualization) -> str:
+    return f"""
+Tu construis une réponse et des visualisations à partir de résultats déjà calculés
+et validés par une exécution Python.
+
+Réponds exclusivement avec l'objet JSON demandé par le format de réponse structuré.
+Produis entre une et huit options ECharts 6 JSON autonomes. Respecte en priorité le
+type de graphique explicitement demandé et choisis librement tout type de série
+ECharts intégré. Utilise directement les valeurs du résultat Python et ne les
+recalcule pas. N'omet aucun point demandé. Rédige answer en texte simple et concis,
+sans titre, tableau ou autre syntaxe Markdown.
+
+Copie strictement les identifiants et libellés du résultat Python, caractère par
+caractère, même s'ils semblent mal encodés. Ne les corrige pas et ne les traduis pas.
+
+{prepared.visualization_instructions}
+
+Pour toute visualisation cartésienne, active grid.containLabel et réserve des marges
+suffisantes. Lorsque des catégories ont des libellés longs, conserve leurs valeurs
+complètes dans les données et les infobulles, mais utilise axisLabel.width,
+axisLabel.overflow="truncate" et axisLabel.hideOverlap pour éviter qu'elles se
+chevauchent.
+
+N'invente aucune mesure et conserve l'unité fournie. Produis uniquement du JSON :
+aucune fonction JavaScript, ressource externe, URL, image ou HTML.
+""".strip()
 
 
 def _python_call(
@@ -500,8 +476,8 @@ def _python_call(
         request = PythonExecutionRequest.model_validate(payload)
         return str(tool_call["id"]), request.code, tool_call
     except (KeyError, TypeError, ValueError) as error:
-        raise TraupixeAnalysisError(
-            "Albert returned an invalid Python execution request"
+        raise DataVisualizationError(
+            "The model returned an invalid Python execution request"
         ) from error
 
 
@@ -544,16 +520,14 @@ def _generated_response(message: dict[str, Any]) -> GeneratedVisualizationRespon
         payload = json.loads(content) if isinstance(content, str) else content
         return GeneratedVisualizationResponse.model_validate(payload)
     except ValidationError as error:
-        raise TraupixeAnalysisError(str(error)) from error
+        raise DataVisualizationError(str(error)) from error
     except (KeyError, TypeError, ValueError) as error:
-        raise TraupixeAnalysisError(
-            "Albert returned an invalid JSON visualization response"
+        raise DataVisualizationError(
+            "The model returned an invalid JSON visualization response"
         ) from error
 
 
-def _visualization_correction_message(
-    error: TraupixeAnalysisError,
-) -> str:
+def _visualization_correction_message(error: DataVisualizationError) -> str:
     return (
         "La visualisation précédente est invalide : "
         f"{error}. Corrige uniquement le JSON ECharts en conservant exactement "
@@ -562,12 +536,12 @@ def _visualization_correction_message(
 
 
 def _emit_exchange(
-    logger: ExchangeLogger | None,
+    exchange_logger: ExchangeLogger | None,
     event: str,
     **details: Any,
 ) -> None:
-    if logger is not None:
-        logger(
+    if exchange_logger is not None:
+        exchange_logger(
             {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "event": event,

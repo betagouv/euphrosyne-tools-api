@@ -4,30 +4,45 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aglae.traupixe.analysis import (
-    ALBERT_RESPONSE_FORMAT,
+from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
+from data_visualization.llm import (
+    DataVisualizationCompletion,
+    DataVisualizationLlmClient,
+)
+from data_visualization.service import (
     CALCULATION_RESULT_FILENAME,
-    DATASET_FILENAME,
     MAX_PYTHON_EXECUTIONS,
     MAX_VISUALIZATION_ATTEMPTS,
     PYTHON_TOOL,
-    TraupixeAlbertAnalysis,
-    TraupixeAnalysisError,
+    VISUALIZATION_RESPONSE_FORMAT,
+    DataVisualizationError,
+    DataVisualizationService,
+    PreparedDataVisualization,
 )
-from clients.albert import AlbertClient, AlbertCompletion
-from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
 
 
-def _final_completion(payload: dict[str, Any]) -> AlbertCompletion:
-    return AlbertCompletion(
+def _prepared(content: bytes = b'{"analyses":[]}') -> PreparedDataVisualization:
+    return PreparedDataVisualization(
+        filename="dataset.json",
+        content=content,
+        descriptor={"format": "test"},
+        calculation_instructions='Les analyses sont dans data["analyses"].',
+        visualization_instructions="Conserve toutes les analyses.",
+    )
+
+
+def _final_completion(payload: dict[str, Any]) -> DataVisualizationCompletion:
+    return DataVisualizationCompletion(
         message={"role": "assistant", "content": json.dumps(payload)},
         usage={"total_tokens": 200},
         model="model",
     )
 
 
-def _python_completion(code: str = "result = {'rows': []}") -> AlbertCompletion:
-    return AlbertCompletion(
+def _python_completion(
+    code: str = "result = {'rows': []}",
+) -> DataVisualizationCompletion:
+    return DataVisualizationCompletion(
         message={
             "role": "assistant",
             "content": None,
@@ -95,117 +110,97 @@ def _generated_visualizations() -> dict[str, Any]:
     }
 
 
-def test_executes_python_then_generates_echarts_json(
-    traupixe_workbook: bytes,
-) -> None:
+def test_executes_python_then_generates_echarts_json() -> None:
     generated = _generated_visualizations()
-    albert = MagicMock(spec=AlbertClient)
-    albert.complete.side_effect = [
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    llm.complete.side_effect = [
         _python_completion(),
         _final_completion(generated),
     ]
     sessions = _sessions()
     exchanges: list[dict[str, Any]] = []
 
-    result = TraupixeAlbertAnalysis(albert, sessions).run(
-        traupixe_workbook,
+    result = DataVisualizationService(llm, sessions).run(
+        _prepared(),
         "Génère un histogramme des éléments traces",
         exchange_logger=exchanges.append,
     )
 
     assert result.answer == generated["answer"]
-    assert result.albert_calls == 2
+    assert result.llm_calls == 2
     assert result.usage == ({"total_tokens": 100}, {"total_tokens": 200})
     assert result.visualizations[0].model_dump() == generated["visualizations"][0]
 
-    first_messages, tools = albert.complete.call_args_list[0].args
+    first_messages, tools = llm.complete.call_args_list[0].args
     assert tools == [PYTHON_TOOL]
-    assert albert.complete.call_args_list[0].kwargs["tool_choice"] == {
+    assert llm.complete.call_args_list[0].kwargs["tool_choice"] == {
         "type": "function",
         "function": {"name": "execute_python"},
     }
-    final_messages = albert.complete.call_args_list[1].args[0]
-    assert albert.complete.call_args_list[1].kwargs["response_format"] == (
-        ALBERT_RESPONSE_FORMAT
+    assert 'data["analyses"]' in first_messages[0]["content"]
+    final_messages = llm.complete.call_args_list[1].args[0]
+    assert llm.complete.call_args_list[1].kwargs["response_format"] == (
+        VISUALIZATION_RESPONSE_FORMAT
     )
     assert '"analysis":"object-1"' in final_messages[1]["content"]
-    assert (
-        "sans titre, tableau ou autre syntaxe Markdown" in final_messages[0]["content"]
-    )
+    assert "Conserve toutes les analyses" in final_messages[0]["content"]
 
-    uploaded_names = [call.args[1] for call in sessions.upload_file.call_args_list]
-    assert uploaded_names == [DATASET_FILENAME]
+    sessions.upload_file.assert_called_once_with(
+        sessions.upload_file.call_args.args[0],
+        "dataset.json",
+        b'{"analyses":[]}',
+    )
     executed_code = sessions.execute.call_args.args[1]
     assert "json.dumps(result" in executed_code
     assert CALCULATION_RESULT_FILENAME in executed_code
     sessions.delete_session.assert_called_once()
     assert [exchange["event"] for exchange in exchanges] == [
-        "albert_request",
-        "albert_response",
+        "llm_request",
+        "llm_response",
         "python_execution",
-        "albert_request",
-        "albert_response",
+        "llm_request",
+        "llm_response",
         "visualization_result",
     ]
-    assert first_messages[0]["role"] == "system"
 
 
-def test_retries_python_after_a_failed_execution(traupixe_workbook: bytes) -> None:
-    albert = MagicMock(spec=AlbertClient)
-    albert.complete.side_effect = [
+def test_retries_python_after_a_failed_execution() -> None:
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    llm.complete.side_effect = [
         _python_completion("raise ValueError('first')"),
         _python_completion("result = {'fixed': True}"),
         _final_completion(_generated_visualizations()),
     ]
     sessions = _sessions()
     sessions.execute.side_effect = [
-        PythonExecutionResult(
-            status="Failed",
-            stdout="",
-            stderr="ValueError: first",
-            duration_ms=10,
-        ),
-        PythonExecutionResult(
-            status="Succeeded",
-            stdout="fixed\n",
-            stderr="",
-            duration_ms=10,
-        ),
+        PythonExecutionResult("Failed", "", "ValueError: first", 10),
+        PythonExecutionResult("Succeeded", "fixed\n", "", 10),
     ]
 
-    result = TraupixeAlbertAnalysis(albert, sessions).run(
-        traupixe_workbook,
-        "Question",
-    )
+    result = DataVisualizationService(llm, sessions).run(_prepared(), "Question")
 
-    assert result.albert_calls == 3
+    assert result.llm_calls == 3
     assert sessions.execute.call_count == 2
-    second_messages = albert.complete.call_args_list[1].args[0]
+    second_messages = llm.complete.call_args_list[1].args[0]
     assert "ValueError: first" in second_messages[-1]["content"]
 
 
-def test_stops_after_python_execution_budget(traupixe_workbook: bytes) -> None:
-    albert = MagicMock(spec=AlbertClient)
-    albert.complete.return_value = _python_completion("raise ValueError('invalid')")
+def test_stops_after_python_execution_budget() -> None:
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    llm.complete.return_value = _python_completion("raise ValueError('invalid')")
     sessions = _sessions()
     sessions.execute.return_value = PythonExecutionResult(
-        status="Failed",
-        stdout="",
-        stderr="ValueError: invalid",
-        duration_ms=10,
+        "Failed", "", "ValueError: invalid", 10
     )
 
-    with pytest.raises(TraupixeAnalysisError, match="valid Python calculation"):
-        TraupixeAlbertAnalysis(albert, sessions).run(
-            traupixe_workbook,
-            "Question",
-        )
+    with pytest.raises(DataVisualizationError, match="valid Python calculation"):
+        DataVisualizationService(llm, sessions).run(_prepared(), "Question")
 
-    assert albert.complete.call_count == MAX_PYTHON_EXECUTIONS
+    assert llm.complete.call_count == MAX_PYTHON_EXECUTIONS
     assert sessions.execute.call_count == MAX_PYTHON_EXECUTIONS
 
 
-def test_retries_an_invalid_visualization(traupixe_workbook: bytes) -> None:
+def test_retries_an_invalid_visualization() -> None:
     invalid = {
         "answer": "Réponse",
         "visualizations": [
@@ -218,20 +213,17 @@ def test_retries_an_invalid_visualization(traupixe_workbook: bytes) -> None:
             }
         ],
     }
-    albert = MagicMock(spec=AlbertClient)
-    albert.complete.side_effect = [
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    llm.complete.side_effect = [
         _python_completion(),
         _final_completion(invalid),
         _final_completion(_generated_visualizations()),
     ]
 
-    result = TraupixeAlbertAnalysis(albert, _sessions()).run(
-        traupixe_workbook,
-        "Question",
-    )
+    result = DataVisualizationService(llm, _sessions()).run(_prepared(), "Question")
 
-    assert result.albert_calls == 3
-    correction = albert.complete.call_args_list[2].args[0][-1]["content"]
+    assert result.llm_calls == 3
+    correction = llm.complete.call_args_list[2].args[0][-1]["content"]
     assert "external resource" in correction
 
 
@@ -245,12 +237,9 @@ def test_retries_an_invalid_visualization(traupixe_workbook: bytes) -> None:
         },
     ],
 )
-def test_rejects_invalid_echarts_options(
-    traupixe_workbook: bytes,
-    option: dict[str, Any],
-) -> None:
-    albert = MagicMock(spec=AlbertClient)
-    albert.complete.side_effect = [
+def test_rejects_invalid_echarts_options(option: dict[str, Any]) -> None:
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    llm.complete.side_effect = [
         _python_completion(),
         *[
             _final_completion(
@@ -263,50 +252,40 @@ def test_rejects_invalid_echarts_options(
         ],
     ]
 
-    with pytest.raises(TraupixeAnalysisError):
-        TraupixeAlbertAnalysis(albert, _sessions()).run(
-            traupixe_workbook,
-            "Question",
-        )
+    with pytest.raises(DataVisualizationError):
+        DataVisualizationService(llm, _sessions()).run(_prepared(), "Question")
 
-    assert albert.complete.call_count == MAX_VISUALIZATION_ATTEMPTS + 1
+    assert llm.complete.call_count == MAX_VISUALIZATION_ATTEMPTS + 1
 
 
-def test_rejects_an_invalid_final_json_response(traupixe_workbook: bytes) -> None:
-    albert = MagicMock(spec=AlbertClient)
-    invalid_completion = AlbertCompletion(
+def test_rejects_an_invalid_final_json_response() -> None:
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    invalid_completion = DataVisualizationCompletion(
         message={"role": "assistant", "content": "not JSON"},
         usage={},
         model="model",
     )
-    albert.complete.side_effect = [
+    llm.complete.side_effect = [
         _python_completion(),
         *[invalid_completion for _ in range(MAX_VISUALIZATION_ATTEMPTS)],
     ]
 
     with pytest.raises(
-        TraupixeAnalysisError,
+        DataVisualizationError,
         match="invalid JSON visualization response",
     ):
-        TraupixeAlbertAnalysis(albert, _sessions()).run(
-            traupixe_workbook,
-            "Question",
-        )
+        DataVisualizationService(llm, _sessions()).run(_prepared(), "Question")
 
 
 def test_rejects_a_dataset_that_exceeds_the_model_limit(
-    traupixe_workbook: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("aglae.traupixe.analysis.MAX_MODEL_DATA_BYTES", 1)
-    albert = MagicMock(spec=AlbertClient)
+    monkeypatch.setattr("data_visualization.service.MAX_MODEL_DATA_BYTES", 1)
+    llm = MagicMock(spec=DataVisualizationLlmClient)
     sessions = _sessions()
 
-    with pytest.raises(TraupixeAnalysisError, match="dataset is too large"):
-        TraupixeAlbertAnalysis(albert, sessions).run(
-            traupixe_workbook,
-            "Question",
-        )
+    with pytest.raises(DataVisualizationError, match="dataset is too large"):
+        DataVisualizationService(llm, sessions).run(_prepared(b"{}"), "Question")
 
-    albert.complete.assert_not_called()
+    llm.complete.assert_not_called()
     sessions.upload_file.assert_not_called()

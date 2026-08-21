@@ -1,23 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from data_visualization.llm import DataVisualizationCompletion
 
 DEFAULT_ALBERT_BASE_URL = "https://albert.api.etalab.gouv.fr"
 
 
 class AlbertAPIError(RuntimeError):
     """Raised when Albert cannot provide a usable chat completion."""
-
-
-@dataclass(frozen=True)
-class AlbertCompletion:
-    message: dict[str, Any]
-    usage: dict[str, Any]
-    model: str
-    finish_reason: str | None = None
 
 
 class AlbertClient:
@@ -44,7 +37,7 @@ class AlbertClient:
         *,
         tool_choice: str | dict[str, Any] = "auto",
         response_format: dict[str, Any] | None = None,
-    ) -> AlbertCompletion:
+    ) -> DataVisualizationCompletion:
         request_body: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -77,7 +70,7 @@ class AlbertClient:
         if not isinstance(message, dict):
             raise AlbertAPIError("Albert returned an invalid assistant message")
         usage = payload.get("usage") or {}
-        return AlbertCompletion(
+        return DataVisualizationCompletion(
             message=message,
             usage=usage if isinstance(usage, dict) else {},
             model=str(payload.get("model") or self.model),

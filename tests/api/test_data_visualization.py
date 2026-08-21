@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Iterator
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
@@ -11,17 +11,18 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from aglae.traupixe.analysis import (
-    TraupixeAnalysisError,
-    TraupixeAnalysisResult,
-)
 from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
-from clients.albert import AlbertClient
+from aglae.traupixe.visualization import TraupixeVisualizationHandler
 from clients.data_client import AbstractDataClient
 from data_visualization.models import DataVisualization
+from data_visualization.service import (
+    DataVisualizationError,
+    DataVisualizationResult,
+    DataVisualizationService,
+    PreparedDataVisualization,
+)
 from dependencies import (
-    get_data_visualization_llm_client,
-    get_data_visualization_python_sessions_client,
+    get_data_visualization_service,
     get_project_data_client,
 )
 
@@ -39,35 +40,24 @@ def visualization_dependencies(
     monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     data_client = MagicMock(spec=AbstractDataClient)
     data_client.download_run_file.return_value = io.BytesIO(b"workbook")
-    llm_client = MagicMock(spec=AlbertClient)
-    python_sessions = MagicMock()
+    visualization_service = MagicMock(spec=DataVisualizationService)
+    prepare = MagicMock(return_value=_prepared())
+    monkeypatch.setattr(TraupixeVisualizationHandler, "prepare", prepare)
     previous_data = app.dependency_overrides.get(get_project_data_client)
-    previous_llm = app.dependency_overrides.get(get_data_visualization_llm_client)
-    previous_sessions = app.dependency_overrides.get(
-        get_data_visualization_python_sessions_client
-    )
+    previous_service = app.dependency_overrides.get(get_data_visualization_service)
     app.dependency_overrides[get_project_data_client] = lambda: data_client
-    app.dependency_overrides[get_data_visualization_llm_client] = lambda: llm_client
-    app.dependency_overrides[get_data_visualization_python_sessions_client] = (
-        lambda: python_sessions
+    app.dependency_overrides[get_data_visualization_service] = (
+        lambda: visualization_service
     )
-    yield data_client, llm_client, python_sessions
+    yield data_client, visualization_service, prepare
     if previous_data is None:
         app.dependency_overrides.pop(get_project_data_client, None)
     else:
         app.dependency_overrides[get_project_data_client] = previous_data
-    if previous_llm is None:
-        app.dependency_overrides.pop(get_data_visualization_llm_client, None)
+    if previous_service is None:
+        app.dependency_overrides.pop(get_data_visualization_service, None)
     else:
-        app.dependency_overrides[get_data_visualization_llm_client] = previous_llm
-    if previous_sessions is None:
-        app.dependency_overrides.pop(
-            get_data_visualization_python_sessions_client, None
-        )
-    else:
-        app.dependency_overrides[get_data_visualization_python_sessions_client] = (
-            previous_sessions
-        )
+        app.dependency_overrides[get_data_visualization_service] = previous_service
 
 
 @pytest.fixture(autouse=True)
@@ -96,12 +86,20 @@ def _visualization() -> DataVisualization:
     )
 
 
-def _result() -> TraupixeAnalysisResult:
-    return TraupixeAnalysisResult(
+def _prepared() -> PreparedDataVisualization:
+    return PreparedDataVisualization(
+        filename="traupixe.json",
+        content=b"{}",
+        descriptor={"format": "TRAUPIXE"},
+    )
+
+
+def _result() -> DataVisualizationResult:
+    return DataVisualizationResult(
         answer="Réponse du modèle",
         visualizations=(_visualization(),),
         elapsed_seconds=1.25,
-        albert_calls=1,
+        llm_calls=1,
         usage=({"total_tokens": 300},),
     )
 
@@ -121,18 +119,17 @@ def test_creates_a_visualization_from_the_selected_project_file(
     albert_exchange_log_writer: MagicMock,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    data_client, llm_client, python_sessions = visualization_dependencies
-    analysis = MagicMock()
+    data_client, visualization_service, prepare = visualization_dependencies
 
     def run(
-        workbook: bytes,
+        prepared: PreparedDataVisualization,
         question: str,
         *,
         exchange_logger,
-    ) -> TraupixeAnalysisResult:
+    ) -> DataVisualizationResult:
         exchange_logger(
             {
-                "event": "albert_request",
+                "event": "llm_request",
                 "messages": [{"role": "user", "content": question}],
             }
         )
@@ -142,16 +139,11 @@ def test_creates_a_visualization_from_the_selected_project_file(
                 "visualization": _visualization().model_dump(mode="json"),
             }
         )
-        assert workbook == b"workbook"
+        assert prepared == _prepared()
         return _result()
 
-    analysis.run.side_effect = run
-    with (
-        patch(
-            "api.data_visualization.TraupixeAlbertAnalysis", return_value=analysis
-        ) as analysis_class,
-        caplog.at_level(logging.INFO, logger="api.data_visualization"),
-    ):
+    visualization_service.run.side_effect = run
+    with caplog.at_level(logging.INFO, logger="api.data_visualization"):
         response = _post(client)
 
     assert response.status_code == 200
@@ -162,8 +154,8 @@ def test_creates_a_visualization_from_the_selected_project_file(
     assert payload["visualizations"] == [_visualization().model_dump(mode="json")]
     assert "visualization" not in payload
     data_client.download_run_file.assert_called_once_with(WORKBOOK_PATH)
-    analysis_class.assert_called_once_with(llm_client, python_sessions)
-    analysis.run.assert_called_once()
+    prepare.assert_called_once_with(b"workbook")
+    visualization_service.run.assert_called_once()
     assert "data_visualization_exchange" in caplog.text
     assert "data_visualization_completed" in caplog.text
     assert "total_tokens=300" in caplog.text
@@ -179,7 +171,7 @@ def test_creates_a_visualization_from_the_selected_project_file(
     ]
     assert [exchange["event"] for exchange in written_exchanges] == [
         "request_started",
-        "albert_request",
+        "llm_request",
         "visualization_result",
         "request_completed",
     ]
@@ -261,13 +253,11 @@ def test_returns_debug_information_when_the_model_response_is_invalid(
     albert_exchange_log_writer: MagicMock,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with (
-        patch(
-            "api.data_visualization.TraupixeAlbertAnalysis.run",
-            side_effect=TraupixeAnalysisError("invalid analysis plan"),
-        ),
-        caplog.at_level(logging.INFO, logger="api.data_visualization"),
-    ):
+    _, visualization_service, _ = visualization_dependencies
+    visualization_service.run.side_effect = DataVisualizationError(
+        "invalid analysis plan"
+    )
+    with caplog.at_level(logging.INFO, logger="api.data_visualization"):
         response = _post(client)
 
     assert response.status_code == 422
@@ -286,7 +276,7 @@ def test_returns_debug_information_when_the_model_response_is_invalid(
         for call in albert_exchange_log_writer.call_args_list
         if call.args[1]["event"] == "analysis_rejected"
     )
-    assert rejected_exchange["error_type"] == "TraupixeAnalysisError"
+    assert rejected_exchange["error_type"] == "DataVisualizationError"
     assert "invalid analysis plan" in rejected_exchange["traceback"]
 
 
@@ -295,13 +285,9 @@ def test_hides_workbook_parser_details_from_the_client(
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with (
-        patch(
-            "api.data_visualization.TraupixeAlbertAnalysis.run",
-            side_effect=ValueError("private path: /tmp/workbook.xlsx"),
-        ),
-        caplog.at_level(logging.INFO, logger="api.data_visualization"),
-    ):
+    _, _, prepare = visualization_dependencies
+    prepare.side_effect = ValueError("private path: /tmp/workbook.xlsx")
+    with caplog.at_level(logging.INFO, logger="api.data_visualization"):
         response = _post(client)
 
     assert response.status_code == 422
@@ -316,11 +302,10 @@ def test_returns_a_simple_error_when_the_model_times_out(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
-    with patch(
-        "api.data_visualization.TraupixeAlbertAnalysis.run",
-        side_effect=httpx.ReadTimeout("timeout"),
-    ):
-        response = _post(client)
+    _, visualization_service, _ = visualization_dependencies
+    visualization_service.run.side_effect = httpx.ReadTimeout("timeout")
+
+    response = _post(client)
 
     assert response.status_code == 504
     UUID(response.headers["X-Request-ID"])
