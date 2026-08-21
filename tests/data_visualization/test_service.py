@@ -230,7 +230,10 @@ def test_retries_an_invalid_visualization() -> None:
 @pytest.mark.parametrize(
     "option",
     [
-        {"series": []},
+        {
+            "series": [{"type": "bar", "data": [1]}],
+            "tooltip": {"extraCssText": "position: fixed"},
+        },
         {
             "series": [{"type": "bar", "data": [1]}],
             "graphic": {"image": "data:image/png;base64,AA=="},

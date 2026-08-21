@@ -18,25 +18,14 @@ class DataVisualization(BaseModel):
     option: dict[str, Any]
 
     @model_validator(mode="after")
-    def validate_option(self) -> "DataVisualization":
-        series = self.option.get("series")
-        if isinstance(series, dict):
-            series_count = 1
-        elif isinstance(series, list):
-            series_count = len(series)
-        else:
-            series_count = 0
-        if series_count == 0:
-            raise ValueError("an ECharts option requires at least one series")
-        if series_count > 100:
-            raise ValueError("an ECharts option contains too many series")
+    def validate_option(self) -> DataVisualization:
         try:
             encoded = json.dumps(self.option, allow_nan=False)
         except (TypeError, ValueError) as error:
             raise ValueError("the ECharts option must be finite JSON") from error
         if len(encoded.encode("utf-8")) > MAX_GENERATED_OPTION_BYTES:
             raise ValueError("the ECharts option is too large")
-        _reject_external_resources(self.option)
+        _validate_safe_echarts_option(self.option)
         return self
 
 
@@ -50,16 +39,71 @@ class GeneratedVisualizationResponse(BaseModel):
     )
 
 
-def _reject_external_resources(value: Any) -> None:
+def _validate_safe_echarts_option(option: dict[str, Any]) -> None:
+    _reject_key(option.get("tooltip"), "extraCssText")
+
+    for toolbox in _mappings(option.get("toolbox")):
+        feature = toolbox.get("feature")
+        if not isinstance(feature, dict):
+            continue
+        for data_view in _mappings(feature.get("dataView")):
+            _reject_keys(data_view, {"optionToContent", "title", "lang"})
+        for save_as_image in _mappings(feature.get("saveAsImage")):
+            _reject_keys(save_as_image, {"name", "type"})
+
+    for title in _mappings(option.get("title")):
+        _reject_keys(title, {"link", "sublink"})
+
+    for series in _mappings(option.get("series")):
+        _reject_key(series.get("data"), "link")
+
+    for dataset in _mappings(option.get("dataset")):
+        for transform in _mappings(dataset.get("transform")):
+            for config in _mappings(transform.get("config")):
+                _reject_key(config, "reg")
+
+    _reject_external_images(option)
+
+
+def _mappings(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _reject_keys(value: dict[str, Any], keys: set[str]) -> None:
+    for key in keys:
+        if key in value:
+            raise ValueError(f"the ECharts option contains unsafe field {key!r}")
+
+
+def _reject_key(value: Any, key: str) -> None:
+    if isinstance(value, dict):
+        if key in value:
+            raise ValueError(f"the ECharts option contains unsafe field {key!r}")
         for item in value.values():
-            _reject_external_resources(item)
+            _reject_key(item, key)
         return
     if isinstance(value, list):
         for item in value:
-            _reject_external_resources(item)
+            _reject_key(item, key)
+
+
+def _reject_external_images(value: Any) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in {"image", "symbol"} and _is_external_resource(item):
+                raise ValueError("the ECharts option references an external resource")
+            _reject_external_images(item)
         return
-    if isinstance(value, str) and value.lstrip().casefold().startswith(
+    if isinstance(value, list):
+        for item in value:
+            _reject_external_images(item)
+
+
+def _is_external_resource(value: Any) -> bool:
+    return isinstance(value, str) and value.lstrip().casefold().startswith(
         ("http://", "https://", "data:", "image://")
-    ):
-        raise ValueError("the ECharts option references an external resource")
+    )
