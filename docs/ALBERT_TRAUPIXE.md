@@ -1,0 +1,102 @@
+# Visualisation de données — support TRAUPIXE
+
+## Version actuelle
+
+Le service de visualisation est indépendant du format de données. Cette première
+version permet de questionner un classeur TRAUPIXE depuis le cahier de laboratoire
+et d'afficher les visualisations proposées par Albert.
+
+Le périmètre est volontairement limité :
+
+- fichiers `.xlsx` dont le nom contient `TRAUPIXE` ;
+- choix explicite du fichier lorsqu'un run en contient plusieurs ;
+- une question indépendante, sans historique de conversation ;
+- lecture des feuilles `S_Conc. %` ou `S_Conc. ppm` et, si elle existe,
+  `S_Best Det.` ;
+- calcul des données par du code Python généré par Albert ;
+- une à huit options ECharts autonomes, sans liste fermée de graphiques ;
+- message d'erreur invitant l'utilisateur à réessayer.
+
+L'interprétation du nom du fichier, les analyses statistiques métier avancées,
+l'export, la persistance des résultats et les conversations multi-tours sont hors
+de ce périmètre.
+
+Dans les lignes du classeur, un identifiant contenant `_STD_` ou le libellé
+`MesureCharge` désigne une référence ; les autres lignes sont considérées comme des
+analyses d'objet. Cette règle minimale devra être réévaluée si de nouvelles variantes
+TRAUPIXE l'invalident.
+
+## Flux actuel
+
+```text
+Classeur + question
+        ↓
+Lecture TRAUPIXE minimale et JSON normalisé
+        ↓
+Albert génère un calcul Python
+        ↓
+Exécution Python dans Azure Dynamic Sessions
+        ↓
+Résultat de calcul JSON
+        ↓
+Albert génère une réponse structurée
+        ↓
+Options ECharts validées puis affichées par le frontend
+```
+
+Le modèle doit affecter son calcul à une variable `result`. Le backend la
+sérialise en JSON et peut demander une correction lorsque l'exécution ou la réponse
+finale est invalide.
+
+Le contrat d'une visualisation reste minimal :
+
+```json
+{
+  "title": "Titre du graphique",
+  "option": {}
+}
+```
+
+Le backend vérifie uniquement des garde-fous génériques : JSON fini, taille bornée
+et exclusion des champs ECharts susceptibles de charger une ressource externe,
+d'injecter du contenu ou de déclencher une navigation. Il ne limite ni les types de
+graphiques ni le nombre de séries. Le frontend transmet l'option à ECharts sans
+interpréter de chaînes comme du code.
+
+## Exécution Python et journalisation
+
+`AZURE_SESSION_POOL_ENDPOINT` configure le pool Azure. `DefaultAzureCredential`
+authentifie Tools API auprès de l'API data-plane ; son identité doit posséder le rôle
+`Azure ContainerApps Session Executor` sur le pool. Seul le jeu de données TRAUPIXE
+normalisé est placé dans `/mnt/data` ; le classeur original reste dans Tools API. Le
+résultat JSON est récupéré puis la session est supprimée.
+
+La question utilisateur et les métriques de synthèse sont journalisées par
+l'application pour permettre une analyse élémentaire de l'usage. Dans les
+environnements `dev`, `development` et `local`, les échanges complets sont en plus
+enregistrés hors du dépôt dans un fichier JSONL rotatif. Sur macOS :
+
+```text
+~/Library/Logs/euphrosyne-tools-api/data-visualization-exchanges.jsonl
+```
+
+Ils contiennent la question, le code Python et les réponses du modèle et doivent
+être traités comme des données métier sensibles. Ils sont désactivés dans les autres
+environnements.
+
+## Endpoint
+
+```http
+POST /data/{project_slug}/visualizations
+Content-Type: application/json
+
+{
+  "path": "projects/project-01/runs/run-01/processed_data/TRAUPIXE-example.xlsx",
+  "question": "Compare les concentrations en fer, cuivre et plomb."
+}
+```
+
+`ALBERT_API_KEY`, `ALBERT_MODEL` et `AZURE_SESSION_POOL_ENDPOINT` sont requis. La
+réponse contient `request_id`, `answer` et `visualizations`. Les erreurs d'entrée
+utilisent un code stable parmi `INVALID_FILE_PATH`, `UNSUPPORTED_FILE_TYPE`,
+`FILE_TOO_LARGE` et `INVALID_DATA_FILE`, accompagné du `request_id`.
