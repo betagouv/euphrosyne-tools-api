@@ -57,10 +57,11 @@ Le contrat d'une visualisation reste minimal :
 }
 ```
 
-Le backend vérifie uniquement des garde-fous génériques : JSON fini, taille et
-nombre de séries bornés, présence d'au moins une série et absence de ressources
-externes. Le frontend ajoute seulement des valeurs de présentation par défaut
-(marges, lisibilité des axes et infobulles) avant de transmettre l'option à ECharts.
+Le backend vérifie uniquement des garde-fous génériques : JSON fini, taille bornée
+et exclusion des champs ECharts susceptibles de charger une ressource externe,
+d'injecter du contenu ou de déclencher une navigation. Il ne limite ni les types de
+graphiques ni le nombre de séries. Le frontend transmet l'option à ECharts sans
+interpréter de chaînes comme du code.
 
 ## Exécution Python et journalisation
 
@@ -69,38 +70,19 @@ authentifie Tools API auprès de l'API data-plane ; son identité doit posséder
 `Azure ContainerApps Session Executor` sur le pool. Seul le jeu de données TRAUPIXE
 normalisé est placé dans `/mnt/data` ; le classeur original reste dans Tools API. Le
 résultat JSON est récupéré puis la session est supprimée.
-L'absence de `AZURE_SESSION_POOL_ENDPOINT` désactive la visualisation avec une
-erreur 503.
 
-Les échanges complets sont enregistrés hors du dépôt dans un fichier JSONL rotatif.
-Sur macOS :
+La question utilisateur et les métriques de synthèse sont journalisées par
+l'application pour permettre une analyse élémentaire de l'usage. Dans les
+environnements `dev`, `development` et `local`, les échanges complets sont en plus
+enregistrés hors du dépôt dans un fichier JSONL rotatif. Sur macOS :
 
 ```text
-~/Library/Logs/euphrosyne-tools-api/albert-exchanges.jsonl
+~/Library/Logs/euphrosyne-tools-api/data-visualization-exchanges.jsonl
 ```
 
 Ils contiennent la question, le code Python et les réponses du modèle et doivent
-être traités comme des données métier sensibles. La sortie standard ne contient que
-l'identifiant de requête, le type d'événement et les informations de synthèse.
-
-## Jalons suivants
-
-### Analyses scientifiques AGLAE
-
-Ce jalon ajoutera des primitives Python déterministes inspirées du rapport
-`20260730_TaCT_rapport AGLAE_pates.docx` : normalisation à 100 %, traitement des
-valeurs nulles, transformation CLR, distance d'Aitchison, classification de Ward,
-ACP et cercle des corrélations.
-
-Les premières visualisations cibles seront les barres groupées des oxydes majeurs,
-le dendrogramme CLR–Aitchison–Ward, le plan factoriel ACP PC1–PC2 et le cercle des
-corrélations. Les calculs seront spécialisés côté backend, mais leur restitution
-restera constituée d'options ECharts génériques afin de ne pas ajouter de types de
-graphiques au frontend.
-
-Avant ce jalon, il faudra définir la source des groupes stylistiques (`A`, `B`, `C`,
-`D`, `LM`), les règles d'agrégation des analyses d'un même objet, les exclusions et
-le remplacement des valeurs nulles.
+être traités comme des données métier sensibles. Ils sont désactivés dans les autres
+environnements.
 
 ## Endpoint
 
@@ -114,5 +96,7 @@ Content-Type: application/json
 }
 ```
 
-`ALBERT_API_KEY` et `ALBERT_MODEL` sont requis. Le timeout est de 300 secondes par
-appel. La réponse contient `request_id`, `answer` et `visualizations`.
+`ALBERT_API_KEY`, `ALBERT_MODEL` et `AZURE_SESSION_POOL_ENDPOINT` sont requis. La
+réponse contient `request_id`, `answer` et `visualizations`. Les erreurs d'entrée
+utilisent un code stable parmi `INVALID_FILE_PATH`, `UNSUPPORTED_FILE_TYPE`,
+`FILE_TOO_LARGE` et `INVALID_DATA_FILE`, accompagné du `request_id`.

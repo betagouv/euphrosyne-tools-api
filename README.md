@@ -30,6 +30,7 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 | AZURE_SESSION_POOL_ENDPOINT       | Endpoint de gestion du Session Pool Azure utilisé pour isoler l'exécution Python des visualisations.                                                                                              |
 | ALBERT_API_KEY                    | Clé API Albert utilisée par le service de visualisation de données.                                                                                                                               |
 | ALBERT_MODEL                      | Modèle Albert utilisé par le service de visualisation de données. Exemple : `openai/gpt-oss-120b`.                                                                                                |
+| EUPHROSYNE_TOOLS_ENVIRONMENT      | Environnement d'exécution. Les valeurs `dev`, `development` et `local` activent le journal détaillé des échanges de visualisation.                                                                |
 | AZURE_IMAGE_GALLERY               | Nom de la _Azure compute gallery_ qui stock les différentes images                                                                                                                                 |
 | AZURE_IMAGE_DEFINITION            | Nom de la _VM image definition_ qui est l'image pré-configurée pour les VM Euphrosyne                                                                                                              |
 | CORS_ALLOWED_ORIGIN               | Origines des frontends autorisées à utiliser l'API. Séparer les origines par des espaces.                                                                                                          |
@@ -60,14 +61,13 @@ Pour la documentation technique du stockage HOT/COOL, du routage par cycle de vi
 
 Le visualiseur expose un contrat générique, mais n'accepte actuellement que les
 fichiers TRAUPIXE. Le périmètre de ce premier format, l'architecture et les
-prochains jalons sont décrits dans
+détails d'exploitation sont décrits dans
 [ALBERT_TRAUPIXE.md](./docs/ALBERT_TRAUPIXE.md).
 
 L'endpoint utilise une interprétation TRAUPIXE minimale des concentrations,
 non-détections et détecteurs. Albert calcule les données nécessaires dans un
-Session Pool Azure isolé puis produit entre une et huit options ECharts. En
-cas de configuration absente, l'endpoint de visualisation renvoie une erreur 503.
-Le frontend reste agnostique du type de graphique.
+Session Pool Azure isolé puis produit entre une et huit options ECharts. Le
+frontend reste agnostique du type de graphique.
 
 ### Endpoint de visualisation
 
@@ -87,8 +87,10 @@ Content-Type: application/json
 Le chemin doit appartenir au projet autorisé et désigner un fichier `.xlsx` dont le
 nom contient `TRAUPIXE`. La réponse contient `request_id`, `answer` et une liste de
 visualisations `{title, option}`. Les erreurs d'analyse exposent une raison concise
-et la référence permettant de retrouver les échanges complets dans le journal JSONL
-privé de l'utilisateur.
+et un `request_id`. Les erreurs attendues utilisent les codes stables
+`INVALID_FILE_PATH`, `UNSUPPORTED_FILE_TYPE`, `FILE_TOO_LARGE` et
+`INVALID_DATA_FILE`. Les erreurs d'infrastructure inattendues remontent au suivi
+d'erreurs de l'application.
 
 ## Configurer le CORS (Blob / Fileshare)
 
