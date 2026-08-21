@@ -62,7 +62,13 @@ def visualization_dependencies(
 
 @pytest.fixture(autouse=True)
 def albert_exchange_log_writer() -> Iterator[MagicMock]:
-    with patch("api.data_visualization.write_albert_exchange") as writer:
+    with (
+        patch(
+            "api.data_visualization.is_data_visualization_exchange_logging_enabled",
+            return_value=True,
+        ),
+        patch("api.data_visualization.write_data_visualization_exchange") as writer,
+    ):
         yield writer
 
 
@@ -159,6 +165,7 @@ def test_creates_a_visualization_from_the_selected_project_file(
     assert "data_visualization_exchange" in caplog.text
     assert "data_visualization_completed" in caplog.text
     assert "total_tokens=300" in caplog.text
+    assert "question='Compare le fer.'" in caplog.text
     visualization_log = next(
         record.message
         for record in caplog.records
@@ -190,27 +197,39 @@ def test_rejects_a_file_from_another_project(
     )
 
     assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "INVALID_FILE_PATH"
     data_client.download_run_file.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "path",
+    ("path", "error_code"),
     [
-        "projects/project-01/runs/run-01/raw_data/results.xlsx",
-        "projects/project-01/runs/run-01/raw_data/TRAUPIXE-example.xls",
-        "projects/project-01/runs/run-01/raw_data/../TRAUPIXE-example.xlsx",
+        (
+            "projects/project-01/runs/run-01/raw_data/results.xlsx",
+            "UNSUPPORTED_FILE_TYPE",
+        ),
+        (
+            "projects/project-01/runs/run-01/raw_data/TRAUPIXE-example.xls",
+            "UNSUPPORTED_FILE_TYPE",
+        ),
+        (
+            "projects/project-01/runs/run-01/raw_data/../TRAUPIXE-example.xlsx",
+            "INVALID_FILE_PATH",
+        ),
     ],
 )
 def test_rejects_files_outside_the_current_traupixe_scope(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
     path: str,
+    error_code: str,
 ) -> None:
     data_client, _, _ = visualization_dependencies
 
     response = _post(client, path=path)
 
     assert response.status_code == 422
+    assert response.json()["detail"]["code"] == error_code
     data_client.download_run_file.assert_not_called()
 
 
@@ -226,58 +245,32 @@ def test_rejects_an_oversized_workbook_before_reading_it(
     response = _post(client)
 
     assert response.status_code == 413
+    assert response.json()["detail"]["code"] == "FILE_TOO_LARGE"
     workbook_file.read.assert_not_called()
     workbook_file.close.assert_called_once_with()
 
 
-def test_returns_a_simple_error_when_the_workbook_cannot_be_downloaded(
+def test_propagates_storage_errors_for_error_monitoring(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
     data_client, _, _ = visualization_dependencies
     data_client.download_run_file.side_effect = RuntimeError("storage details")
 
-    response = _post(client)
-
-    assert response.status_code == 502
-    UUID(response.headers["X-Request-ID"])
-    assert response.json() == {
-        "detail": "Impossible de traiter cette demande. Veuillez réessayer."
-    }
-    assert "storage details" not in response.text
+    with pytest.raises(RuntimeError, match="storage details"):
+        _post(client)
 
 
-def test_returns_debug_information_when_the_model_response_is_invalid(
+def test_propagates_model_errors_for_error_monitoring(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
-    albert_exchange_log_writer: MagicMock,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     _, visualization_service, _ = visualization_dependencies
     visualization_service.run.side_effect = DataVisualizationError(
         "invalid analysis plan"
     )
-    with caplog.at_level(logging.INFO, logger="api.data_visualization"):
-        response = _post(client)
-
-    assert response.status_code == 422
-    request_id = response.headers["X-Request-ID"]
-    UUID(request_id)
-    assert response.json() == {
-        "detail": {
-            "message": "Impossible de traiter cette demande. Veuillez réessayer.",
-            "reason": "invalid analysis plan",
-            "request_id": request_id,
-        }
-    }
-    assert "reason='invalid analysis plan'" in caplog.text
-    rejected_exchange = next(
-        call.args[1]
-        for call in albert_exchange_log_writer.call_args_list
-        if call.args[1]["event"] == "analysis_rejected"
-    )
-    assert rejected_exchange["error_type"] == "DataVisualizationError"
-    assert "invalid analysis plan" in rejected_exchange["traceback"]
+    with pytest.raises(DataVisualizationError, match="invalid analysis plan"):
+        _post(client)
 
 
 def test_hides_workbook_parser_details_from_the_client(
@@ -291,27 +284,39 @@ def test_hides_workbook_parser_details_from_the_client(
         response = _post(client)
 
     assert response.status_code == 422
-    assert response.json()["detail"]["reason"] == (
-        "Le classeur TRAUPIXE n'a pas pu être interprété."
-    )
+    assert response.json()["detail"]["code"] == "INVALID_DATA_FILE"
     assert "/tmp/workbook.xlsx" not in response.text
     assert "/tmp/workbook.xlsx" in caplog.text
 
 
-def test_returns_a_simple_error_when_the_model_times_out(
+def test_propagates_model_timeouts_for_error_monitoring(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
     _, visualization_service, _ = visualization_dependencies
     visualization_service.run.side_effect = httpx.ReadTimeout("timeout")
 
-    response = _post(client)
+    with pytest.raises(httpx.ReadTimeout, match="timeout"):
+        _post(client)
 
-    assert response.status_code == 504
-    UUID(response.headers["X-Request-ID"])
-    assert response.json() == {
-        "detail": "Impossible de traiter cette demande. Veuillez réessayer."
-    }
+
+def test_does_not_write_complete_exchanges_outside_development(
+    client: TestClient,
+    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
+    albert_exchange_log_writer: MagicMock,
+) -> None:
+    _, visualization_service, _ = visualization_dependencies
+    visualization_service.run.return_value = _result()
+
+    with patch(
+        "api.data_visualization.is_data_visualization_exchange_logging_enabled",
+        return_value=False,
+    ):
+        response = _post(client)
+
+    assert response.status_code == 200
+    assert visualization_service.run.call_args.kwargs["exchange_logger"] is None
+    albert_exchange_log_writer.assert_not_called()
 
 
 def test_requires_project_membership(

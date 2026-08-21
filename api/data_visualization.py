@@ -1,30 +1,27 @@
 from __future__ import annotations
 
 import logging
-import traceback
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, BinaryIO
 from uuid import UUID, uuid4
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from auth import verify_project_membership
-from clients.albert import AlbertAPIError
 from clients.data_client import AbstractDataClient
-from data_visualization.exchange_log import write_albert_exchange
+from data_visualization.exchange_log import (
+    is_data_visualization_exchange_logging_enabled,
+    write_data_visualization_exchange,
+)
 from data_visualization.handlers import (
     DataVisualizationHandler,
     UnsupportedDataVisualizationFile,
     resolve_data_visualization_handler,
 )
 from data_visualization.models import DataVisualization
-from data_visualization.service import (
-    DataVisualizationError,
-    DataVisualizationService,
-)
+from data_visualization.service import DataVisualizationService
 from dependencies import (
     get_data_visualization_service,
     get_project_data_client,
@@ -35,8 +32,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data", tags=["data-visualization"])
 
-USER_ERROR = "Impossible de traiter cette demande. Veuillez réessayer."
-TRAUPIXE_WORKBOOK_ERROR = "Le classeur TRAUPIXE n'a pas pu être interprété."
+INVALID_FILE_PATH = "INVALID_FILE_PATH"
+UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
+FILE_TOO_LARGE = "FILE_TOO_LARGE"
+INVALID_DATA_FILE = "INVALID_DATA_FILE"
+
+
+class DataVisualizationRequestError(ValueError):
+    def __init__(self, code: str, status_code: int) -> None:
+        super().__init__(code)
+        self.code = code
+        self.status_code = status_code
 
 
 class DataVisualizationQuery(BaseModel):
@@ -71,19 +77,25 @@ def create_data_visualization(
     request_id = uuid4()
     response.headers["X-Request-ID"] = str(request_id)
     logger.info(
-        "data_visualization_started request_id=%s project=%s path=%s",
+        "data_visualization_started request_id=%s project=%s path=%s question=%r",
         request_id,
         project_slug,
         query.path,
+        query.question,
     )
-    exchange_logger = _exchange_logger(request_id)
-    exchange_logger(
+    exchange_logger = (
+        _exchange_logger(request_id)
+        if is_data_visualization_exchange_logging_enabled()
+        else None
+    )
+    _emit_exchange(
+        exchange_logger,
         {
             "event": "request_started",
             "project": project_slug,
             "path": query.path,
             "question": query.question,
-        }
+        },
     )
     try:
         handler = _resolve_handler(project_slug, query.path)
@@ -92,99 +104,43 @@ def create_data_visualization(
             query.path,
             handler.max_source_size_bytes,
         )
-    except HTTPException as error:
-        exchange_logger(
-            {
-                "event": "request_input_error",
-                "status_code": error.status_code,
-                "detail": error.detail,
-            }
-        )
-        error.headers = {
-            **(error.headers or {}),
-            "X-Request-ID": str(request_id),
-        }
+    except DataVisualizationRequestError as error:
         logger.info(
-            "data_visualization_input_error request_id=%s status=%s",
+            "data_visualization_input_error request_id=%s status=%s code=%s",
             request_id,
             error.status_code,
+            error.code,
         )
-        raise
+        raise _http_error(error, request_id) from error
     try:
         prepared = handler.prepare(workbook)
-        result = visualization_service.run(
-            prepared,
-            query.question,
-            exchange_logger=exchange_logger,
-        )
-    except httpx.TimeoutException as error:
-        _log_exchange_failure(exchange_logger, "request_timeout", error)
-        logger.warning(
-            "data_visualization_timeout request_id=%s",
-            request_id,
-        )
-        raise HTTPException(
-            status_code=504,
-            detail=USER_ERROR,
-            headers={"X-Request-ID": str(request_id)},
-        ) from error
-    except (AlbertAPIError, httpx.HTTPError) as error:
-        _log_exchange_failure(exchange_logger, "llm_error", error)
-        logger.warning(
-            "data_visualization_llm_error request_id=%s error=%s",
-            request_id,
-            type(error).__name__,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=USER_ERROR,
-            headers={"X-Request-ID": str(request_id)},
-        ) from error
-    except (DataVisualizationError, OSError, ValueError) as error:
-        _log_exchange_failure(exchange_logger, "analysis_rejected", error)
-        public_reason = (
-            str(error)
-            if isinstance(error, DataVisualizationError)
-            else TRAUPIXE_WORKBOOK_ERROR
-        )
+    except ValueError as error:
         logger.info(
-            "data_visualization_rejected request_id=%s error=%s reason=%r",
+            "data_visualization_invalid_file request_id=%s error=%s reason=%r",
             request_id,
             type(error).__name__,
             str(error),
         )
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": USER_ERROR,
-                "reason": public_reason,
-                "request_id": str(request_id),
-            },
-            headers={"X-Request-ID": str(request_id)},
-        ) from error
-    except Exception as error:
-        _log_exchange_failure(exchange_logger, "unexpected_error", error)
-        logger.exception(
-            "data_visualization_unexpected_error request_id=%s",
-            request_id,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=USER_ERROR,
-            headers={"X-Request-ID": str(request_id)},
-        ) from error
+        request_error = DataVisualizationRequestError(INVALID_DATA_FILE, 422)
+        raise _http_error(request_error, request_id) from error
+    result = visualization_service.run(
+        prepared,
+        query.question,
+        exchange_logger=exchange_logger,
+    )
     total_tokens = sum(
         usage.get("total_tokens", 0)
         for usage in result.usage
         if isinstance(usage.get("total_tokens"), int)
     )
-    exchange_logger(
+    _emit_exchange(
+        exchange_logger,
         {
             "event": "request_completed",
             "calls": result.llm_calls,
             "elapsed_seconds": result.elapsed_seconds,
             "total_tokens": total_tokens,
-        }
+        },
     )
     logger.info(
         "data_visualization_completed request_id=%s calls=%s "
@@ -207,22 +163,17 @@ def _resolve_handler(
 ) -> DataVisualizationHandler:
     workbook_path = Path(path)
     if ".." in workbook_path.parts:
-        raise HTTPException(status_code=422, detail="Chemin de fichier invalide.")
+        raise DataVisualizationRequestError(INVALID_FILE_PATH, 422)
     try:
         reference = RunDataTypeRef.from_path(workbook_path)
     except IncorrectDataFilePath as error:
-        raise HTTPException(
-            status_code=422, detail="Chemin de fichier invalide."
-        ) from error
+        raise DataVisualizationRequestError(INVALID_FILE_PATH, 422) from error
     if reference.project_slug != project_slug:
-        raise HTTPException(status_code=422, detail="Chemin de fichier invalide.")
+        raise DataVisualizationRequestError(INVALID_FILE_PATH, 422)
     try:
         return resolve_data_visualization_handler(workbook_path)
     except UnsupportedDataVisualizationFile as error:
-        raise HTTPException(
-            status_code=422,
-            detail="Le fichier sélectionné doit être un classeur TRAUPIXE.",
-        ) from error
+        raise DataVisualizationRequestError(UNSUPPORTED_FILE_TYPE, 422) from error
 
 
 def _download_workbook(
@@ -239,32 +190,22 @@ def _download_workbook(
             and not isinstance(content_length, bool)
             and content_length > max_source_size_bytes
         ):
-            raise HTTPException(
-                status_code=413,
-                detail="Le classeur TRAUPIXE dépasse la taille autorisée.",
-            )
+            raise DataVisualizationRequestError(FILE_TOO_LARGE, 413)
         workbook = workbook_file.read(max_source_size_bytes + 1)
-    except HTTPException:
-        raise
-    except Exception as error:
-        raise HTTPException(status_code=502, detail=USER_ERROR) from error
     finally:
         if workbook_file is not None:
             workbook_file.close()
     if not isinstance(workbook, bytes) or not workbook:
-        raise HTTPException(status_code=422, detail=USER_ERROR)
+        raise DataVisualizationRequestError(INVALID_DATA_FILE, 422)
     if len(workbook) > max_source_size_bytes:
-        raise HTTPException(
-            status_code=413,
-            detail="Le classeur TRAUPIXE dépasse la taille autorisée.",
-        )
+        raise DataVisualizationRequestError(FILE_TOO_LARGE, 413)
     return workbook
 
 
 def _exchange_logger(request_id: UUID) -> Callable[[dict[str, Any]], None]:
     def log_exchange(exchange: dict[str, Any]) -> None:
         try:
-            write_albert_exchange(request_id, exchange)
+            write_data_visualization_exchange(request_id, exchange)
         except Exception:
             logger.warning(
                 "data_visualization_exchange_file_error request_id=%s",
@@ -280,18 +221,20 @@ def _exchange_logger(request_id: UUID) -> Callable[[dict[str, Any]], None]:
     return log_exchange
 
 
-def _log_exchange_failure(
-    exchange_logger: Callable[[dict[str, Any]], None],
-    event: str,
-    error: BaseException,
+def _emit_exchange(
+    exchange_logger: Callable[[dict[str, Any]], None] | None,
+    exchange: dict[str, Any],
 ) -> None:
-    exchange_logger(
-        {
-            "event": event,
-            "error_type": type(error).__name__,
-            "error": str(error),
-            "traceback": "".join(
-                traceback.format_exception(type(error), error, error.__traceback__)
-            ),
-        }
+    if exchange_logger is not None:
+        exchange_logger(exchange)
+
+
+def _http_error(
+    error: DataVisualizationRequestError,
+    request_id: UUID,
+) -> HTTPException:
+    return HTTPException(
+        status_code=error.status_code,
+        detail={"code": error.code, "request_id": str(request_id)},
+        headers={"X-Request-ID": str(request_id)},
     )
