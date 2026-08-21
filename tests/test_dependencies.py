@@ -18,9 +18,6 @@ def clear_dependency_caches():
     dependencies.get_infra_azure_client.cache_clear()
     dependencies.get_guacamole_client.cache_clear()
     dependencies.get_image_storage_client.cache_clear()
-    dependencies.get_data_visualization_llm_client.cache_clear()
-    dependencies.get_data_visualization_python_sessions_client.cache_clear()
-    dependencies.get_data_visualization_service.cache_clear()
     yield
     dependencies.get_project_data_client.cache_clear()
     dependencies.get_hot_project_data_client.cache_clear()
@@ -29,9 +26,6 @@ def clear_dependency_caches():
     dependencies.get_infra_azure_client.cache_clear()
     dependencies.get_guacamole_client.cache_clear()
     dependencies.get_image_storage_client.cache_clear()
-    dependencies.get_data_visualization_llm_client.cache_clear()
-    dependencies.get_data_visualization_python_sessions_client.cache_clear()
-    dependencies.get_data_visualization_service.cache_clear()
 
 
 def test_get_project_from_path_or_param_prefers_project_slug():
@@ -150,103 +144,3 @@ def test_get_hot_project_data_client_delegates_to_hot_role():
 
     assert result is hot_client
     get_project_data_client_mock.assert_called_once_with(StorageRole.HOT)
-
-
-def test_get_data_visualization_llm_client_uses_albert_configuration(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv("ALBERT_API_KEY", "token")
-    monkeypatch.setenv("ALBERT_MODEL", "model")
-    llm_client = object()
-
-    with patch.object(
-        dependencies,
-        "AlbertClient",
-        return_value=llm_client,
-    ) as client_class:
-        result = dependencies.get_data_visualization_llm_client()
-
-    assert result is llm_client
-    client_class.assert_called_once_with(
-        api_key="token",
-        model="model",
-        timeout_seconds=dependencies.DATA_VISUALIZATION_TIMEOUT_SECONDS,
-    )
-
-
-@pytest.mark.parametrize("missing_variable", ["ALBERT_API_KEY", "ALBERT_MODEL"])
-def test_get_data_visualization_llm_client_requires_configuration(
-    monkeypatch: pytest.MonkeyPatch,
-    missing_variable: str,
-):
-    monkeypatch.setenv("ALBERT_API_KEY", "token")
-    monkeypatch.setenv("ALBERT_MODEL", "model")
-    monkeypatch.delenv(missing_variable)
-
-    with pytest.raises(HTTPException) as error:
-        dependencies.get_data_visualization_llm_client()
-
-    assert error.value.status_code == 503
-    assert error.value.detail == "Le service de visualisation n'est pas configuré."
-
-
-def test_get_data_visualization_python_sessions_client_uses_azure_pool(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv("AZURE_SESSION_POOL_ENDPOINT", "https://sessions.example/pool")
-    sessions = object()
-
-    with patch.object(
-        dependencies,
-        "AzurePythonSessionsClient",
-        return_value=sessions,
-    ) as client_class:
-        result = dependencies.get_data_visualization_python_sessions_client()
-
-    assert result is sessions
-    client_class.assert_called_once_with(
-        "https://sessions.example/pool",
-        execution_timeout_seconds=dependencies.DATA_VISUALIZATION_TIMEOUT_SECONDS,
-    )
-
-
-def test_get_data_visualization_python_sessions_client_requires_azure_pool(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.delenv("AZURE_SESSION_POOL_ENDPOINT", raising=False)
-
-    with pytest.raises(HTTPException) as error:
-        dependencies.get_data_visualization_python_sessions_client()
-
-    assert error.value.status_code == 503
-    assert error.value.detail == (
-        "Le service d'exécution Python isolé n'est pas configuré."
-    )
-
-
-def test_get_data_visualization_service_composes_its_clients():
-    llm = object()
-    sessions = object()
-    service = object()
-
-    with (
-        patch.object(
-            dependencies,
-            "get_data_visualization_llm_client",
-            return_value=llm,
-        ),
-        patch.object(
-            dependencies,
-            "get_data_visualization_python_sessions_client",
-            return_value=sessions,
-        ),
-        patch.object(
-            dependencies,
-            "DataVisualizationService",
-            return_value=service,
-        ) as service_class,
-    ):
-        result = dependencies.get_data_visualization_service()
-
-    assert result is service
-    service_class.assert_called_once_with(llm, sessions)

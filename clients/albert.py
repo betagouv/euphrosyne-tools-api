@@ -1,12 +1,25 @@
 from __future__ import annotations
 
-from typing import Any
+import os
+from typing import Any, NotRequired, TypedDict, cast
 
 import httpx
 
 from data_visualization.llm import DataVisualizationCompletion
 
 DEFAULT_ALBERT_BASE_URL = "https://albert.api.etalab.gouv.fr"
+MAX_ERROR_DETAIL_LENGTH = 1_000
+
+
+class ChatCompletionChoice(TypedDict):
+    message: dict[str, Any]
+    finish_reason: NotRequired[str | None]
+
+
+class ChatCompletionPayload(TypedDict):
+    choices: list[ChatCompletionChoice]
+    usage: NotRequired[dict[str, Any]]
+    model: NotRequired[str]
 
 
 class AlbertAPIError(RuntimeError):
@@ -18,13 +31,15 @@ class AlbertClient:
 
     def __init__(
         self,
-        api_key: str,
-        model: str,
+        api_key: str | None = None,
+        model: str | None = None,
         *,
         base_url: str = DEFAULT_ALBERT_BASE_URL,
         timeout_seconds: float = 90,
         http_client: httpx.Client | None = None,
     ) -> None:
+        api_key = api_key if api_key is not None else os.environ["ALBERT_API_KEY"]
+        model = model if model is not None else os.environ["ALBERT_MODEL"]
         self.model = model
         self._url = f"{base_url.rstrip('/')}/v1/chat/completions"
         self._http_client = http_client or httpx.Client(timeout=timeout_seconds)
@@ -60,9 +75,11 @@ class AlbertClient:
             json=request_body,
         )
         if response.is_error:
-            raise AlbertAPIError(f"Albert returned HTTP {response.status_code}")
+            detail = _error_detail(response)
+            suffix = f": {detail}" if detail else ""
+            raise AlbertAPIError(f"Albert returned HTTP {response.status_code}{suffix}")
         try:
-            payload = response.json()
+            payload = cast(ChatCompletionPayload, response.json())
             choice = payload["choices"][0]
             message = choice["message"]
         except (ValueError, KeyError, IndexError, TypeError) as error:
@@ -74,9 +91,16 @@ class AlbertClient:
             message=message,
             usage=usage if isinstance(usage, dict) else {},
             model=str(payload.get("model") or self.model),
-            finish_reason=(
-                str(choice["finish_reason"])
-                if choice.get("finish_reason") is not None
-                else None
-            ),
+            finish_reason=choice.get("finish_reason"),
         )
+
+
+def _error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(error, dict) and isinstance(error.get("message"), str):
+            return error["message"][:MAX_ERROR_DETAIL_LENGTH]
+    except ValueError:
+        pass
+    return response.text.strip()[:MAX_ERROR_DETAIL_LENGTH]

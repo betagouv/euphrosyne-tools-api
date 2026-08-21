@@ -6,7 +6,10 @@ import pytest
 from clients.albert import AlbertAPIError, AlbertClient
 
 
-def test_complete_calls_albert_with_tools() -> None:
+def test_complete_calls_albert_with_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALBERT_API_KEY", "secret")
+    monkeypatch.setenv("ALBERT_MODEL", "model-id")
+
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url == "https://albert.test/v1/chat/completions"
         assert request.headers["Authorization"] == "Bearer secret"
@@ -35,12 +38,7 @@ def test_complete_calls_albert_with_tools() -> None:
         )
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    client = AlbertClient(
-        "secret",
-        "model-id",
-        base_url="https://albert.test",
-        http_client=http_client,
-    )
+    client = AlbertClient(base_url="https://albert.test", http_client=http_client)
 
     completion = client.complete(
         [{"role": "user", "content": "question"}],
@@ -98,6 +96,10 @@ def test_complete_calls_albert_with_a_json_schema_without_tools() -> None:
     ("response", "message"),
     [
         (httpx.Response(503), "Albert returned HTTP 503"),
+        (
+            httpx.Response(429, json={"error": {"message": "quota exceeded"}}),
+            "quota exceeded",
+        ),
         (httpx.Response(200, json={"choices": []}), "invalid completion"),
     ],
 )

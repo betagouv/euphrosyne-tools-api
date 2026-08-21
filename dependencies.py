@@ -5,7 +5,6 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException
 
-from clients.albert import AlbertClient
 from clients.azure import (
     BlobDataAzureClient,
     ConfigAzureClient,
@@ -14,18 +13,13 @@ from clients.azure import (
     VMAzureClient,
 )
 from clients.azure.images import ImageStorageClient
-from clients.azure.python_sessions import AzurePythonSessionsClient
 from clients.data_client import AbstractDataClient
 from clients.guacamole import GuacamoleClient
-from clients.python_sessions import PythonSessionsClient
 from data_lifecycle.dependencies import fetch_project_lifecycle
 from data_lifecycle.models import LifecycleState
 from data_lifecycle.storage_resolver import resolve_backend
 from data_lifecycle.storage_types import StorageBackend, StorageRole
-from data_visualization.service import DataVisualizationService
 from path import ProjectRef
-
-DATA_VISUALIZATION_TIMEOUT_SECONDS = 300
 
 
 @lru_cache()
@@ -103,41 +97,3 @@ def get_guacamole_client():
 @lru_cache()
 def get_image_storage_client(project_slug: str) -> ImageStorageClient:
     return ImageStorageClient(project_slug=project_slug)
-
-
-@lru_cache()
-def get_data_visualization_llm_client() -> AlbertClient:
-    api_key = os.getenv("ALBERT_API_KEY")
-    model = os.getenv("ALBERT_MODEL")
-    if not api_key or not model:
-        raise HTTPException(
-            status_code=503,
-            detail="Le service de visualisation n'est pas configuré.",
-        )
-    return AlbertClient(
-        api_key=api_key,
-        model=model,
-        timeout_seconds=DATA_VISUALIZATION_TIMEOUT_SECONDS,
-    )
-
-
-@lru_cache()
-def get_data_visualization_python_sessions_client() -> PythonSessionsClient:
-    endpoint = os.getenv("AZURE_SESSION_POOL_ENDPOINT")
-    if not endpoint:
-        raise HTTPException(
-            status_code=503,
-            detail="Le service d'exécution Python isolé n'est pas configuré.",
-        )
-    return AzurePythonSessionsClient(
-        endpoint,
-        execution_timeout_seconds=DATA_VISUALIZATION_TIMEOUT_SECONDS,
-    )
-
-
-@lru_cache()
-def get_data_visualization_service() -> DataVisualizationService:
-    return DataVisualizationService(
-        get_data_visualization_llm_client(),
-        get_data_visualization_python_sessions_client(),
-    )

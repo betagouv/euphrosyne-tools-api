@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from auth import verify_project_membership
 from clients.data_client import AbstractDataClient
+from data_visualization.dependencies import get_data_visualization_service
 from data_visualization.exchange_log import (
     is_data_visualization_exchange_logging_enabled,
     write_data_visualization_exchange,
@@ -22,10 +23,7 @@ from data_visualization.handlers import (
 )
 from data_visualization.models import DataVisualization
 from data_visualization.service import DataVisualizationService
-from dependencies import (
-    get_data_visualization_service,
-    get_project_data_client,
-)
+from dependencies import get_project_data_client
 from path import IncorrectDataFilePath, RunDataTypeRef
 
 logger = logging.getLogger(__name__)

@@ -126,3 +126,25 @@ def test_cleanup_is_idempotent_when_session_does_not_exist() -> None:
     client, _ = _client(lambda _request: httpx.Response(404))
 
     client.delete_session("session-1234")
+
+
+def test_reads_session_pool_endpoint_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "AZURE_SESSION_POOL_ENDPOINT",
+        "https://westeurope.dynamicsessions.io/from-environment/",
+    )
+    credential = MagicMock()
+    credential.get_token.return_value = SimpleNamespace(token="access-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/from-environment/session"
+        return httpx.Response(204)
+
+    client = AzurePythonSessionsClient(
+        credential=credential,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    client.delete_session("session-1234")

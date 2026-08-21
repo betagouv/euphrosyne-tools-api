@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
+import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -24,12 +25,17 @@ class AzurePythonSessionsClient:
 
     def __init__(
         self,
-        endpoint: str,
+        endpoint: str | None = None,
         *,
         execution_timeout_seconds: float = MAX_EXECUTION_SECONDS,
         credential: TokenCredential | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
+        endpoint = (
+            endpoint
+            if endpoint is not None
+            else os.environ["AZURE_SESSION_POOL_ENDPOINT"]
+        )
         self._endpoint = endpoint.rstrip("/")
         self._execution_timeout_seconds = min(
             max(1, int(execution_timeout_seconds)),

@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
 from aglae.traupixe.visualization import TraupixeVisualizationHandler
 from clients.data_client import AbstractDataClient
+from data_visualization.dependencies import get_data_visualization_service
 from data_visualization.models import DataVisualization
 from data_visualization.service import (
     DataVisualizationError,
@@ -21,10 +22,7 @@ from data_visualization.service import (
     DataVisualizationService,
     PreparedDataVisualization,
 )
-from dependencies import (
-    get_data_visualization_service,
-    get_project_data_client,
-)
+from dependencies import get_project_data_client
 
 PROJECT_SLUG = "project-01"
 WORKBOOK_PATH = "projects/project-01/runs/run-01/raw_data/" "TRAUPIXE-example.xlsx"
