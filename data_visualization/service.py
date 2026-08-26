@@ -399,9 +399,11 @@ Tu prépares par Python les données nécessaires pour répondre à une question
 visualisation. La session contient uniquement la représentation normalisée des
 données dans {data_directory}/{prepared.filename}.
 
-Appelle execute_python avec un calcul complet dès le premier appel. Chaque appel doit
-définir result : n'utilise jamais l'outil seulement pour explorer ou afficher le
-schéma.
+Le code de chaque appel à execute_python doit, dans une seule exécution, ouvrir les
+données, effectuer le calcul demandé et définir result. Un appel qui se contente
+d'inspecter le fichier, d'afficher son schéma ou de tester son existence sera rejeté.
+Si une inspection est nécessaire au calcul, effectue-la dans ce même code puis
+poursuis immédiatement jusqu'à la définition de result.
 
 {prepared.calculation_instructions}
 
@@ -444,6 +446,13 @@ chevauchent.
 
 N'invente aucune mesure et conserve l'unité fournie. Produis uniquement du JSON :
 aucune fonction JavaScript, ressource externe, URL, image ou HTML.
+
+N'utilise jamais les champs ECharts interdits suivants : tooltip.formatter,
+tooltip.extraCssText, toolbox.feature.dataView.optionToContent,
+toolbox.feature.dataView.title, toolbox.feature.dataView.lang,
+toolbox.feature.saveAsImage.name, toolbox.feature.saveAsImage.type, title.link,
+title.sublink, link dans les données d'une série, dataset.transform.config.reg, ni
+une image ou un symbole référençant une ressource externe.
 """.strip()
 
 

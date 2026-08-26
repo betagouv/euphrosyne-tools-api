@@ -148,12 +148,14 @@ def test_executes_python_then_generates_echarts_json() -> None:
         "function": {"name": "execute_python"},
     }
     assert 'data["analyses"]' in first_messages[0]["content"]
+    assert "dans une seule exécution" in first_messages[0]["content"]
     final_messages = llm.complete.call_args_list[1].args[0]
     assert llm.complete.call_args_list[1].kwargs["response_format"] == (
         VISUALIZATION_RESPONSE_FORMAT
     )
     assert '"analysis":"object-1"' in final_messages[1]["content"]
     assert "Conserve toutes les analyses" in final_messages[0]["content"]
+    assert "tooltip.formatter" in final_messages[0]["content"]
 
     sessions.upload_file.assert_called_once_with(
         sessions.upload_file.call_args.args[0],

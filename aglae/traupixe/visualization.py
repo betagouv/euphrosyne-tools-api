@@ -29,11 +29,19 @@ Le repli sur toutes les analyses permet de visualiser un classeur qui ne contien
 que des références.
 group est une aide de regroupement dérivée d'un suffixe final pt/point ; label reste
 le libellé source faisant autorité.
-Pour une matrice ou une heatmap, produis result en format long : une liste plate
-d'objets contenant les coordonnées, la valeur et les libellés de chaque cellule.
-Conserve aussi les listes ordonnées des lignes et colonnes. Pour une matrice de
-détecteurs, conserve une cellule par couple analyse retenue × analyte, y compris
-lorsque le détecteur est absent ; ne regroupe jamais les analyses par analyte.
+
+Minimise la taille de result sans omettre de données :
+- pour des observations tabulaires, déclare dimensions une seule fois et utilise
+  rows comme liste de tableaux alignés sur dimensions ;
+- pour une matrice ou une heatmap, fournis rows, columns et une matrice values au
+  format values[row_index][column_index] ; detected et detectors sont, si utiles,
+  des matrices parallèles de mêmes dimensions ;
+- plusieurs jeux de données peuvent être placés dans un objet datasets nommé.
+
+Ne produis jamais une liste plate cells qui répète pour chaque cellule ses
+coordonnées, son analyte ou les libellés déjà présents dans rows et columns. Pour une
+matrice de détecteurs, conserve néanmoins une valeur, éventuellement null, par couple
+analyse retenue × analyte.
 """.strip()
 
 VISUALIZATION_INSTRUCTIONS = """

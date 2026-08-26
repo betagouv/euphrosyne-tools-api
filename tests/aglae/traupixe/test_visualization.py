@@ -21,4 +21,6 @@ def test_prepares_a_normalized_traupixe_visualization_dataset(
     assert 'data["analytes"]' in prepared.calculation_instructions
     assert 'a["kind"] != "reference"' in prepared.calculation_instructions
     assert 'or data["analyses"]' in prepared.calculation_instructions
+    assert "values[row_index][column_index]" in prepared.calculation_instructions
+    assert "liste plate cells" in prepared.calculation_instructions
     assert "matrice de détecteurs TRAUPIXE" in prepared.visualization_instructions
