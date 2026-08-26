@@ -23,7 +23,10 @@ Lis le JSON normalisé, dont le contrat exact est :
 
 kind vaut "reference" uniquement lorsqu'un marqueur explicite a été reconnu ;
 "unknown" signifie que la ligne n'est pas classée, pas qu'il s'agit nécessairement
-d'un objet. Utilise par défaut les analyses dont kind != "reference".
+d'un objet. Sauf demande explicite contraire, sélectionne les analyses ainsi :
+selected = [a for a in data["analyses"] if a["kind"] != "reference"] or data["analyses"]
+Le repli sur toutes les analyses permet de visualiser un classeur qui ne contient
+que des références.
 group est une aide de regroupement dérivée d'un suffixe final pt/point ; label reste
 le libellé source faisant autorité.
 Pour une matrice ou une heatmap, produis result en format long : une liste plate

@@ -19,5 +19,6 @@ def test_prepares_a_normalized_traupixe_visualization_dataset(
     assert json.loads(prepared.content)["analyses"]
     assert prepared.descriptor["analyses"]["total"] > 0
     assert 'data["analytes"]' in prepared.calculation_instructions
-    assert 'kind != "reference"' in prepared.calculation_instructions
+    assert 'a["kind"] != "reference"' in prepared.calculation_instructions
+    assert 'or data["analyses"]' in prepared.calculation_instructions
     assert "matrice de détecteurs TRAUPIXE" in prepared.visualization_instructions
