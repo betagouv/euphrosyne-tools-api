@@ -14,23 +14,27 @@ Lis le JSON normalisé, dont le contrat exact est :
 
 - data["analytes"] est une liste d'objets ;
 - names = [item["name"] for item in data["analytes"]] donne l'ordre des analytes ;
-- chaque objet de data["analyses"] possède identifier, label, zone, kind, puis les
+- chaque objet de data["analyses"] possède identifier, label, group, kind, puis les
   trois LISTES parallèles values, detected et detectors, dans l'ordre de names ;
 - accède donc à un analyte avec index = names.index("Fe2O3"), puis
   analysis["values"][index], jamais analysis["values"]["Fe2O3"] ;
 - detected[index] est un booléen : false désigne une limite de détection, pas une
   mesure quantitative.
 
-Utilise par défaut uniquement les analyses dont kind == "object".
+kind vaut "reference" uniquement lorsqu'un marqueur explicite a été reconnu ;
+"unknown" signifie que la ligne n'est pas classée, pas qu'il s'agit nécessairement
+d'un objet. Utilise par défaut les analyses dont kind != "reference".
+group est une aide de regroupement dérivée d'un suffixe final pt/point ; label reste
+le libellé source faisant autorité.
 Pour une matrice ou une heatmap, produis result en format long : une liste plate
 d'objets contenant les coordonnées, la valeur et les libellés de chaque cellule.
 Conserve aussi les listes ordonnées des lignes et colonnes. Pour une matrice de
-détecteurs, conserve une cellule par couple analyse d'objet × analyte, y compris
+détecteurs, conserve une cellule par couple analyse retenue × analyte, y compris
 lorsque le détecteur est absent ; ne regroupe jamais les analyses par analyte.
 """.strip()
 
 VISUALIZATION_INSTRUCTIONS = """
-Pour une matrice de détecteurs TRAUPIXE, les deux axes sont les analyses d'objet et
+Pour une matrice de détecteurs TRAUPIXE, les deux axes sont les analyses retenues et
 les analytes ; le détecteur est la valeur de chaque cellule, jamais un axe. Conserve
 une cellule par couple analyse × analyte, y compris les détecteurs absents. Place les
 analytes, dont les libellés sont courts, sur l'axe horizontal et les analyses sur

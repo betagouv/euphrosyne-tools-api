@@ -21,10 +21,23 @@ L'interprétation du nom du fichier, les analyses statistiques métier avancées
 l'export, la persistance des résultats et les conversations multi-tours sont hors
 de ce périmètre.
 
-Dans les lignes du classeur, un identifiant contenant `_STD_` ou le libellé
-`MesureCharge` désigne une référence ; les autres lignes sont considérées comme des
-analyses d'objet. Cette règle minimale devra être réévaluée si de nouvelles variantes
-TRAUPIXE l'invalident.
+Le contrat V1 repose uniquement sur la structure observée des exports : une feuille
+`S_Conc. %` (préférée) ou `S_Conc. ppm`, une ligne d'en-têtes avec les deux premières
+cellules vides et au moins trois analytes à partir de la troisième colonne, puis les
+analyses identifiées dans les deux premières colonnes. La liste des analytes est
+entièrement issue du classeur ; aucun analyte « majeur » n'est codé en dur.
+
+Un identifiant contenant `_STD_` désigne explicitement une référence. Les autres
+lignes ont le type prudent `unknown` : elles sont utilisées par défaut dans les
+calculs, mais le service ne prétend pas qu'il s'agit nécessairement d'objets. Le
+libellé source est toujours conservé. Un champ `group` retire seulement un suffixe
+final `ptN` ou `pointN` (séparé par un espace, `_` ou `-`) afin d'aider les demandes
+de regroupement ; il reste une heuristique et ne remplace pas le libellé source.
+
+Lorsque `S_Best Det.` existe, ses lignes sont associées aux concentrations par
+identifiant et rang d'occurrence de cet identifiant. Cela préserve les détecteurs
+distincts des analyses dont l'identifiant apparaît plusieurs fois. Le nom du fichier
+sert uniquement à découvrir les fichiers TRAUPIXE et n'alimente aucune donnée métier.
 
 ## Flux actuel
 
