@@ -1,7 +1,8 @@
 import json
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -10,7 +11,6 @@ from clients.python_sessions import (
     PythonSessionFile,
     PythonSessionsClient,
 )
-from data_visualization.exchange_log import DataVisualizationExchangeLogger
 from data_visualization.llm import (
     DataVisualizationCompletion,
     DataVisualizationLlmClient,
@@ -127,13 +127,14 @@ def test_executes_python_then_generates_echarts_json() -> None:
         _final_completion(generated),
     ]
     sessions = _sessions()
-    exchange_logger = MagicMock(spec=DataVisualizationExchangeLogger)
+    request_id = uuid4()
 
-    result = DataVisualizationService(llm, sessions).run(
-        _prepared(),
-        "Génère un histogramme des éléments traces",
-        exchange_logger=exchange_logger,
-    )
+    with patch("data_visualization.service.trace_llm_exchange") as trace:
+        result = DataVisualizationService(llm, sessions).run(
+            _prepared(),
+            "Génère un histogramme des éléments traces",
+            request_id=request_id,
+        )
 
     assert result.answer == generated["answer"]
     assert result.llm_calls == 2
@@ -165,14 +166,13 @@ def test_executes_python_then_generates_echarts_json() -> None:
     assert "separators=(',', ':')" in executed_code
     assert CALCULATION_RESULT_FILENAME in executed_code
     sessions.delete_session.assert_called_once()
-    assert [call.args[0] for call in exchange_logger.info.call_args_list] == [
+    assert [call.args[1] for call in trace.call_args_list] == [
         "llm_request",
         "llm_response",
-        "python_execution",
         "llm_request",
         "llm_response",
-        "visualization_result",
     ]
+    assert all(call.args[0] == request_id for call in trace.call_args_list)
 
 
 def test_retries_python_after_a_failed_execution() -> None:

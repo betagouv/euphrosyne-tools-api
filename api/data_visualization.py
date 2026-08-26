@@ -11,7 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from auth import verify_project_membership
 from clients.data_client import AbstractDataClient
 from data_visualization.dependencies import get_data_visualization_service
-from data_visualization.exchange_log import get_data_visualization_exchange_logger
 from data_visualization.handlers import (
     DataVisualizationHandler,
     UnsupportedDataVisualizationFile,
@@ -81,17 +80,6 @@ def create_data_visualization(
         query.path,
         query.question,
     )
-    exchange_logger = get_data_visualization_exchange_logger(request_id)
-    exchange_logger.info(
-        "request_started",
-        extra={
-            "exchange": {
-                "project": project_slug,
-                "path": query.path,
-                "question": query.question,
-            }
-        },
-    )
     try:
         handler = _resolve_handler(project_slug, query.path)
         data_file = _download_data_file(
@@ -121,30 +109,21 @@ def create_data_visualization(
     result = visualization_service.run(
         prepared,
         query.question,
-        exchange_logger=exchange_logger,
+        request_id=request_id,
     )
     total_tokens = sum(
         usage.get("total_tokens", 0)
         for usage in result.usage
         if isinstance(usage.get("total_tokens"), int)
     )
-    exchange_logger.info(
-        "request_completed",
-        extra={
-            "exchange": {
-                "calls": result.llm_calls,
-                "elapsed_seconds": result.elapsed_seconds,
-                "total_tokens": total_tokens,
-            }
-        },
-    )
     logger.info(
         "data_visualization_completed request_id=%s calls=%s "
-        "elapsed_seconds=%.3f total_tokens=%s",
+        "elapsed_seconds=%.3f total_tokens=%s visualizations=%s",
         request_id,
         result.llm_calls,
         result.elapsed_seconds,
         total_tokens,
+        len(result.visualizations),
     )
     return DataVisualizationResponse(
         request_id=request_id,

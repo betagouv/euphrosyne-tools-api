@@ -6,19 +6,16 @@ import time
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
-from data_visualization.exchange_log import (
-    DISABLED_EXCHANGE_LOGGER,
-    DataVisualizationExchangeLogger,
-)
 from data_visualization.llm import (
     DataVisualizationCompletion,
     DataVisualizationLlmClient,
 )
+from data_visualization.llm_trace import trace_llm_exchange
 from data_visualization.models import (
     DataVisualization,
     GeneratedVisualizationResponse,
@@ -79,8 +76,7 @@ PYTHON_TOOL = {
     "function": {
         "name": PYTHON_TOOL_NAME,
         "description": (
-            "Exécute du code Python dans la session contenant les données "
-            "normalisées."
+            "Exécute du code Python dans la session contenant les données normalisées."
         ),
         "strict": True,
         "parameters": PythonExecutionRequest.model_json_schema(),
@@ -89,15 +85,15 @@ PYTHON_TOOL = {
 
 
 class LlmCallRecorder:
-    """Record one visualization request's LLM calls, usage, and exchanges."""
+    """Track one visualization request's LLM calls and usage."""
 
     def __init__(
         self,
         llm_client: DataVisualizationLlmClient,
-        exchange_logger: DataVisualizationExchangeLogger,
+        request_id: UUID | str,
     ) -> None:
         self._llm_client = llm_client
-        self._exchange_logger = exchange_logger
+        self._request_id = request_id
         self.calls = 0
         self.usages: list[dict[str, Any]] = []
 
@@ -119,9 +115,10 @@ class LlmCallRecorder:
             request["tool_choice"] = tool_choice
         if response_format is not None:
             request["response_format"] = response_format
-        self._exchange_logger.info(
+        trace_llm_exchange(
+            self._request_id,
             "llm_request",
-            extra={"exchange": request},
+            request,
         )
         completion = self._llm_client.complete(
             request_messages,
@@ -131,16 +128,15 @@ class LlmCallRecorder:
         )
         self.calls += 1
         self.usages.append(completion.usage)
-        self._exchange_logger.info(
+        trace_llm_exchange(
+            self._request_id,
             "llm_response",
-            extra={
-                "exchange": {
-                    "call": self.calls,
-                    "message": completion.message,
-                    "usage": completion.usage,
-                    "model": completion.model,
-                    "finish_reason": completion.finish_reason,
-                }
+            {
+                "call": self.calls,
+                "message": completion.message,
+                "usage": completion.usage,
+                "model": completion.model,
+                "finish_reason": completion.finish_reason,
             },
         )
         return completion
@@ -160,7 +156,7 @@ class DataVisualizationService:
         prepared: PreparedDataVisualization,
         question: str,
         *,
-        exchange_logger: DataVisualizationExchangeLogger = DISABLED_EXCHANGE_LOGGER,
+        request_id: UUID | str = "unknown",
     ) -> DataVisualizationResult:
         question = question.strip()
         if not question:
@@ -170,7 +166,7 @@ class DataVisualizationService:
                 "The normalized dataset is too large for visualization"
             )
         started_at = time.monotonic()
-        recorder = LlmCallRecorder(self._llm_client, exchange_logger)
+        recorder = LlmCallRecorder(self._llm_client, request_id)
 
         session_id = f"visualization-{uuid4().hex}"
         try:
@@ -180,39 +176,18 @@ class DataVisualizationService:
                 question,
                 prepared,
                 recorder,
-                exchange_logger,
             )
             generated, visualizations = self._generate_visualizations(
                 question,
                 prepared,
                 calculation_result,
                 recorder,
-                exchange_logger,
             )
         finally:
             try:
                 self._sessions_client.delete_session(session_id)
-            except Exception as error:
+            except Exception:
                 logger.exception("data_visualization_session_cleanup_error")
-                exchange_logger.info(
-                    "python_session_cleanup_error",
-                    extra={
-                        "exchange": {
-                            "error_type": type(error).__name__,
-                            "error": str(error),
-                        }
-                    },
-                )
-        for index, visualization in enumerate(visualizations, start=1):
-            exchange_logger.info(
-                "visualization_result",
-                extra={
-                    "exchange": {
-                        "index": index,
-                        "visualization": visualization.model_dump(mode="json"),
-                    }
-                },
-            )
         return DataVisualizationResult(
             answer=generated.answer,
             visualizations=visualizations,
@@ -227,7 +202,6 @@ class DataVisualizationService:
         prepared: PreparedDataVisualization,
         calculation_result: str,
         recorder: LlmCallRecorder,
-        exchange_logger: DataVisualizationExchangeLogger,
     ) -> tuple[
         GeneratedVisualizationResponse,
         tuple[DataVisualization, ...],
@@ -261,14 +235,10 @@ class DataVisualizationService:
                 return generated, tuple(generated.visualizations)
             except DataVisualizationError as error:
                 last_error = error
-                exchange_logger.info(
-                    "visualization_validation_failed",
-                    extra={
-                        "exchange": {
-                            "attempt": attempt,
-                            "error": str(error),
-                        }
-                    },
+                logger.info(
+                    "data_visualization_validation_failed attempt=%s error=%r",
+                    attempt,
+                    str(error),
                 )
                 if attempt == MAX_VISUALIZATION_ATTEMPTS:
                     break
@@ -313,7 +283,6 @@ class DataVisualizationService:
         question: str,
         prepared: PreparedDataVisualization,
         recorder: LlmCallRecorder,
-        exchange_logger: DataVisualizationExchangeLogger,
     ) -> str:
         data_directory = self._sessions_client.data_directory.rstrip("/")
         messages: list[dict[str, Any]] = [
@@ -366,6 +335,13 @@ class DataVisualizationService:
                 )
             except CalculationResultError as error:
                 tool_output["result_file_error"] = str(error)
+                logger.info(
+                    "data_visualization_python_execution_rejected "
+                    "attempt=%s status=%s error=%r",
+                    attempt,
+                    execution.status,
+                    str(error),
+                )
             else:
                 tool_output["result_file"] = CALCULATION_RESULT_FILENAME
             messages.append(
@@ -378,16 +354,6 @@ class DataVisualizationService:
                         default=str,
                     ),
                 }
-            )
-            exchange_logger.info(
-                "python_execution",
-                extra={
-                    "exchange": {
-                        "attempt": attempt,
-                        "code": code,
-                        "output": tool_output,
-                    }
-                },
             )
             if calculation_result is not None:
                 return calculation_result

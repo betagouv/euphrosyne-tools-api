@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import logging
 from collections.abc import Iterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import UUID
 
 import httpx
@@ -15,10 +15,6 @@ from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
 from aglae.traupixe.visualization import TraupixeVisualizationHandler
 from clients.data_client import AbstractDataClient
 from data_visualization.dependencies import get_data_visualization_service
-from data_visualization.exchange_log import (
-    DataVisualizationExchangeLogger,
-    get_data_visualization_exchange_logger,
-)
 from data_visualization.models import DataVisualization, PreparedDataVisualization
 from data_visualization.service import (
     DataVisualizationError,
@@ -28,7 +24,7 @@ from data_visualization.service import (
 from dependencies import get_project_data_client
 
 PROJECT_SLUG = "project-01"
-WORKBOOK_PATH = "projects/project-01/runs/run-01/raw_data/" "TRAUPIXE-example.xlsx"
+WORKBOOK_PATH = "projects/project-01/runs/run-01/raw_data/TRAUPIXE-example.xlsx"
 ENDPOINT = f"/data/{PROJECT_SLUG}/visualizations"
 
 
@@ -47,8 +43,8 @@ def visualization_dependencies(
     previous_data = app.dependency_overrides.get(get_project_data_client)
     previous_service = app.dependency_overrides.get(get_data_visualization_service)
     app.dependency_overrides[get_project_data_client] = lambda: data_client
-    app.dependency_overrides[get_data_visualization_service] = (
-        lambda: visualization_service
+    app.dependency_overrides[get_data_visualization_service] = lambda: (
+        visualization_service
     )
     yield data_client, visualization_service, prepare
     if previous_data is None:
@@ -59,16 +55,6 @@ def visualization_dependencies(
         app.dependency_overrides.pop(get_data_visualization_service, None)
     else:
         app.dependency_overrides[get_data_visualization_service] = previous_service
-
-
-@pytest.fixture(autouse=True)
-def data_visualization_exchange_logger() -> Iterator[MagicMock]:
-    exchange_logger = MagicMock(spec=DataVisualizationExchangeLogger)
-    with patch(
-        "api.data_visualization.get_data_visualization_exchange_logger",
-        return_value=exchange_logger,
-    ):
-        yield exchange_logger
 
 
 def _visualization() -> DataVisualization:
@@ -121,7 +107,6 @@ def _post(client: TestClient, **overrides: object):
 def test_creates_a_visualization_from_the_selected_project_file(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
-    data_visualization_exchange_logger: MagicMock,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     data_client, visualization_service, prepare = visualization_dependencies
@@ -130,25 +115,11 @@ def test_creates_a_visualization_from_the_selected_project_file(
         prepared: PreparedDataVisualization,
         question: str,
         *,
-        exchange_logger,
+        request_id: UUID,
     ) -> DataVisualizationResult:
-        exchange_logger.info(
-            "llm_request",
-            extra={
-                "exchange": {
-                    "messages": [{"role": "user", "content": question}],
-                }
-            },
-        )
-        exchange_logger.info(
-            "visualization_result",
-            extra={
-                "exchange": {
-                    "visualization": _visualization().model_dump(mode="json"),
-                }
-            },
-        )
         assert prepared == _prepared()
+        assert question == "Compare le fer."
+        assert isinstance(request_id, UUID)
         return _result()
 
     visualization_service.run.side_effect = run
@@ -167,17 +138,9 @@ def test_creates_a_visualization_from_the_selected_project_file(
     visualization_service.run.assert_called_once()
     assert "data_visualization_completed" in caplog.text
     assert "total_tokens=300" in caplog.text
+    assert "visualizations=1" in caplog.text
     assert "question='Compare le fer.'" in caplog.text
     assert "Ligne Excel 3" not in caplog.text
-    exchange_calls = data_visualization_exchange_logger.info.call_args_list
-    assert [call.args[0] for call in exchange_calls] == [
-        "request_started",
-        "llm_request",
-        "visualization_result",
-        "request_completed",
-    ]
-    exchange_details = [call.kwargs["extra"]["exchange"] for call in exchange_calls]
-    assert exchange_details[2]["visualization"]["option"] == (_visualization().option)
 
 
 def test_rejects_a_file_from_another_project(
@@ -188,7 +151,7 @@ def test_rejects_a_file_from_another_project(
 
     response = _post(
         client,
-        path=("projects/project-02/runs/run-01/raw_data/" "TRAUPIXE-example.xlsx"),
+        path=("projects/project-02/runs/run-01/raw_data/TRAUPIXE-example.xlsx"),
     )
 
     assert response.status_code == 422
@@ -295,26 +258,6 @@ def test_propagates_model_timeouts_for_error_monitoring(
         _post(client)
 
 
-def test_does_not_write_complete_exchanges_outside_development(
-    client: TestClient,
-    visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, visualization_service, _ = visualization_dependencies
-    visualization_service.run.return_value = _result()
-    monkeypatch.setenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "production")
-
-    with patch(
-        "api.data_visualization.get_data_visualization_exchange_logger",
-        side_effect=get_data_visualization_exchange_logger,
-    ):
-        response = _post(client)
-
-    assert response.status_code == 200
-    exchange_logger = visualization_service.run.call_args.kwargs["exchange_logger"]
-    assert not exchange_logger.isEnabledFor(logging.INFO)
-
-
 def test_requires_project_membership(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
@@ -324,9 +267,7 @@ def test_requires_project_membership(
     response = client.post(
         "/data/project-02/visualizations",
         json={
-            "path": (
-                "projects/project-02/runs/run-01/raw_data/" "TRAUPIXE-example.xlsx"
-            ),
+            "path": ("projects/project-02/runs/run-01/raw_data/TRAUPIXE-example.xlsx"),
             "question": "Compare le fer.",
         },
     )

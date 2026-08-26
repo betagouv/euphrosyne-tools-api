@@ -85,17 +85,18 @@ normalisé est placé dans `/mnt/data` ; le classeur original reste dans Tools A
 résultat JSON est récupéré puis la session est supprimée.
 
 La question utilisateur et les métriques de synthèse sont journalisées par
-l'application pour permettre une analyse élémentaire de l'usage. Dans les
-environnements `dev`, `development` et `local`, les échanges complets sont en plus
-enregistrés hors du dépôt dans un fichier JSONL rotatif. Sur macOS :
+l'application pour permettre une analyse élémentaire de l'usage. Pour faciliter la
+mise au point des prompts, `DATA_VISUALIZATION_TRACE=1` active en plus une trace des
+requêtes et réponses LLM complètes dans un fichier JSONL rotatif hors du dépôt. Sur
+macOS :
 
 ```text
 ~/Library/Logs/euphrosyne-tools-api/data-visualization-exchanges.jsonl
 ```
 
-Ils contiennent la question, le code Python et les réponses du modèle et doivent
-être traités comme des données métier sensibles. Ils sont désactivés dans les autres
-environnements.
+Ces traces contiennent notamment la question, le code Python, les résultats calculés
+et les réponses du modèle. Elles doivent être traitées comme des données métier
+sensibles et sont désactivées par défaut, quel que soit l'environnement d'exécution.
 
 ## Endpoint
 

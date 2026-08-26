@@ -57,7 +57,7 @@ It owns application-level policies such as:
 - Number of Python and visualization attempts.
 - Session creation and cleanup.
 - Generic prompts and structured-response schemas.
-- LLM usage tracking and exchange logging.
+- LLM usage tracking. Optional raw LLM tracing is isolated in `llm_trace.py`.
 
 It accepts already-prepared data, so it remains independent of TRAUPIXE.
 
