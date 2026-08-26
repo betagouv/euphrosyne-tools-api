@@ -227,10 +227,6 @@ def _find_detector_header_row(
     expected = set(analytes)
     candidates = []
     for row in range(1, min(sheet.max_row, HEADER_SCAN_ROWS) + 1):
-        if not _is_blank(sheet.cell(row, 1).value) or not _is_blank(
-            sheet.cell(row, 2).value
-        ):
-            continue
         overlap = sum(
             _text(sheet.cell(row, column).value) in expected
             for column in range(3, sheet.max_column + 1)

@@ -94,7 +94,7 @@ def test_header_must_leave_identifier_and_label_columns_empty() -> None:
     assert dataset.analyses[0].group == "Zone"
 
 
-def test_matches_detectors_by_identifier_occurrence() -> None:
+def test_matches_detectors_by_identifier_occurrence_with_labeled_header() -> None:
     workbook = Workbook()
     concentrations = workbook.active
     assert concentrations is not None
@@ -103,7 +103,7 @@ def test_matches_detectors_by_identifier_occurrence() -> None:
     concentrations.append(["same-id", "Zone_pt1", "1", "2", "3"])
     concentrations.append(["same-id", "Zone pt2", "4", "5", "6"])
     detectors = workbook.create_sheet("S_Best Det.")
-    detectors.append([None, None, "A", "B", "C"])
+    detectors.append(["Run", "Infos run", "A", "B", "C"])
     detectors.append(["same-id", "First label", "X0", "X0", "X0"])
     detectors.append(["same-id", "Truncated label", "X3", "X3", "X3"])
     output = BytesIO()
