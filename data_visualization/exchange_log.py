@@ -17,7 +17,6 @@ APP_NAME = "euphrosyne-tools-api"
 LOG_FILENAME = "data-visualization-exchanges.jsonl"
 MAX_LOG_BYTES = 20 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
-DEVELOPMENT_ENVIRONMENTS = {"dev", "development", "local"}
 
 
 class _PrivateRotatingFileHandler(RotatingFileHandler):
@@ -28,10 +27,7 @@ class _PrivateRotatingFileHandler(RotatingFileHandler):
 
 
 def is_data_visualization_exchange_logging_enabled() -> bool:
-    return (
-        os.getenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "").casefold()
-        in DEVELOPMENT_ENVIRONMENTS
-    )
+    return os.getenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "").casefold() == "dev"
 
 
 def get_data_visualization_exchange_log_path() -> Path:

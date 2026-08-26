@@ -49,8 +49,11 @@ def test_enables_complete_exchanges_only_in_development(
     monkeypatch.delenv("EUPHROSYNE_TOOLS_ENVIRONMENT", raising=False)
     assert not is_data_visualization_exchange_logging_enabled()
 
-    monkeypatch.setenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "development")
+    monkeypatch.setenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "dev")
     assert is_data_visualization_exchange_logging_enabled()
+
+    monkeypatch.setenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "development")
+    assert not is_data_visualization_exchange_logging_enabled()
 
     monkeypatch.setenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "production")
     assert not is_data_visualization_exchange_logging_enabled()
