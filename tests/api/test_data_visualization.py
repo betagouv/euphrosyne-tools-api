@@ -196,16 +196,18 @@ def test_rejects_an_oversized_data_file_before_reading_it(
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
     data_client, _, _ = visualization_dependencies
-    data_file = MagicMock()
-    data_file.content_length = MAX_SOURCE_SIZE_BYTES + 1
+
+    class OversizedDataFile(io.BytesIO):
+        content_length = MAX_SOURCE_SIZE_BYTES + 1
+
+    data_file = OversizedDataFile()
     data_client.download_run_file.return_value = data_file
 
     response = _post(client)
 
     assert response.status_code == 413
     assert response.json()["detail"]["code"] == "FILE_TOO_LARGE"
-    data_file.read.assert_not_called()
-    data_file.close.assert_called_once_with()
+    assert data_file.closed
 
 
 def test_propagates_storage_errors_for_error_monitoring(

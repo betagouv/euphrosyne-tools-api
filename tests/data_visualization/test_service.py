@@ -196,6 +196,41 @@ def test_retries_python_after_a_failed_execution() -> None:
     assert "ValueError: first" in second_messages[-1]["content"]
 
 
+def test_retries_python_after_an_invalid_utf8_result() -> None:
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    llm.complete.side_effect = [
+        _python_completion(),
+        _python_completion(),
+        _final_completion(_generated_visualizations()),
+    ]
+    sessions = _sessions()
+    sessions.download_file.side_effect = [
+        b"\xff",
+        b'{"rows":[]}',
+    ]
+
+    result = DataVisualizationService(llm, sessions).run(_prepared(), "Question")
+
+    assert result.llm_calls == 3
+    second_messages = llm.complete.call_args_list[1].args[0]
+    assert (
+        f"{CALCULATION_RESULT_FILENAME} is invalid" in (second_messages[-1]["content"])
+    )
+
+
+def test_propagates_calculation_result_infrastructure_errors() -> None:
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    llm.complete.return_value = _python_completion()
+    sessions = _sessions()
+    sessions.list_files.side_effect = OSError("session storage unavailable")
+
+    with pytest.raises(OSError, match="session storage unavailable"):
+        DataVisualizationService(llm, sessions).run(_prepared(), "Question")
+
+    assert llm.complete.call_count == 1
+    sessions.delete_session.assert_called_once()
+
+
 def test_stops_after_python_execution_budget() -> None:
     llm = MagicMock(spec=DataVisualizationLlmClient)
     llm.complete.return_value = _python_completion("raise ValueError('invalid')")

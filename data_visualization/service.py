@@ -222,7 +222,6 @@ class DataVisualizationService:
                 ),
             },
         ]
-        last_error: DataVisualizationError | None = None
         base_messages = deepcopy(messages)
         retry_messages = deepcopy(messages)
         for attempt in range(1, MAX_VISUALIZATION_ATTEMPTS + 1):
@@ -234,14 +233,13 @@ class DataVisualizationService:
                 generated = _generated_response(completion.message)
                 return generated, tuple(generated.visualizations)
             except DataVisualizationError as error:
-                last_error = error
                 logger.info(
                     "data_visualization_validation_failed attempt=%s error=%r",
                     attempt,
                     str(error),
                 )
                 if attempt == MAX_VISUALIZATION_ATTEMPTS:
-                    break
+                    raise
                 content = completion.message.get("content")
                 retry_messages = deepcopy(base_messages)
                 if isinstance(content, str) and content.strip():
@@ -257,8 +255,6 @@ class DataVisualizationService:
                         ),
                     }
                 )
-        if last_error is not None:
-            raise last_error
         raise DataVisualizationError("The model returned no visualization")
 
     def _upload_dataset(
@@ -368,31 +364,27 @@ class DataVisualizationService:
     ) -> str:
         if execution.status != "Succeeded":
             raise CalculationResultError("Python execution failed")
+        result_file = next(
+            (
+                file
+                for file in self._sessions_client.list_files(session_id)
+                if file.name == CALCULATION_RESULT_FILENAME
+            ),
+            None,
+        )
+        if result_file is None:
+            raise CalculationResultError(
+                f"{CALCULATION_RESULT_FILENAME} was not created"
+            )
+        if result_file.size_in_bytes > MAX_CALCULATION_RESULT_BYTES:
+            raise CalculationResultError(f"{CALCULATION_RESULT_FILENAME} is too large")
+        content = self._sessions_client.download_file(
+            session_id,
+            CALCULATION_RESULT_FILENAME,
+        )
         try:
-            result_file = next(
-                (
-                    file
-                    for file in self._sessions_client.list_files(session_id)
-                    if file.name == CALCULATION_RESULT_FILENAME
-                ),
-                None,
-            )
-            if result_file is None:
-                raise CalculationResultError(
-                    f"{CALCULATION_RESULT_FILENAME} was not created"
-                )
-            if result_file.size_in_bytes > MAX_CALCULATION_RESULT_BYTES:
-                raise CalculationResultError(
-                    f"{CALCULATION_RESULT_FILENAME} is too large"
-                )
-            content = self._sessions_client.download_file(
-                session_id,
-                CALCULATION_RESULT_FILENAME,
-            )
             return content.decode("utf-8")
-        except CalculationResultError:
-            raise
-        except (OSError, UnicodeError) as error:
+        except UnicodeDecodeError as error:
             raise CalculationResultError(
                 f"{CALCULATION_RESULT_FILENAME} is invalid: {error}"
             ) from error

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated, BinaryIO
+from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -156,9 +156,7 @@ def _download_data_file(
     path: str,
     max_source_size_bytes: int,
 ) -> bytes:
-    data_file_handle: BinaryIO | None = None
-    try:
-        data_file_handle = data_client.download_run_file(path)
+    with data_client.download_run_file(path) as data_file_handle:
         content_length = getattr(data_file_handle, "content_length", None)
         if (
             isinstance(content_length, int)
@@ -167,9 +165,6 @@ def _download_data_file(
         ):
             raise DataVisualizationRequestError(FILE_TOO_LARGE, 413)
         data_file = data_file_handle.read(max_source_size_bytes + 1)
-    finally:
-        if data_file_handle is not None:
-            data_file_handle.close()
     if not isinstance(data_file, bytes) or not data_file:
         raise DataVisualizationRequestError(INVALID_DATA_FILE, 422)
     if len(data_file) > max_source_size_bytes:
