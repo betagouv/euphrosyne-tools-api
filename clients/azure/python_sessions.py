@@ -10,7 +10,7 @@ import httpx
 from azure.core.credentials import TokenCredential
 from azure.identity import DefaultAzureCredential
 
-from clients.python_sessions import PythonExecutionResult
+from clients.python_sessions import PythonExecutionResult, PythonSessionFile
 
 API_VERSION = "2025-10-02-preview"
 TOKEN_SCOPE = "https://dynamicsessions.io/.default"
@@ -83,10 +83,12 @@ class AzurePythonSessionsClient:
             duration_ms=int(result.get("executionTimeInMilliseconds") or 0),
         )
 
-    def list_files(self, session_id: str) -> list[dict[str, Any]]:
+    def list_files(self, session_id: str) -> list[PythonSessionFile]:
         response = self._request("GET", "files", session_id)
         response.raise_for_status()
-        return response.json().get("value", [])
+        return [
+            PythonSessionFile.model_validate(file) for file in response.json()["value"]
+        ]
 
     def download_file(self, session_id: str, filename: str) -> bytes:
         safe_name = quote(_safe_filename(filename), safe="")

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -11,6 +12,7 @@ from clients.azure.python_sessions import (
     TOKEN_SCOPE,
     AzurePythonSessionsClient,
 )
+from clients.python_sessions import PythonSessionFile
 
 
 def _client(handler):
@@ -87,8 +89,11 @@ def test_manages_session_files_and_cleanup() -> None:
                 "value": [
                     {
                         "name": "dataset.json",
+                        "directory": "",
+                        "type": "File",
                         "contentType": "application/json",
                         "sizeInBytes": 11,
+                        "lastModifiedAt": "2026-08-21T12:00:00Z",
                     }
                 ]
             },
@@ -98,11 +103,14 @@ def test_manages_session_files_and_cleanup() -> None:
 
     client.upload_file("session-1234", "dataset.json", b'{"value":1}')
     assert client.list_files("session-1234") == [
-        {
-            "name": "dataset.json",
-            "contentType": "application/json",
-            "sizeInBytes": 11,
-        }
+        PythonSessionFile(
+            name="dataset.json",
+            directory="",
+            resource_type="File",
+            content_type="application/json",
+            size_in_bytes=11,
+            last_modified_at=datetime(2026, 8, 21, 12, tzinfo=timezone.utc),
+        )
     ]
     assert client.download_file("session-1234", "dataset.json") == b'{"value":1}'
     client.delete_session("session-1234")

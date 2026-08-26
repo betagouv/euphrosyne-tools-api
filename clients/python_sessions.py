@@ -1,7 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Protocol
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class PythonSessionFile(BaseModel):
+    """File metadata returned by a Python execution session."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True, populate_by_name=True)
+
+    name: str
+    directory: str
+    resource_type: str = Field(alias="type")
+    content_type: str = Field(alias="contentType")
+    size_in_bytes: int = Field(alias="sizeInBytes", ge=0)
+    last_modified_at: datetime = Field(alias="lastModifiedAt")
 
 
 @dataclass(frozen=True)
@@ -33,7 +49,7 @@ class PythonSessionsClient(Protocol):
         """Execute Python synchronously in an existing session."""
         ...
 
-    def list_files(self, session_id: str) -> list[dict[str, Any]]:
+    def list_files(self, session_id: str) -> list[PythonSessionFile]:
         """List files currently available in a session."""
         ...
 

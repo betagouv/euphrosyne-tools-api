@@ -1,10 +1,15 @@
 import json
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
-from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
+from clients.python_sessions import (
+    PythonExecutionResult,
+    PythonSessionFile,
+    PythonSessionsClient,
+)
 from data_visualization.llm import (
     DataVisualizationCompletion,
     DataVisualizationLlmClient,
@@ -82,13 +87,16 @@ def _sessions(calculation: dict[str, Any] | None = None) -> MagicMock:
         stderr="",
         duration_ms=12,
     )
-    encoded = json.dumps(payload).encode()
+    encoded = json.dumps(payload, separators=(",", ":")).encode()
     sessions.list_files.return_value = [
-        {
-            "name": CALCULATION_RESULT_FILENAME,
-            "contentType": "application/json",
-            "sizeInBytes": len(encoded),
-        }
+        PythonSessionFile(
+            name=CALCULATION_RESULT_FILENAME,
+            directory="",
+            resource_type="File",
+            content_type="application/json",
+            size_in_bytes=len(encoded),
+            last_modified_at=datetime(2026, 8, 21, tzinfo=timezone.utc),
+        )
     ]
     sessions.download_file.return_value = encoded
     return sessions
@@ -151,7 +159,9 @@ def test_executes_python_then_generates_echarts_json() -> None:
         b'{"analyses":[]}',
     )
     executed_code = sessions.execute.call_args.args[1]
-    assert "json.dumps(result" in executed_code
+    assert "_euphrosyne_json.dumps(" in executed_code
+    assert "isinstance(result, (dict, list))" in executed_code
+    assert "separators=(',', ':')" in executed_code
     assert CALCULATION_RESULT_FILENAME in executed_code
     sessions.delete_session.assert_called_once()
     assert [exchange["event"] for exchange in exchanges] == [

@@ -45,6 +45,10 @@ class DataVisualizationError(RuntimeError):
     """Raised when normalized data or a model response cannot be used."""
 
 
+class CalculationResultError(ValueError):
+    """Raised when a Python calculation did not produce a usable result file."""
+
+
 @dataclass(frozen=True)
 class PreparedDataVisualization:
     filename: str
@@ -63,26 +67,6 @@ class DataVisualizationResult:
     usage: tuple[dict[str, Any], ...]
 
 
-def _inline_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    definitions = schema.get("$defs", {})
-
-    def expand(value: Any) -> Any:
-        if isinstance(value, list):
-            return [expand(item) for item in value]
-        if not isinstance(value, dict):
-            return value
-        reference = value.get("$ref")
-        if isinstance(reference, str) and reference.startswith("#/$defs/"):
-            resolved = expand(definitions[reference.removeprefix("#/$defs/")])
-            siblings = {
-                key: expand(item) for key, item in value.items() if key != "$ref"
-            }
-            return {**resolved, **siblings}
-        return {key: expand(item) for key, item in value.items() if key != "$defs"}
-
-    return expand(schema)
-
-
 VISUALIZATION_RESPONSE_FORMAT = {
     "type": "json_schema",
     "json_schema": {
@@ -92,9 +76,7 @@ VISUALIZATION_RESPONSE_FORMAT = {
             "visualisations ECharts autonomes."
         ),
         "strict": True,
-        "schema": _inline_json_schema(
-            GeneratedVisualizationResponse.model_json_schema()
-        ),
+        "schema": GeneratedVisualizationResponse.model_json_schema(),
     },
 }
 
@@ -108,19 +90,71 @@ PYTHON_TOOL = {
             "normalisées."
         ),
         "strict": True,
-        "parameters": _inline_json_schema(PythonExecutionRequest.model_json_schema()),
+        "parameters": PythonExecutionRequest.model_json_schema(),
     },
 }
+
+
+class LlmCallRecorder:
+    """Record one visualization request's LLM calls, usage, and exchanges."""
+
+    def __init__(
+        self,
+        llm_client: DataVisualizationLlmClient,
+        exchange_logger: ExchangeLogger | None,
+    ) -> None:
+        self._llm_client = llm_client
+        self._exchange_logger = exchange_logger
+        self.calls = 0
+        self.usages: list[dict[str, Any]] = []
+
+    def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] = "auto",
+        response_format: dict[str, Any] | None = None,
+    ) -> DataVisualizationCompletion:
+        request_messages = deepcopy(messages)
+        request: dict[str, Any] = {
+            "call": self.calls + 1,
+            "messages": request_messages,
+        }
+        if tools is not None:
+            request["tools"] = tools
+            request["tool_choice"] = tool_choice
+        if response_format is not None:
+            request["response_format"] = response_format
+        _emit_exchange(self._exchange_logger, "llm_request", **request)
+        completion = self._llm_client.complete(
+            request_messages,
+            tools,
+            tool_choice=tool_choice,
+            response_format=response_format,
+        )
+        self.calls += 1
+        self.usages.append(completion.usage)
+        _emit_exchange(
+            self._exchange_logger,
+            "llm_response",
+            call=self.calls,
+            message=completion.message,
+            usage=completion.usage,
+            model=completion.model,
+            finish_reason=completion.finish_reason,
+        )
+        return completion
 
 
 class DataVisualizationService:
     def __init__(
         self,
-        llm: DataVisualizationLlmClient,
-        sessions: PythonSessionsClient,
+        llm_client: DataVisualizationLlmClient,
+        sessions_client: PythonSessionsClient,
     ) -> None:
-        self._llm = llm
-        self._sessions = sessions
+        self._llm_client = llm_client
+        self._sessions_client = sessions_client
 
     def run(
         self,
@@ -137,46 +171,7 @@ class DataVisualizationService:
                 "The normalized dataset is too large for visualization"
             )
         started_at = time.monotonic()
-        usages: list[dict[str, Any]] = []
-        llm_calls = 0
-
-        def complete(
-            messages: list[dict[str, Any]],
-            *,
-            tools: list[dict[str, Any]] | None = None,
-            tool_choice: str | dict[str, Any] = "auto",
-            response_format: dict[str, Any] | None = None,
-        ) -> DataVisualizationCompletion:
-            nonlocal llm_calls
-            request_messages = deepcopy(messages)
-            request: dict[str, Any] = {
-                "call": llm_calls + 1,
-                "messages": request_messages,
-            }
-            if tools is not None:
-                request["tools"] = tools
-                request["tool_choice"] = tool_choice
-            if response_format is not None:
-                request["response_format"] = response_format
-            _emit_exchange(exchange_logger, "llm_request", **request)
-            completion = self._llm.complete(
-                request_messages,
-                tools,
-                tool_choice=tool_choice,
-                response_format=response_format,
-            )
-            llm_calls += 1
-            usages.append(completion.usage)
-            _emit_exchange(
-                exchange_logger,
-                "llm_response",
-                call=llm_calls,
-                message=completion.message,
-                usage=completion.usage,
-                model=completion.model,
-                finish_reason=completion.finish_reason,
-            )
-            return completion
+        recorder = LlmCallRecorder(self._llm_client, exchange_logger)
 
         session_id = f"visualization-{uuid4().hex}"
         try:
@@ -185,33 +180,19 @@ class DataVisualizationService:
                 session_id,
                 question,
                 prepared,
-                complete,
+                recorder,
                 exchange_logger,
             )
-            final_messages = [
-                {
-                    "role": "system",
-                    "content": _visualization_system_prompt(prepared),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Question : {question}\n"
-                        "Contexte des données :\n"
-                        f"{json.dumps(prepared.descriptor, ensure_ascii=False)}\n"
-                        "Résultat calculé par Python :\n"
-                        f"{calculation_result}"
-                    ),
-                },
-            ]
             generated, visualizations = self._generate_visualizations(
-                final_messages,
-                complete,
+                question,
+                prepared,
+                calculation_result,
+                recorder,
                 exchange_logger,
             )
         finally:
             try:
-                self._sessions.delete_session(session_id)
+                self._sessions_client.delete_session(session_id)
             except Exception as error:
                 logger.exception("data_visualization_session_cleanup_error")
                 _emit_exchange(
@@ -231,24 +212,42 @@ class DataVisualizationService:
             answer=generated.answer,
             visualizations=visualizations,
             elapsed_seconds=time.monotonic() - started_at,
-            llm_calls=llm_calls,
-            usage=tuple(usages),
+            llm_calls=recorder.calls,
+            usage=tuple(recorder.usages),
         )
 
     def _generate_visualizations(
         self,
-        messages: list[dict[str, Any]],
-        complete: Callable[..., DataVisualizationCompletion],
+        question: str,
+        prepared: PreparedDataVisualization,
+        calculation_result: str,
+        recorder: LlmCallRecorder,
         exchange_logger: ExchangeLogger | None,
     ) -> tuple[
         GeneratedVisualizationResponse,
         tuple[DataVisualization, ...],
     ]:
+        messages: list[dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": _visualization_system_prompt(prepared),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Question : {question}\n"
+                    "Contexte des données :\n"
+                    f"{json.dumps(prepared.descriptor, ensure_ascii=False)}\n"
+                    "Résultat calculé par Python :\n"
+                    f"{calculation_result}"
+                ),
+            },
+        ]
         last_error: DataVisualizationError | None = None
         base_messages = deepcopy(messages)
         retry_messages = deepcopy(messages)
         for attempt in range(1, MAX_VISUALIZATION_ATTEMPTS + 1):
-            completion = complete(
+            completion = recorder.complete(
                 retry_messages,
                 response_format=VISUALIZATION_RESPONSE_FORMAT,
             )
@@ -265,12 +264,21 @@ class DataVisualizationService:
                 )
                 if attempt == MAX_VISUALIZATION_ATTEMPTS:
                     break
-                correction = _visualization_correction_message(error)
                 content = completion.message.get("content")
                 retry_messages = deepcopy(base_messages)
                 if isinstance(content, str) and content.strip():
                     retry_messages.append({"role": "assistant", "content": content})
-                retry_messages.append({"role": "user", "content": correction})
+                retry_messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "La visualisation précédente est invalide : "
+                            f"{error}. Corrige uniquement le JSON ECharts en "
+                            "conservant exactement les valeurs et libellés du "
+                            "résultat Python."
+                        ),
+                    }
+                )
         if last_error is not None:
             raise last_error
         raise DataVisualizationError("The model returned no visualization")
@@ -281,7 +289,7 @@ class DataVisualizationService:
         prepared: PreparedDataVisualization,
     ) -> None:
         try:
-            self._sessions.upload_file(
+            self._sessions_client.upload_file(
                 session_id,
                 prepared.filename,
                 prepared.content,
@@ -296,10 +304,10 @@ class DataVisualizationService:
         session_id: str,
         question: str,
         prepared: PreparedDataVisualization,
-        complete: Callable[..., DataVisualizationCompletion],
+        recorder: LlmCallRecorder,
         exchange_logger: ExchangeLogger | None,
     ) -> str:
-        data_directory = self._sessions.data_directory.rstrip("/")
+        data_directory = self._sessions_client.data_directory.rstrip("/")
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
@@ -319,32 +327,50 @@ class DataVisualizationService:
             "function": {"name": PYTHON_TOOL_NAME},
         }
         for attempt in range(1, MAX_PYTHON_EXECUTIONS + 1):
-            completion = complete(
+            completion = recorder.complete(
                 messages,
                 tools=[PYTHON_TOOL],
                 tool_choice=tool_choice,
             )
             call_id, code, tool_call = _python_call(completion.message)
-            messages.append(_assistant_tool_message(completion.message, tool_call))
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": completion.message.get("content"),
+                    "tool_calls": [tool_call],
+                }
+            )
             try:
-                execution = self._sessions.execute(
+                execution = self._sessions_client.execute(
                     session_id,
-                    _instrument_python(code, data_directory),
+                    _append_result_persistence(code, data_directory),
                 )
             except Exception as error:
                 raise DataVisualizationError(
                     "The Python calculation could not be executed"
                 ) from error
-            calculation_result, result_error = self._calculation_result(
-                session_id,
-                execution,
-            )
             tool_output = execution.tool_output()
-            if result_error is not None:
-                tool_output["result_file_error"] = result_error
+            calculation_result: str | None = None
+            try:
+                calculation_result = self._calculation_result(
+                    session_id,
+                    execution,
+                )
+            except CalculationResultError as error:
+                tool_output["result_file_error"] = str(error)
             else:
                 tool_output["result_file"] = CALCULATION_RESULT_FILENAME
-            messages.append(_tool_message(call_id, tool_output))
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": json.dumps(
+                        tool_output,
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                }
+            )
             _emit_exchange(
                 exchange_logger,
                 "python_execution",
@@ -362,43 +388,37 @@ class DataVisualizationService:
         self,
         session_id: str,
         execution: PythonExecutionResult,
-    ) -> tuple[str | None, str | None]:
+    ) -> str:
         if execution.status != "Succeeded":
-            return None, "Python execution failed"
+            raise CalculationResultError("Python execution failed")
         try:
             result_file = next(
                 (
                     file
-                    for file in self._sessions.list_files(session_id)
-                    if file.get("name") == CALCULATION_RESULT_FILENAME
+                    for file in self._sessions_client.list_files(session_id)
+                    if file.name == CALCULATION_RESULT_FILENAME
                 ),
                 None,
             )
             if result_file is None:
-                return None, f"{CALCULATION_RESULT_FILENAME} was not created"
-            size = result_file.get("sizeInBytes")
-            if isinstance(size, int) and size > MAX_CALCULATION_RESULT_BYTES:
-                return None, f"{CALCULATION_RESULT_FILENAME} is too large"
-            content = self._sessions.download_file(
+                raise CalculationResultError(
+                    f"{CALCULATION_RESULT_FILENAME} was not created"
+                )
+            if result_file.size_in_bytes > MAX_CALCULATION_RESULT_BYTES:
+                raise CalculationResultError(
+                    f"{CALCULATION_RESULT_FILENAME} is too large"
+                )
+            content = self._sessions_client.download_file(
                 session_id,
                 CALCULATION_RESULT_FILENAME,
             )
-            if len(content) > MAX_CALCULATION_RESULT_BYTES:
-                return None, f"{CALCULATION_RESULT_FILENAME} is too large"
-            payload = json.loads(content)
-            if not isinstance(payload, (dict, list)):
-                return None, f"{CALCULATION_RESULT_FILENAME} must contain an object"
-            return (
-                json.dumps(
-                    payload,
-                    ensure_ascii=False,
-                    allow_nan=False,
-                    separators=(",", ":"),
-                ),
-                None,
-            )
-        except (OSError, TypeError, ValueError) as error:
-            return None, f"{CALCULATION_RESULT_FILENAME} is invalid: {error}"
+            return content.decode("utf-8")
+        except CalculationResultError:
+            raise
+        except (OSError, UnicodeError) as error:
+            raise CalculationResultError(
+                f"{CALCULATION_RESULT_FILENAME} is invalid: {error}"
+            ) from error
 
 
 def _calculation_system_prompt(
@@ -481,37 +501,25 @@ def _python_call(
         ) from error
 
 
-def _instrument_python(code: str, data_directory: str) -> str:
+def _append_result_persistence(code: str, data_directory: str) -> str:
     result_path = f"{data_directory}/{CALCULATION_RESULT_FILENAME}"
     return (
         f"{code.rstrip()}\n\n"
         "# Persist the model calculation through the backend contract.\n"
         "import json as _euphrosyne_json\n"
         "from pathlib import Path as _EuphrosynePath\n"
+        "if not isinstance(result, (dict, list)):\n"
+        "    raise TypeError('result must be a dict or list')\n"
         f"_EuphrosynePath({result_path!r}).write_text(\n"
-        "    _euphrosyne_json.dumps(result, ensure_ascii=False, allow_nan=False),\n"
+        "    _euphrosyne_json.dumps(\n"
+        "        result,\n"
+        "        ensure_ascii=False,\n"
+        "        allow_nan=False,\n"
+        "        separators=(',', ':'),\n"
+        "    ),\n"
         "    encoding='utf-8',\n"
         ")\n"
     )
-
-
-def _assistant_tool_message(
-    message: dict[str, Any],
-    tool_call: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "role": "assistant",
-        "content": message.get("content"),
-        "tool_calls": [tool_call],
-    }
-
-
-def _tool_message(call_id: str, content: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "role": "tool",
-        "tool_call_id": call_id,
-        "content": json.dumps(content, ensure_ascii=False, default=str),
-    }
 
 
 def _generated_response(message: dict[str, Any]) -> GeneratedVisualizationResponse:
@@ -525,14 +533,6 @@ def _generated_response(message: dict[str, Any]) -> GeneratedVisualizationRespon
         raise DataVisualizationError(
             "The model returned an invalid JSON visualization response"
         ) from error
-
-
-def _visualization_correction_message(error: DataVisualizationError) -> str:
-    return (
-        "La visualisation précédente est invalide : "
-        f"{error}. Corrige uniquement le JSON ECharts en conservant exactement "
-        "les valeurs et libellés du résultat Python."
-    )
 
 
 def _emit_exchange(
