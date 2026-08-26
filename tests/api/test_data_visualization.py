@@ -15,12 +15,11 @@ from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
 from aglae.traupixe.visualization import TraupixeVisualizationHandler
 from clients.data_client import AbstractDataClient
 from data_visualization.dependencies import get_data_visualization_service
-from data_visualization.models import DataVisualization
+from data_visualization.models import DataVisualization, PreparedDataVisualization
 from data_visualization.service import (
     DataVisualizationError,
     DataVisualizationResult,
     DataVisualizationService,
-    PreparedDataVisualization,
 )
 from dependencies import get_project_data_client
 

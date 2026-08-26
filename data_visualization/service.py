@@ -20,6 +20,7 @@ from data_visualization.llm import (
 from data_visualization.models import (
     DataVisualization,
     GeneratedVisualizationResponse,
+    PreparedDataVisualization,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,15 +48,6 @@ class DataVisualizationError(RuntimeError):
 
 class CalculationResultError(ValueError):
     """Raised when a Python calculation did not produce a usable result file."""
-
-
-@dataclass(frozen=True)
-class PreparedDataVisualization:
-    filename: str
-    content: bytes
-    descriptor: dict[str, Any]
-    calculation_instructions: str = ""
-    visualization_instructions: str = ""
 
 
 @dataclass(frozen=True)

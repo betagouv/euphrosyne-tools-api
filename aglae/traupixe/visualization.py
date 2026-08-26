@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from data_visualization.service import PreparedDataVisualization
+from data_visualization.models import PreparedDataVisualization
 
 from .dataset import load_traupixe_dataset, serialize_traupixe_for_model
 from .format import MAX_SOURCE_SIZE_BYTES

@@ -14,6 +14,7 @@ from data_visualization.llm import (
     DataVisualizationCompletion,
     DataVisualizationLlmClient,
 )
+from data_visualization.models import PreparedDataVisualization
 from data_visualization.service import (
     CALCULATION_RESULT_FILENAME,
     MAX_PYTHON_EXECUTIONS,
@@ -22,7 +23,6 @@ from data_visualization.service import (
     VISUALIZATION_RESPONSE_FORMAT,
     DataVisualizationError,
     DataVisualizationService,
-    PreparedDataVisualization,
 )
 
 

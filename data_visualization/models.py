@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MAX_VISUALIZATIONS = 8
 MAX_GENERATED_OPTION_BYTES = 200_000
+
+
+@dataclass(frozen=True)
+class PreparedDataVisualization:
+    """Format-independent data prepared for the visualization workflow."""
+
+    filename: str
+    content: bytes
+    descriptor: dict[str, Any]
+    calculation_instructions: str = ""
+    visualization_instructions: str = ""
 
 
 class DataVisualization(BaseModel):

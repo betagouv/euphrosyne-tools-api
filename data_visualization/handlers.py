@@ -5,7 +5,7 @@ from typing import Protocol
 
 from aglae.traupixe.format import is_traupixe_path
 from aglae.traupixe.visualization import TraupixeVisualizationHandler
-from data_visualization.service import PreparedDataVisualization
+from data_visualization.models import PreparedDataVisualization
 
 
 class UnsupportedDataVisualizationFile(ValueError):
