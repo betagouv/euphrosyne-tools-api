@@ -271,8 +271,34 @@ def test_retries_an_invalid_visualization() -> None:
     result = DataVisualizationService(llm, _sessions()).run(_prepared(), "Question")
 
     assert result.llm_calls == 3
-    correction = llm.complete.call_args_list[2].args[0][-1]["content"]
+    retry_messages = llm.complete.call_args_list[2].args[0]
+    assert [message["role"] for message in retry_messages] == [
+        "system",
+        "assistant",
+        "user",
+    ]
+    assert retry_messages[1]["content"] == json.dumps(invalid)
+    assert all(
+        "Résultat calculé par Python" not in message["content"]
+        for message in retry_messages
+    )
+    correction = retry_messages[-1]["content"]
     assert "external resource" in correction
+
+
+def test_does_not_retry_a_visualization_without_content() -> None:
+    empty_completion = DataVisualizationCompletion(
+        message={"role": "assistant", "content": None},
+        usage={},
+        model="model",
+    )
+    llm = MagicMock(spec=DataVisualizationLlmClient)
+    llm.complete.side_effect = [_python_completion(), empty_completion]
+
+    with pytest.raises(DataVisualizationError):
+        DataVisualizationService(llm, _sessions()).run(_prepared(), "Question")
+
+    assert llm.complete.call_count == 2
 
 
 @pytest.mark.parametrize(

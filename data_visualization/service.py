@@ -206,11 +206,12 @@ class DataVisualizationService:
         GeneratedVisualizationResponse,
         tuple[DataVisualization, ...],
     ]:
+        system_message = {
+            "role": "system",
+            "content": _visualization_system_prompt(prepared),
+        }
         messages: list[dict[str, Any]] = [
-            {
-                "role": "system",
-                "content": _visualization_system_prompt(prepared),
-            },
+            system_message,
             {
                 "role": "user",
                 "content": (
@@ -222,11 +223,9 @@ class DataVisualizationService:
                 ),
             },
         ]
-        base_messages = deepcopy(messages)
-        retry_messages = deepcopy(messages)
         for attempt in range(1, MAX_VISUALIZATION_ATTEMPTS + 1):
             completion = recorder.complete(
-                retry_messages,
+                messages,
                 response_format=VISUALIZATION_RESPONSE_FORMAT,
             )
             try:
@@ -241,20 +240,20 @@ class DataVisualizationService:
                 if attempt == MAX_VISUALIZATION_ATTEMPTS:
                     raise
                 content = completion.message.get("content")
-                retry_messages = deepcopy(base_messages)
-                if isinstance(content, str) and content.strip():
-                    retry_messages.append({"role": "assistant", "content": content})
-                retry_messages.append(
+                if not isinstance(content, str) or not content.strip():
+                    raise
+                messages = [
+                    system_message,
+                    {"role": "assistant", "content": content},
                     {
                         "role": "user",
                         "content": (
                             "La visualisation précédente est invalide : "
-                            f"{error}. Corrige uniquement le JSON ECharts en "
-                            "conservant exactement les valeurs et libellés du "
-                            "résultat Python."
+                            f"{error}. Corrige uniquement la réponse JSON ci-dessus "
+                            "en conservant exactement ses valeurs et libellés."
                         ),
-                    }
-                )
+                    },
+                ]
         raise DataVisualizationError("The model returned no visualization")
 
     def _upload_dataset(
