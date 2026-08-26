@@ -50,6 +50,8 @@ def test_accepts_an_option_without_series_and_benign_url_text() -> None:
             }
         },
         {"graphic": {"type": "image", "style": {"image": "https://x.test"}}},
+        {"graphic": {"type": "image", "style": {"image": "//x.test/pixel.png"}}},
+        {"graphic": {"type": "image", "style": {"image": "images/pixel.png"}}},
         {"series": {"type": "scatter", "symbol": "image://https://x.test"}},
     ],
 )

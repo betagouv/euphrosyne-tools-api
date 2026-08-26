@@ -119,7 +119,9 @@ def _reject_key(value: Any, key: str) -> None:
 def _reject_external_images(value: Any) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
-            if key in {"image", "symbol"} and _is_external_resource(item):
+            if key == "image" and isinstance(item, str):
+                raise ValueError("the ECharts option references an external resource")
+            if key == "symbol" and _is_external_resource(item):
                 raise ValueError("the ECharts option references an external resource")
             _reject_external_images(item)
         return
@@ -130,5 +132,5 @@ def _reject_external_images(value: Any) -> None:
 
 def _is_external_resource(value: Any) -> bool:
     return isinstance(value, str) and value.lstrip().casefold().startswith(
-        ("http://", "https://", "data:", "image://")
+        ("http://", "https://", "//", "data:", "image://")
     )
