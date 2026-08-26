@@ -15,6 +15,10 @@ from aglae.traupixe.format import MAX_SOURCE_SIZE_BYTES
 from aglae.traupixe.visualization import TraupixeVisualizationHandler
 from clients.data_client import AbstractDataClient
 from data_visualization.dependencies import get_data_visualization_service
+from data_visualization.exchange_log import (
+    DataVisualizationExchangeLogger,
+    get_data_visualization_exchange_logger,
+)
 from data_visualization.models import DataVisualization, PreparedDataVisualization
 from data_visualization.service import (
     DataVisualizationError,
@@ -58,15 +62,13 @@ def visualization_dependencies(
 
 
 @pytest.fixture(autouse=True)
-def albert_exchange_log_writer() -> Iterator[MagicMock]:
-    with (
-        patch(
-            "api.data_visualization.is_data_visualization_exchange_logging_enabled",
-            return_value=True,
-        ),
-        patch("api.data_visualization.write_data_visualization_exchange") as writer,
+def data_visualization_exchange_logger() -> Iterator[MagicMock]:
+    exchange_logger = MagicMock(spec=DataVisualizationExchangeLogger)
+    with patch(
+        "api.data_visualization.get_data_visualization_exchange_logger",
+        return_value=exchange_logger,
     ):
-        yield writer
+        yield exchange_logger
 
 
 def _visualization() -> DataVisualization:
@@ -119,7 +121,7 @@ def _post(client: TestClient, **overrides: object):
 def test_creates_a_visualization_from_the_selected_project_file(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
-    albert_exchange_log_writer: MagicMock,
+    data_visualization_exchange_logger: MagicMock,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     data_client, visualization_service, prepare = visualization_dependencies
@@ -130,17 +132,21 @@ def test_creates_a_visualization_from_the_selected_project_file(
         *,
         exchange_logger,
     ) -> DataVisualizationResult:
-        exchange_logger(
-            {
-                "event": "llm_request",
-                "messages": [{"role": "user", "content": question}],
-            }
+        exchange_logger.info(
+            "llm_request",
+            extra={
+                "exchange": {
+                    "messages": [{"role": "user", "content": question}],
+                }
+            },
         )
-        exchange_logger(
-            {
-                "event": "visualization_result",
-                "visualization": _visualization().model_dump(mode="json"),
-            }
+        exchange_logger.info(
+            "visualization_result",
+            extra={
+                "exchange": {
+                    "visualization": _visualization().model_dump(mode="json"),
+                }
+            },
         )
         assert prepared == _prepared()
         return _result()
@@ -159,27 +165,19 @@ def test_creates_a_visualization_from_the_selected_project_file(
     data_client.download_run_file.assert_called_once_with(WORKBOOK_PATH)
     prepare.assert_called_once_with(b"data-file")
     visualization_service.run.assert_called_once()
-    assert "data_visualization_exchange" in caplog.text
     assert "data_visualization_completed" in caplog.text
     assert "total_tokens=300" in caplog.text
     assert "question='Compare le fer.'" in caplog.text
-    visualization_log = next(
-        record.message
-        for record in caplog.records
-        if "event=visualization_result" in record.message
-    )
-    assert "option" not in visualization_log
     assert "Ligne Excel 3" not in caplog.text
-    written_exchanges = [
-        call.args[1] for call in albert_exchange_log_writer.call_args_list
-    ]
-    assert [exchange["event"] for exchange in written_exchanges] == [
+    exchange_calls = data_visualization_exchange_logger.info.call_args_list
+    assert [call.args[0] for call in exchange_calls] == [
         "request_started",
         "llm_request",
         "visualization_result",
         "request_completed",
     ]
-    assert written_exchanges[2]["visualization"]["option"] == (_visualization().option)
+    exchange_details = [call.kwargs["extra"]["exchange"] for call in exchange_calls]
+    assert exchange_details[2]["visualization"]["option"] == (_visualization().option)
 
 
 def test_rejects_a_file_from_another_project(
@@ -300,20 +298,21 @@ def test_propagates_model_timeouts_for_error_monitoring(
 def test_does_not_write_complete_exchanges_outside_development(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
-    albert_exchange_log_writer: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, visualization_service, _ = visualization_dependencies
     visualization_service.run.return_value = _result()
+    monkeypatch.setenv("EUPHROSYNE_TOOLS_ENVIRONMENT", "production")
 
     with patch(
-        "api.data_visualization.is_data_visualization_exchange_logging_enabled",
-        return_value=False,
+        "api.data_visualization.get_data_visualization_exchange_logger",
+        side_effect=get_data_visualization_exchange_logger,
     ):
         response = _post(client)
 
     assert response.status_code == 200
-    assert visualization_service.run.call_args.kwargs["exchange_logger"] is None
-    albert_exchange_log_writer.assert_not_called()
+    exchange_logger = visualization_service.run.call_args.kwargs["exchange_logger"]
+    assert not exchange_logger.isEnabledFor(logging.INFO)
 
 
 def test_requires_project_membership(

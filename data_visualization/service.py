@@ -3,16 +3,18 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
+from data_visualization.exchange_log import (
+    DISABLED_EXCHANGE_LOGGER,
+    DataVisualizationExchangeLogger,
+)
 from data_visualization.llm import (
     DataVisualizationCompletion,
     DataVisualizationLlmClient,
@@ -33,7 +35,6 @@ MAX_PYTHON_EXECUTIONS = 3
 MAX_VISUALIZATION_ATTEMPTS = 2
 MAX_MODEL_DATA_BYTES = 1_000_000
 MAX_CALCULATION_RESULT_BYTES = 1_000_000
-ExchangeLogger = Callable[[dict[str, Any]], None]
 
 
 class PythonExecutionRequest(BaseModel):
@@ -93,7 +94,7 @@ class LlmCallRecorder:
     def __init__(
         self,
         llm_client: DataVisualizationLlmClient,
-        exchange_logger: ExchangeLogger | None,
+        exchange_logger: DataVisualizationExchangeLogger,
     ) -> None:
         self._llm_client = llm_client
         self._exchange_logger = exchange_logger
@@ -118,7 +119,10 @@ class LlmCallRecorder:
             request["tool_choice"] = tool_choice
         if response_format is not None:
             request["response_format"] = response_format
-        _emit_exchange(self._exchange_logger, "llm_request", **request)
+        self._exchange_logger.info(
+            "llm_request",
+            extra={"exchange": request},
+        )
         completion = self._llm_client.complete(
             request_messages,
             tools,
@@ -127,14 +131,17 @@ class LlmCallRecorder:
         )
         self.calls += 1
         self.usages.append(completion.usage)
-        _emit_exchange(
-            self._exchange_logger,
+        self._exchange_logger.info(
             "llm_response",
-            call=self.calls,
-            message=completion.message,
-            usage=completion.usage,
-            model=completion.model,
-            finish_reason=completion.finish_reason,
+            extra={
+                "exchange": {
+                    "call": self.calls,
+                    "message": completion.message,
+                    "usage": completion.usage,
+                    "model": completion.model,
+                    "finish_reason": completion.finish_reason,
+                }
+            },
         )
         return completion
 
@@ -153,7 +160,7 @@ class DataVisualizationService:
         prepared: PreparedDataVisualization,
         question: str,
         *,
-        exchange_logger: ExchangeLogger | None = None,
+        exchange_logger: DataVisualizationExchangeLogger = DISABLED_EXCHANGE_LOGGER,
     ) -> DataVisualizationResult:
         question = question.strip()
         if not question:
@@ -187,18 +194,24 @@ class DataVisualizationService:
                 self._sessions_client.delete_session(session_id)
             except Exception as error:
                 logger.exception("data_visualization_session_cleanup_error")
-                _emit_exchange(
-                    exchange_logger,
+                exchange_logger.info(
                     "python_session_cleanup_error",
-                    error_type=type(error).__name__,
-                    error=str(error),
+                    extra={
+                        "exchange": {
+                            "error_type": type(error).__name__,
+                            "error": str(error),
+                        }
+                    },
                 )
         for index, visualization in enumerate(visualizations, start=1):
-            _emit_exchange(
-                exchange_logger,
+            exchange_logger.info(
                 "visualization_result",
-                index=index,
-                visualization=visualization.model_dump(mode="json"),
+                extra={
+                    "exchange": {
+                        "index": index,
+                        "visualization": visualization.model_dump(mode="json"),
+                    }
+                },
             )
         return DataVisualizationResult(
             answer=generated.answer,
@@ -214,7 +227,7 @@ class DataVisualizationService:
         prepared: PreparedDataVisualization,
         calculation_result: str,
         recorder: LlmCallRecorder,
-        exchange_logger: ExchangeLogger | None,
+        exchange_logger: DataVisualizationExchangeLogger,
     ) -> tuple[
         GeneratedVisualizationResponse,
         tuple[DataVisualization, ...],
@@ -248,11 +261,14 @@ class DataVisualizationService:
                 return generated, tuple(generated.visualizations)
             except DataVisualizationError as error:
                 last_error = error
-                _emit_exchange(
-                    exchange_logger,
+                exchange_logger.info(
                     "visualization_validation_failed",
-                    attempt=attempt,
-                    error=str(error),
+                    extra={
+                        "exchange": {
+                            "attempt": attempt,
+                            "error": str(error),
+                        }
+                    },
                 )
                 if attempt == MAX_VISUALIZATION_ATTEMPTS:
                     break
@@ -297,7 +313,7 @@ class DataVisualizationService:
         question: str,
         prepared: PreparedDataVisualization,
         recorder: LlmCallRecorder,
-        exchange_logger: ExchangeLogger | None,
+        exchange_logger: DataVisualizationExchangeLogger,
     ) -> str:
         data_directory = self._sessions_client.data_directory.rstrip("/")
         messages: list[dict[str, Any]] = [
@@ -363,12 +379,15 @@ class DataVisualizationService:
                     ),
                 }
             )
-            _emit_exchange(
-                exchange_logger,
+            exchange_logger.info(
                 "python_execution",
-                attempt=attempt,
-                code=code,
-                output=tool_output,
+                extra={
+                    "exchange": {
+                        "attempt": attempt,
+                        "code": code,
+                        "output": tool_output,
+                    }
+                },
             )
             if calculation_result is not None:
                 return calculation_result
@@ -525,18 +544,3 @@ def _generated_response(message: dict[str, Any]) -> GeneratedVisualizationRespon
         raise DataVisualizationError(
             "The model returned an invalid JSON visualization response"
         ) from error
-
-
-def _emit_exchange(
-    exchange_logger: ExchangeLogger | None,
-    event: str,
-    **details: Any,
-) -> None:
-    if exchange_logger is not None:
-        exchange_logger(
-            {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "event": event,
-                **details,
-            }
-        )

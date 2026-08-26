@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+from collections.abc import MutableMapping
 from datetime import datetime, timezone
 from functools import cache
 from logging.handlers import RotatingFileHandler
@@ -17,6 +18,43 @@ APP_NAME = "euphrosyne-tools-api"
 LOG_FILENAME = "data-visualization-exchanges.jsonl"
 MAX_LOG_BYTES = 20 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
+
+
+class DataVisualizationExchangeLogger(logging.LoggerAdapter):
+    """Request-scoped adapter for private visualization exchange records."""
+
+    def process(
+        self,
+        msg: Any,
+        kwargs: MutableMapping[str, Any],
+    ) -> tuple[Any, MutableMapping[str, Any]]:
+        extra = dict(self.extra or {})
+        call_extra = kwargs.get("extra")
+        if isinstance(call_extra, dict):
+            extra.update(call_extra)
+        kwargs["extra"] = extra
+        return msg, kwargs
+
+
+class _ExchangeJsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        exchange = getattr(record, "exchange", {})
+        details = exchange if isinstance(exchange, dict) else {}
+        payload = {
+            "timestamp": datetime.fromtimestamp(
+                record.created,
+                tz=timezone.utc,
+            ).isoformat(),
+            **details,
+            "event": record.getMessage(),
+            "request_id": str(getattr(record, "request_id", "unknown")),
+        }
+        return json.dumps(
+            payload,
+            ensure_ascii=False,
+            default=str,
+            separators=(",", ":"),
+        )
 
 
 class _PrivateRotatingFileHandler(RotatingFileHandler):
@@ -35,6 +73,22 @@ def get_data_visualization_exchange_log_path() -> Path:
 
 
 @cache
+def _disabled_logger() -> logging.Logger:
+    logger = logging.getLogger("data_visualization.exchanges.disabled")
+    logger.setLevel(logging.CRITICAL + 1)
+    logger.propagate = False
+    if not logger.handlers:
+        logger.addHandler(logging.NullHandler())
+    return logger
+
+
+DISABLED_EXCHANGE_LOGGER = DataVisualizationExchangeLogger(
+    _disabled_logger(),
+    {"request_id": "unknown"},
+)
+
+
+@cache
 def _file_logger(path: Path) -> logging.Logger:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
@@ -49,29 +103,32 @@ def _file_logger(path: Path) -> logging.Logger:
             backupCount=LOG_BACKUP_COUNT,
             encoding="utf-8",
         )
-        handler.setFormatter(logging.Formatter("%(message)s"))
+        handler.setFormatter(_ExchangeJsonFormatter())
         logger.addHandler(handler)
     return logger
 
 
-def write_data_visualization_exchange(
+def get_data_visualization_exchange_logger(
     request_id: UUID | str,
-    exchange: dict[str, Any],
     *,
     path: Path | None = None,
-) -> Path:
-    log_path = path or get_data_visualization_exchange_log_path()
-    record = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        **exchange,
-        "request_id": str(request_id),
-    }
-    _file_logger(log_path).info(
-        json.dumps(
-            record,
-            ensure_ascii=False,
-            default=str,
-            separators=(",", ":"),
+) -> DataVisualizationExchangeLogger:
+    if not is_data_visualization_exchange_logging_enabled():
+        return DataVisualizationExchangeLogger(
+            _disabled_logger(),
+            {"request_id": str(request_id)},
         )
+    log_path = path or get_data_visualization_exchange_log_path()
+    try:
+        logger = _file_logger(log_path)
+    except OSError:
+        logging.getLogger(__name__).warning(
+            "data_visualization_exchange_file_error request_id=%s",
+            request_id,
+            exc_info=True,
+        )
+        logger = _disabled_logger()
+    return DataVisualizationExchangeLogger(
+        logger,
+        {"request_id": str(request_id)},
     )
-    return log_path

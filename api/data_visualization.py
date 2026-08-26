@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Any, BinaryIO
+from typing import Annotated, BinaryIO
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -12,10 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from auth import verify_project_membership
 from clients.data_client import AbstractDataClient
 from data_visualization.dependencies import get_data_visualization_service
-from data_visualization.exchange_log import (
-    is_data_visualization_exchange_logging_enabled,
-    write_data_visualization_exchange,
-)
+from data_visualization.exchange_log import get_data_visualization_exchange_logger
 from data_visualization.handlers import (
     DataVisualizationHandler,
     UnsupportedDataVisualizationFile,
@@ -85,18 +81,15 @@ def create_data_visualization(
         query.path,
         query.question,
     )
-    exchange_logger = (
-        _exchange_logger(request_id)
-        if is_data_visualization_exchange_logging_enabled()
-        else None
-    )
-    _emit_exchange(
-        exchange_logger,
-        {
-            "event": "request_started",
-            "project": project_slug,
-            "path": query.path,
-            "question": query.question,
+    exchange_logger = get_data_visualization_exchange_logger(request_id)
+    exchange_logger.info(
+        "request_started",
+        extra={
+            "exchange": {
+                "project": project_slug,
+                "path": query.path,
+                "question": query.question,
+            }
         },
     )
     try:
@@ -135,13 +128,14 @@ def create_data_visualization(
         for usage in result.usage
         if isinstance(usage.get("total_tokens"), int)
     )
-    _emit_exchange(
-        exchange_logger,
-        {
-            "event": "request_completed",
-            "calls": result.llm_calls,
-            "elapsed_seconds": result.elapsed_seconds,
-            "total_tokens": total_tokens,
+    exchange_logger.info(
+        "request_completed",
+        extra={
+            "exchange": {
+                "calls": result.llm_calls,
+                "elapsed_seconds": result.elapsed_seconds,
+                "total_tokens": total_tokens,
+            }
         },
     )
     logger.info(
@@ -202,33 +196,6 @@ def _download_data_file(
     if len(data_file) > max_source_size_bytes:
         raise DataVisualizationRequestError(FILE_TOO_LARGE, 413)
     return data_file
-
-
-def _exchange_logger(request_id: UUID) -> Callable[[dict[str, Any]], None]:
-    def log_exchange(exchange: dict[str, Any]) -> None:
-        try:
-            write_data_visualization_exchange(request_id, exchange)
-        except Exception:
-            logger.warning(
-                "data_visualization_exchange_file_error request_id=%s",
-                request_id,
-                exc_info=True,
-            )
-        logger.info(
-            "data_visualization_exchange request_id=%s event=%s",
-            request_id,
-            exchange.get("event", "unknown"),
-        )
-
-    return log_exchange
-
-
-def _emit_exchange(
-    exchange_logger: Callable[[dict[str, Any]], None] | None,
-    exchange: dict[str, Any],
-) -> None:
-    if exchange_logger is not None:
-        exchange_logger(exchange)
 
 
 def _http_error(
