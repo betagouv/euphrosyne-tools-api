@@ -101,7 +101,7 @@ def create_data_visualization(
     )
     try:
         handler = _resolve_handler(project_slug, query.path)
-        workbook = _download_workbook(
+        data_file = _download_data_file(
             data_client,
             query.path,
             handler.max_source_size_bytes,
@@ -115,7 +115,7 @@ def create_data_visualization(
         )
         raise _http_error(error, request_id) from error
     try:
-        prepared = handler.prepare(workbook)
+        prepared = handler.prepare(data_file)
     except ValueError as error:
         logger.info(
             "data_visualization_invalid_file request_id=%s error=%s reason=%r",
@@ -163,45 +163,45 @@ def _resolve_handler(
     project_slug: str,
     path: str,
 ) -> DataVisualizationHandler:
-    workbook_path = Path(path)
-    if ".." in workbook_path.parts:
+    data_file_path = Path(path)
+    if ".." in data_file_path.parts:
         raise DataVisualizationRequestError(INVALID_FILE_PATH, 422)
     try:
-        reference = RunDataTypeRef.from_path(workbook_path)
+        reference = RunDataTypeRef.from_path(data_file_path)
     except IncorrectDataFilePath as error:
         raise DataVisualizationRequestError(INVALID_FILE_PATH, 422) from error
     if reference.project_slug != project_slug:
         raise DataVisualizationRequestError(INVALID_FILE_PATH, 422)
     try:
-        return resolve_data_visualization_handler(workbook_path)
+        return resolve_data_visualization_handler(data_file_path)
     except UnsupportedDataVisualizationFile as error:
         raise DataVisualizationRequestError(UNSUPPORTED_FILE_TYPE, 422) from error
 
 
-def _download_workbook(
+def _download_data_file(
     data_client: AbstractDataClient,
     path: str,
     max_source_size_bytes: int,
 ) -> bytes:
-    workbook_file: BinaryIO | None = None
+    data_file_handle: BinaryIO | None = None
     try:
-        workbook_file = data_client.download_run_file(path)
-        content_length = getattr(workbook_file, "content_length", None)
+        data_file_handle = data_client.download_run_file(path)
+        content_length = getattr(data_file_handle, "content_length", None)
         if (
             isinstance(content_length, int)
             and not isinstance(content_length, bool)
             and content_length > max_source_size_bytes
         ):
             raise DataVisualizationRequestError(FILE_TOO_LARGE, 413)
-        workbook = workbook_file.read(max_source_size_bytes + 1)
+        data_file = data_file_handle.read(max_source_size_bytes + 1)
     finally:
-        if workbook_file is not None:
-            workbook_file.close()
-    if not isinstance(workbook, bytes) or not workbook:
+        if data_file_handle is not None:
+            data_file_handle.close()
+    if not isinstance(data_file, bytes) or not data_file:
         raise DataVisualizationRequestError(INVALID_DATA_FILE, 422)
-    if len(workbook) > max_source_size_bytes:
+    if len(data_file) > max_source_size_bytes:
         raise DataVisualizationRequestError(FILE_TOO_LARGE, 413)
-    return workbook
+    return data_file
 
 
 def _exchange_logger(request_id: UUID) -> Callable[[dict[str, Any]], None]:

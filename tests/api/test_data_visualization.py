@@ -37,7 +37,7 @@ def visualization_dependencies(
 ) -> Iterator[tuple[MagicMock, MagicMock, MagicMock]]:
     monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
     data_client = MagicMock(spec=AbstractDataClient)
-    data_client.download_run_file.return_value = io.BytesIO(b"workbook")
+    data_client.download_run_file.return_value = io.BytesIO(b"data-file")
     visualization_service = MagicMock(spec=DataVisualizationService)
     prepare = MagicMock(return_value=_prepared())
     monkeypatch.setattr(TraupixeVisualizationHandler, "prepare", prepare)
@@ -158,7 +158,7 @@ def test_creates_a_visualization_from_the_selected_project_file(
     assert payload["visualizations"] == [_visualization().model_dump(mode="json")]
     assert "visualization" not in payload
     data_client.download_run_file.assert_called_once_with(WORKBOOK_PATH)
-    prepare.assert_called_once_with(b"workbook")
+    prepare.assert_called_once_with(b"data-file")
     visualization_service.run.assert_called_once()
     assert "data_visualization_exchange" in caplog.text
     assert "data_visualization_completed" in caplog.text
@@ -231,21 +231,21 @@ def test_rejects_files_outside_the_current_traupixe_scope(
     data_client.download_run_file.assert_not_called()
 
 
-def test_rejects_an_oversized_workbook_before_reading_it(
+def test_rejects_an_oversized_data_file_before_reading_it(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
     data_client, _, _ = visualization_dependencies
-    workbook_file = MagicMock()
-    workbook_file.content_length = MAX_SOURCE_SIZE_BYTES + 1
-    data_client.download_run_file.return_value = workbook_file
+    data_file = MagicMock()
+    data_file.content_length = MAX_SOURCE_SIZE_BYTES + 1
+    data_client.download_run_file.return_value = data_file
 
     response = _post(client)
 
     assert response.status_code == 413
     assert response.json()["detail"]["code"] == "FILE_TOO_LARGE"
-    workbook_file.read.assert_not_called()
-    workbook_file.close.assert_called_once_with()
+    data_file.read.assert_not_called()
+    data_file.close.assert_called_once_with()
 
 
 def test_propagates_storage_errors_for_error_monitoring(
@@ -271,20 +271,20 @@ def test_propagates_model_errors_for_error_monitoring(
         _post(client)
 
 
-def test_hides_workbook_parser_details_from_the_client(
+def test_hides_data_file_parser_details_from_the_client(
     client: TestClient,
     visualization_dependencies: tuple[MagicMock, MagicMock, MagicMock],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     _, _, prepare = visualization_dependencies
-    prepare.side_effect = ValueError("private path: /tmp/workbook.xlsx")
+    prepare.side_effect = ValueError("private path: /tmp/data-file.xlsx")
     with caplog.at_level(logging.INFO, logger="api.data_visualization"):
         response = _post(client)
 
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "INVALID_DATA_FILE"
-    assert "/tmp/workbook.xlsx" not in response.text
-    assert "/tmp/workbook.xlsx" in caplog.text
+    assert "/tmp/data-file.xlsx" not in response.text
+    assert "/tmp/data-file.xlsx" in caplog.text
 
 
 def test_propagates_model_timeouts_for_error_monitoring(
