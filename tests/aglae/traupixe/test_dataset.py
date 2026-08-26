@@ -10,7 +10,7 @@ from aglae.traupixe.dataset import (
 )
 
 
-def test_interprets_concentrations_detections_zones_and_detectors(
+def test_interprets_concentrations_detections_groups_and_detectors(
     traupixe_workbook: bytes,
 ) -> None:
     dataset = load_traupixe_dataset(traupixe_workbook)
@@ -19,14 +19,18 @@ def test_interprets_concentrations_detections_zones_and_detectors(
     assert dataset.detector_sheet == "S_Best Det."
     assert dataset.unit == "%"
     assert len(dataset.analyses) == 5
-    assert len(dataset.object_analyses) == 4
-    assert [analysis.zone for analysis in dataset.object_analyses] == [
+    assert len(dataset.non_reference_analyses) == 4
+    assert [analysis.group for analysis in dataset.non_reference_analyses] == [
         "Zone_A",
         "Zone_A",
         "Zone_B",
         "Zone_B",
     ]
-    zone_a_second = dataset.object_analyses[1]
+    assert dataset.analyses[0].kind == "reference"
+    assert all(
+        analysis.kind == "unknown" for analysis in dataset.non_reference_analyses
+    )
+    zone_a_second = dataset.non_reference_analyses[1]
     assert zone_a_second.measurements["Na2O-PIGE"].value == 4
     assert zone_a_second.measurements["Zr"].detected is False
     assert zone_a_second.measurements["Zr"].value == pytest.approx(0.2)
@@ -38,16 +42,10 @@ def test_builds_a_compact_descriptor_without_measurement_values(
 ) -> None:
     descriptor = load_traupixe_dataset(traupixe_workbook).descriptor()
 
-    assert descriptor["analyses"]["objects"] == 4
-    assert descriptor["default_major_analytes"] == [
-        "Na2O-PIGE",
-        "MgO",
-        "Al2O3",
-        "SiO2",
-        "K2O",
-        "CaO",
-    ]
-    assert descriptor["analyses"]["zones"] == [
+    assert descriptor["analyses"]["references"] == 1
+    assert descriptor["analyses"]["unknown"] == 4
+    assert "default_major_analytes" not in descriptor
+    assert descriptor["analyses"]["groups"] == [
         {"name": "Zone_A", "analyses": 2},
         {"name": "Zone_B", "analyses": 2},
     ]
@@ -65,7 +63,8 @@ def test_serializes_an_aligned_compact_model_payload(
     payload = serialize_traupixe_for_model(dataset)
 
     assert payload["unit"] == "%"
-    assert payload["summary"]["objects"] == 4
+    assert payload["summary"]["unknown"] == 4
+    assert "default_major_analytes" not in payload
     assert len(payload["analyses"]) == len(dataset.analyses)
     assert all(
         len(analysis[key]) == len(payload["analytes"])
@@ -73,9 +72,51 @@ def test_serializes_an_aligned_compact_model_payload(
         for key in ("values", "detected", "detectors")
     )
     assert {analysis["kind"] for analysis in payload["analyses"]} == {
-        "object",
         "reference",
+        "unknown",
     }
+
+
+def test_header_must_leave_identifier_and_label_columns_empty() -> None:
+    workbook = Workbook()
+    concentrations = workbook.active
+    assert concentrations is not None
+    concentrations.title = "S_Conc. %"
+    concentrations.append([None, None, "A", "B", "C"])
+    concentrations.append(["same-id", "Zone pt1", "1", "2", "3", "x", "y"])
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+
+    dataset = load_traupixe_dataset(output.getvalue())
+
+    assert dataset.analytes == ("A", "B", "C")
+    assert dataset.analyses[0].group == "Zone"
+
+
+def test_matches_detectors_by_identifier_occurrence() -> None:
+    workbook = Workbook()
+    concentrations = workbook.active
+    assert concentrations is not None
+    concentrations.title = "S_Conc. %"
+    concentrations.append([None, None, "A", "B", "C"])
+    concentrations.append(["same-id", "Zone_pt1", "1", "2", "3"])
+    concentrations.append(["same-id", "Zone pt2", "4", "5", "6"])
+    detectors = workbook.create_sheet("S_Best Det.")
+    detectors.append([None, None, "A", "B", "C"])
+    detectors.append(["same-id", "First label", "X0", "X0", "X0"])
+    detectors.append(["same-id", "Truncated label", "X3", "X3", "X3"])
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+
+    dataset = load_traupixe_dataset(output.getvalue())
+
+    assert [analysis.group for analysis in dataset.analyses] == ["Zone", "Zone"]
+    assert [analysis.measurements["A"].detector for analysis in dataset.analyses] == [
+        "X0",
+        "X3",
+    ]
 
 
 def test_rejects_a_workbook_without_a_supported_concentration_sheet() -> None:
