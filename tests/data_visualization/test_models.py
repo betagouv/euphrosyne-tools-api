@@ -23,6 +23,14 @@ def test_accepts_an_option_without_series_and_benign_url_text() -> None:
     "option",
     [
         {"tooltip": {"extraCssText": "position: fixed"}},
+        {"tooltip": {"formatter": "<img src=x onerror=alert(1)>"}},
+        {
+            "series": {
+                "type": "bar",
+                "data": [1],
+                "tooltip": {"formatter": "<img src=x onerror=alert(1)>"},
+            }
+        },
         {"toolbox": {"feature": {"dataView": {"optionToContent": "code"}}}},
         {"toolbox": {"feature": {"dataView": {"title": "<img>"}}}},
         {"toolbox": {"feature": {"dataView": {"lang": ["<img>"]}}}},

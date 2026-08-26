@@ -52,7 +52,7 @@ class GeneratedVisualizationResponse(BaseModel):
 
 
 def _validate_safe_echarts_option(option: dict[str, Any]) -> None:
-    _reject_key(option.get("tooltip"), "extraCssText")
+    _reject_unsafe_tooltips(option)
 
     for toolbox in _mappings(option.get("toolbox")):
         feature = toolbox.get("feature")
@@ -83,6 +83,19 @@ def _mappings(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, list):
         return [item for item in value if isinstance(item, dict)]
     return []
+
+
+def _reject_unsafe_tooltips(value: Any) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "tooltip":
+                for tooltip in _mappings(item):
+                    _reject_keys(tooltip, {"extraCssText", "formatter"})
+            _reject_unsafe_tooltips(item)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _reject_unsafe_tooltips(item)
 
 
 def _reject_keys(value: dict[str, Any], keys: set[str]) -> None:
