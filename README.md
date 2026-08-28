@@ -27,9 +27,14 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 | DATA_PROJECTS_LOCATION_PREFIX     | Optionnel. Préfixe du chemin de base des projets pour HOT.                                                                                                                                         |
 | AZURE_STORAGE_DATA_CONTAINER      | Nom du container Blob utilisé pour les données projets (requis si `DATA_BACKEND=azure_blob`).                                                                                                      |
 | AZURE_STORAGE_DATA_CONTAINER_COOL | Nom du container Blob utilisé pour les données projets COOL (requis si `DATA_BACKEND_COOL=azure_blob`).                                                                                            |
+| AZURE_SESSION_POOL_ENDPOINT       | Endpoint de gestion du Session Pool Azure utilisé pour isoler l'exécution Python des visualisations.                                                                                               |
+| ALBERT_API_KEY                    | Clé API Albert utilisée par le service de visualisation de données.                                                                                                                                |
+| ALBERT_MODEL                      | Modèle Albert utilisé par le service de visualisation de données. Exemple : `openai/gpt-oss-120b`.                                                                                                 |
 | AZURE_IMAGE_GALLERY               | Nom de la _Azure compute gallery_ qui stock les différentes images                                                                                                                                 |
 | AZURE_IMAGE_DEFINITION            | Nom de la _VM image definition_ qui est l'image pré-configurée pour les VM Euphrosyne                                                                                                              |
 | CORS_ALLOWED_ORIGIN               | Origines des frontends autorisées à utiliser l'API. Séparer les origines par des espaces.                                                                                                          |
+| DATA_VISUALIZATION_TRACE          | Optionnel. La valeur `1` active la trace locale des requêtes et réponses LLM complètes. Désactivée par défaut.                                                                                     |
+| EUPHROSYNE_TOOLS_ENVIRONMENT      | Nom de l'environnement d'exécution transmis au suivi d'erreurs. Exemple : `dev`.                                                                                                                   |
 | GUACAMOLE_ROOT_URL                | URL du service guacamole. Ajouter `/guacamole` à la fin si besoin.                                                                                                                                 |
 | GUACAMOLE_ADMIN_USERNAME          | Nom d'un utilisateur qui peut gérer les connections sur le service Guacamole.                                                                                                                      |
 | GUACAMOLE_ADMIN_PASSWORD          | Mot de passe de l'utilisateur Guacamole.                                                                                                                                                           |
@@ -52,6 +57,41 @@ Le préfixe `DATA_PROJECTS_LOCATION_PREFIX` s'applique au chemin de base des pro
 ## Documentation des données projets
 
 Pour la documentation technique du stockage HOT/COOL, du routage par cycle de vie et des opérations COOL/RESTORE, voir [DATA_LIFECYCLE.md](./DATA_LIFECYCLE.md).
+
+## Visualisation de données avec Albert
+
+Le visualiseur expose un contrat générique, mais n'accepte actuellement que les
+fichiers TRAUPIXE. Le périmètre de ce premier format, l'architecture et les
+détails d'exploitation sont décrits dans
+[ALBERT_TRAUPIXE.md](./docs/ALBERT_TRAUPIXE.md).
+
+L'endpoint utilise une interprétation TRAUPIXE minimale des concentrations,
+non-détections et détecteurs. Albert calcule les données nécessaires dans un
+Session Pool Azure isolé puis produit entre une et huit options ECharts. Le
+frontend reste agnostique du type de graphique.
+
+### Endpoint de visualisation
+
+L'endpoint synchrone authentifié utilise le modèle Albert configuré par
+`ALBERT_API_KEY` et `ALBERT_MODEL` :
+
+```http
+POST /data/{project_slug}/visualizations
+Content-Type: application/json
+
+{
+  "path": "projects/project-01/runs/run-01/raw_data/TRAUPIXE-example.xlsx",
+  "question": "Compare les concentrations en fer, cuivre et plomb."
+}
+```
+
+Le chemin doit appartenir au projet autorisé et désigner un fichier `.xlsx` dont le
+nom contient `TRAUPIXE`. La réponse contient `request_id`, `answer` et une liste de
+visualisations `{title, option}`. Les erreurs d'analyse exposent une raison concise
+et un `request_id`. Les erreurs attendues utilisent les codes stables
+`INVALID_FILE_PATH`, `UNSUPPORTED_FILE_TYPE`, `FILE_TOO_LARGE` et
+`INVALID_DATA_FILE`. Les erreurs d'infrastructure inattendues remontent au suivi
+d'erreurs de l'application.
 
 ## Configurer le CORS (Blob / Fileshare)
 
