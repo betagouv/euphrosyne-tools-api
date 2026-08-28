@@ -294,16 +294,50 @@ def test_retries_an_invalid_visualization() -> None:
 def test_does_not_retry_a_visualization_without_content() -> None:
     empty_completion = DataVisualizationCompletion(
         message={"role": "assistant", "content": None},
-        usage={},
+        usage={
+            "prompt_tokens": 120,
+            "completion_tokens": 80,
+            "total_tokens": 200,
+        },
         model="model",
+        finish_reason="length",
     )
     llm = MagicMock(spec=DataVisualizationLlmClient)
     llm.complete.side_effect = [_python_completion(), empty_completion]
 
-    with pytest.raises(DataVisualizationError):
+    with (
+        patch("data_visualization.service.sentry_sdk.add_breadcrumb") as breadcrumb,
+        patch("data_visualization.service.sentry_sdk.set_context") as set_context,
+        pytest.raises(DataVisualizationError),
+    ):
         DataVisualizationService(llm, _sessions()).run(_prepared(), "Question")
 
     assert llm.complete.call_count == 2
+    completion_breadcrumbs = [
+        call.kwargs["data"]
+        for call in breadcrumb.call_args_list
+        if call.kwargs.get("category") == "data_visualization.llm"
+    ]
+    assert completion_breadcrumbs[0]["phase"] == "calculation"
+    assert completion_breadcrumbs[0]["tool_calls"] == 1
+    completion_context = completion_breadcrumbs[1]
+    assert completion_context == {
+        "request_id": "unknown",
+        "call": 2,
+        "phase": "visualization",
+        "model": "model",
+        "finish_reason": "length",
+        "prompt_tokens": 120,
+        "completion_tokens": 80,
+        "total_tokens": 200,
+        "has_content": False,
+        "content_chars": 0,
+        "tool_calls": 0,
+    }
+    set_context.assert_called_with(
+        "data_visualization_last_completion",
+        completion_context,
+    )
 
 
 @pytest.mark.parametrize(

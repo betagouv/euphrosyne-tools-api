@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
+import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -80,6 +81,7 @@ def create_data_visualization(
         query.path,
         query.question,
     )
+    _capture_visualization_usage(project_slug, query, request_id)
     try:
         handler = _resolve_handler(project_slug, query.path)
         data_file = _download_data_file(
@@ -130,6 +132,34 @@ def create_data_visualization(
         answer=result.answer,
         visualizations=list(result.visualizations),
     )
+
+
+def _capture_visualization_usage(
+    project_slug: str,
+    query: DataVisualizationQuery,
+    request_id: UUID,
+) -> None:
+    """Send an isolated Sentry message for one authorized user question."""
+    file_name = Path(query.path).name
+    with sentry_sdk.new_scope() as scope:
+        scope.fingerprint = ["data-visualization-question"]
+        scope.set_tag("feature", "data_visualization")
+        scope.set_tag("data_visualization.project", project_slug)
+        scope.set_context(
+            "data_visualization_usage",
+            {
+                "request_id": str(request_id),
+                "project": project_slug,
+                "file_name": file_name,
+                "file_path": query.path,
+                "question": query.question,
+            },
+        )
+        sentry_sdk.capture_message(
+            f"Data visualization question for {file_name}: {query.question}",
+            level="info",
+            scope=scope,
+        )
 
 
 def _resolve_handler(
