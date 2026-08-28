@@ -84,11 +84,13 @@ authentifie Tools API auprès de l'API data-plane ; son identité doit posséder
 normalisé est placé dans `/mnt/data` ; le classeur original reste dans Tools API. Le
 résultat JSON est récupéré puis la session est supprimée.
 
-La question utilisateur et les métriques de synthèse sont journalisées par
-l'application pour permettre une analyse élémentaire de l'usage. Pour faciliter la
-mise au point des prompts, `DATA_VISUALIZATION_TRACE=1` active en plus une trace des
-requêtes et réponses LLM complètes dans un fichier JSONL rotatif hors du dépôt. Sur
-macOS :
+Chaque question autorisée, accompagnée du projet, du chemin du fichier et du
+`request_id`, est envoyée à Sentry sous forme de message de niveau `info` pour
+analyser l'usage de la fonctionnalité. Les métadonnées de chaque completion Albert
+sont ajoutées comme breadcrumbs et contexte aux éventuelles exceptions, sans le
+prompt ni le contenu généré. Pour faciliter la mise au point des prompts,
+`DATA_VISUALIZATION_TRACE=1` active en plus une trace des requêtes et réponses LLM
+complètes dans un fichier JSONL rotatif hors du dépôt. Sur macOS :
 
 ```text
 ~/Library/Logs/euphrosyne-tools-api/data-visualization-exchanges.jsonl

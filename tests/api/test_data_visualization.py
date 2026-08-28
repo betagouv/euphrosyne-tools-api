@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import logging
 from collections.abc import Iterator
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import httpx
@@ -123,7 +123,13 @@ def test_creates_a_visualization_from_the_selected_project_file(
         return _result()
 
     visualization_service.run.side_effect = run
-    with caplog.at_level(logging.INFO, logger="api.data_visualization"):
+    usage_scope = MagicMock()
+    with (
+        caplog.at_level(logging.INFO, logger="api.data_visualization"),
+        patch("api.data_visualization.sentry_sdk.new_scope") as new_scope,
+        patch("api.data_visualization.sentry_sdk.capture_message") as message,
+    ):
+        new_scope.return_value.__enter__.return_value = usage_scope
         response = _post(client)
 
     assert response.status_code == 200
@@ -141,6 +147,27 @@ def test_creates_a_visualization_from_the_selected_project_file(
     assert "visualizations=1" in caplog.text
     assert "question='Compare le fer.'" in caplog.text
     assert "Ligne Excel 3" not in caplog.text
+    usage_scope.set_tag.assert_any_call("feature", "data_visualization")
+    usage_scope.set_tag.assert_any_call(
+        "data_visualization.project",
+        PROJECT_SLUG,
+    )
+    usage_scope.set_context.assert_called_once_with(
+        "data_visualization_usage",
+        {
+            "request_id": payload["request_id"],
+            "project": PROJECT_SLUG,
+            "file_name": "TRAUPIXE-example.xlsx",
+            "file_path": WORKBOOK_PATH,
+            "question": "Compare le fer.",
+        },
+    )
+    assert usage_scope.fingerprint == ["data-visualization-question"]
+    message.assert_called_once_with(
+        "Data visualization question for TRAUPIXE-example.xlsx: Compare le fer.",
+        level="info",
+        scope=usage_scope,
+    )
 
 
 def test_rejects_a_file_from_another_project(
@@ -266,13 +293,17 @@ def test_requires_project_membership(
 ) -> None:
     data_client, _, _ = visualization_dependencies
 
-    response = client.post(
-        "/data/project-02/visualizations",
-        json={
-            "path": ("projects/project-02/runs/run-01/raw_data/TRAUPIXE-example.xlsx"),
-            "question": "Compare le fer.",
-        },
-    )
+    with patch("api.data_visualization.sentry_sdk.capture_message") as message:
+        response = client.post(
+            "/data/project-02/visualizations",
+            json={
+                "path": (
+                    "projects/project-02/runs/run-01/raw_data/TRAUPIXE-example.xlsx"
+                ),
+                "question": "Compare le fer.",
+            },
+        )
 
     assert response.status_code == 403
     data_client.download_run_file.assert_not_called()
+    message.assert_not_called()
