@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
+import sentry_sdk
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from clients.python_sessions import PythonExecutionResult, PythonSessionsClient
@@ -128,6 +129,31 @@ class LlmCallRecorder:
         )
         self.calls += 1
         self.usages.append(completion.usage)
+        content = completion.message.get("content")
+        tool_calls = completion.message.get("tool_calls")
+        completion_context = {
+            "request_id": str(self._request_id),
+            "call": self.calls,
+            "phase": "calculation" if tools is not None else "visualization",
+            "model": completion.model,
+            "finish_reason": completion.finish_reason,
+            "prompt_tokens": completion.usage.get("prompt_tokens"),
+            "completion_tokens": completion.usage.get("completion_tokens"),
+            "total_tokens": completion.usage.get("total_tokens"),
+            "has_content": isinstance(content, str) and bool(content.strip()),
+            "content_chars": len(content) if isinstance(content, str) else 0,
+            "tool_calls": len(tool_calls) if isinstance(tool_calls, list) else 0,
+        }
+        sentry_sdk.add_breadcrumb(
+            category="data_visualization.llm",
+            message="Albert completion received",
+            level="info",
+            data=completion_context,
+        )
+        sentry_sdk.set_context(
+            "data_visualization_last_completion",
+            completion_context,
+        )
         trace_llm_exchange(
             self._request_id,
             "llm_response",
