@@ -63,3 +63,48 @@ def test_rejects_unsafe_echarts_fields(option: dict[str, Any]) -> None:
 def test_rejects_non_finite_values() -> None:
     with pytest.raises(ValidationError, match="finite JSON"):
         _visualization({"series": [{"data": [float("nan")]}]})
+
+
+def test_rejects_named_encode_without_dataset_dimensions() -> None:
+    option = {
+        "dataset": {"source": [["Zone A", "SiO2", 62.3]]},
+        "series": {
+            "type": "scatter",
+            "encode": {"x": "analyte", "y": "value"},
+        },
+    }
+
+    with pytest.raises(ValidationError, match="undeclared dataset dimensions"):
+        _visualization(option)
+
+
+@pytest.mark.parametrize(
+    "dataset,encode",
+    [
+        (
+            {
+                "dimensions": ["group", "analyte", "value"],
+                "source": [["Zone A", "SiO2", 62.3]],
+            },
+            {"x": "analyte", "y": "value"},
+        ),
+        (
+            {"source": [{"group": "Zone A", "analyte": "SiO2", "value": 62.3}]},
+            {"x": "analyte", "y": "value"},
+        ),
+        (
+            {"source": [["Zone A", "SiO2", 62.3]]},
+            {"x": 1, "y": 2},
+        ),
+    ],
+)
+def test_accepts_resolvable_dataset_encodes(
+    dataset: dict[str, Any],
+    encode: dict[str, Any],
+) -> None:
+    option = {
+        "dataset": dataset,
+        "series": {"type": "scatter", "encode": encode},
+    }
+
+    assert _visualization(option).option == option

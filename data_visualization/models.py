@@ -31,6 +31,7 @@ class DataVisualization(BaseModel):
 
     @model_validator(mode="after")
     def validate_option(self) -> DataVisualization:
+        """Validate option size, JSON values, safety, and dataset references."""
         try:
             encoded = json.dumps(self.option, allow_nan=False)
         except (TypeError, ValueError) as error:
@@ -38,6 +39,7 @@ class DataVisualization(BaseModel):
         if len(encoded.encode("utf-8")) > MAX_GENERATED_OPTION_BYTES:
             raise ValueError("the ECharts option is too large")
         _validate_safe_echarts_option(self.option)
+        _validate_dataset_encodes(self.option)
         return self
 
 
@@ -52,6 +54,7 @@ class GeneratedVisualizationResponse(BaseModel):
 
 
 def _validate_safe_echarts_option(option: dict[str, Any]) -> None:
+    """Reject ECharts fields that can inject content or external resources."""
     _reject_unsafe_tooltips(option)
 
     for toolbox in _mappings(option.get("toolbox")):
@@ -77,7 +80,83 @@ def _validate_safe_echarts_option(option: dict[str, Any]) -> None:
     _reject_external_images(option)
 
 
+def _validate_dataset_encodes(option: dict[str, Any]) -> None:
+    """Ensure every named series encode can be resolved by its dataset."""
+    datasets = _mappings(option.get("dataset"))
+    if not datasets:
+        return
+    for series in _mappings(option.get("series")):
+        encode = series.get("encode")
+        if not isinstance(encode, dict) or "data" in series:
+            continue
+        referenced = {
+            item
+            for value in encode.values()
+            for item in (value if isinstance(value, list) else [value])
+            if isinstance(item, str)
+        }
+        if not referenced:
+            continue
+        dataset_index = series.get("datasetIndex", 0)
+        if (
+            not isinstance(dataset_index, int)
+            or isinstance(dataset_index, bool)
+            or not 0 <= dataset_index < len(datasets)
+        ):
+            raise ValueError("the ECharts series references an invalid dataset")
+        dataset = datasets[dataset_index]
+        dimensions = _dimension_names(series.get("dimensions"))
+        if dimensions is None:
+            dimensions = _dataset_dimension_names(dataset)
+        if dimensions is None:
+            continue
+        missing = sorted(referenced - dimensions)
+        if missing:
+            raise ValueError(
+                "the ECharts series references undeclared dataset dimensions: "
+                + ", ".join(missing)
+            )
+
+
+def _dataset_dimension_names(dataset: dict[str, Any]) -> set[str] | None:
+    """Return dimension names resolvable from a dataset, or None if unknown."""
+    dimensions = _dimension_names(dataset.get("dimensions"))
+    if dimensions is not None:
+        return dimensions
+    source = dataset.get("source")
+    if isinstance(source, list) and source:
+        if all(isinstance(row, dict) for row in source):
+            return {key for row in source for key in row if isinstance(key, str)}
+        first_row = source[0]
+        if (
+            dataset.get("sourceHeader") is not False
+            and isinstance(first_row, list)
+            and all(isinstance(item, str) for item in first_row)
+        ):
+            return set(first_row)
+    if "transform" in dataset or "fromDatasetIndex" in dataset:
+        return None
+    return set()
+
+
+def _dimension_names(value: Any) -> set[str] | None:
+    """Extract names from ECharts string and object dimension declarations."""
+    if not isinstance(value, list):
+        return None
+    return {
+        item if isinstance(item, str) else item["name"]
+        for item in value
+        if isinstance(item, str)
+        or (
+            isinstance(item, dict)
+            and isinstance(item.get("name"), str)
+            and bool(item["name"])
+        )
+    }
+
+
 def _mappings(value: Any) -> list[dict[str, Any]]:
+    """Normalize an ECharts mapping or list of mappings for validation."""
     if isinstance(value, dict):
         return [value]
     if isinstance(value, list):
@@ -86,6 +165,7 @@ def _mappings(value: Any) -> list[dict[str, Any]]:
 
 
 def _reject_unsafe_tooltips(value: Any) -> None:
+    """Reject tooltip formatters and CSS at any level of an ECharts option."""
     if isinstance(value, dict):
         for key, item in value.items():
             if key == "tooltip":
@@ -99,12 +179,14 @@ def _reject_unsafe_tooltips(value: Any) -> None:
 
 
 def _reject_keys(value: dict[str, Any], keys: set[str]) -> None:
+    """Reject forbidden keys directly present in an ECharts mapping."""
     for key in keys:
         if key in value:
             raise ValueError(f"the ECharts option contains unsafe field {key!r}")
 
 
 def _reject_key(value: Any, key: str) -> None:
+    """Reject a forbidden key recursively within an ECharts value."""
     if isinstance(value, dict):
         if key in value:
             raise ValueError(f"the ECharts option contains unsafe field {key!r}")
@@ -117,6 +199,7 @@ def _reject_key(value: Any, key: str) -> None:
 
 
 def _reject_external_images(value: Any) -> None:
+    """Reject image fields and external image symbols throughout an option."""
     if isinstance(value, dict):
         for key, item in value.items():
             if key == "image" and isinstance(item, str):
@@ -131,6 +214,7 @@ def _reject_external_images(value: Any) -> None:
 
 
 def _is_external_resource(value: Any) -> bool:
+    """Return whether a string uses an external or embedded resource URI."""
     return isinstance(value, str) and value.lstrip().casefold().startswith(
         ("http://", "https://", "//", "data:", "image://")
     )
