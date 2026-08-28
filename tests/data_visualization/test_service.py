@@ -217,8 +217,8 @@ def test_retries_python_after_an_invalid_utf8_result() -> None:
 
     assert result.llm_calls == 3
     second_messages = llm.complete.call_args_list[1].args[0]
-    assert (
-        f"{CALCULATION_RESULT_FILENAME} is invalid" in (second_messages[-1]["content"])
+    assert f"{CALCULATION_RESULT_FILENAME} is invalid" in (
+        second_messages[-1]["content"]
     )
 
 
