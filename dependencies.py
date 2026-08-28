@@ -22,7 +22,7 @@ from data_lifecycle.storage_types import StorageBackend, StorageRole
 from path import ProjectRef
 
 
-@lru_cache()
+@lru_cache
 def get_vm_azure_client():
     return VMAzureClient()
 
@@ -54,12 +54,12 @@ def get_project_lifecycle(
     return fetch_project_lifecycle(project_slug=project_slug)
 
 
-@lru_cache()
+@lru_cache
 def get_hot_project_data_client():
     return get_project_data_client(StorageRole.HOT)
 
 
-@lru_cache()
+@lru_cache
 def get_project_data_client(
     lifecycle_state: Annotated[LifecycleState, Depends(get_project_lifecycle)],
 ) -> AbstractDataClient:
@@ -79,21 +79,21 @@ def get_project_data_client(
     )
 
 
-@lru_cache()
+@lru_cache
 def get_config_azure_client():
     return ConfigAzureClient()
 
 
-@lru_cache()
+@lru_cache
 def get_infra_azure_client():
     return InfraAzureClient()
 
 
-@lru_cache()
+@lru_cache
 def get_guacamole_client():
     return GuacamoleClient()
 
 
-@lru_cache()
+@lru_cache
 def get_image_storage_client(project_slug: str) -> ImageStorageClient:
     return ImageStorageClient(project_slug=project_slug)
