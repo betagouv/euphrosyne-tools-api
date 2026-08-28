@@ -156,6 +156,8 @@ def test_executes_python_then_generates_echarts_json() -> None:
     assert '"analysis":"object-1"' in final_messages[1]["content"]
     assert "Conserve toutes les analyses" in final_messages[0]["content"]
     assert "tooltip.formatter" in final_messages[0]["content"]
+    assert "dataset.dimensions" in final_messages[0]["content"]
+    assert "phrase naturelle" in final_messages[0]["content"]
 
     sessions.upload_file.assert_called_once_with(
         sessions.upload_file.call_args.args[0],
@@ -255,8 +257,11 @@ def test_retries_an_invalid_visualization() -> None:
             {
                 "title": "Graphique",
                 "option": {
-                    "series": [{"type": "bar", "data": [1]}],
-                    "graphic": {"image": "https://example.test/image.png"},
+                    "dataset": {"source": [["Zone A", "SiO2", 62.3]]},
+                    "series": {
+                        "type": "scatter",
+                        "encode": {"x": "analyte", "y": "value"},
+                    },
                 },
             }
         ],
@@ -283,7 +288,7 @@ def test_retries_an_invalid_visualization() -> None:
         for message in retry_messages
     )
     correction = retry_messages[-1]["content"]
-    assert "external resource" in correction
+    assert "undeclared dataset dimensions" in correction
 
 
 def test_does_not_retry_a_visualization_without_content() -> None:

@@ -429,13 +429,19 @@ Réponds exclusivement avec l'objet JSON demandé par le format de réponse stru
 Produis entre une et huit options ECharts 6 JSON autonomes. Respecte en priorité le
 type de graphique explicitement demandé et choisis librement tout type de série
 ECharts intégré. Utilise directement les valeurs du résultat Python et ne les
-recalcule pas. N'omet aucun point demandé. Rédige answer en texte simple et concis,
-sans titre, tableau ou autre syntaxe Markdown.
+recalcule pas. N'omet aucun point demandé. Rédige answer comme une phrase naturelle
+et informative dans la langue de la question sans titre, tableau ou autre syntaxe Markdown.
 
 Copie strictement les identifiants et libellés du résultat Python, caractère par
 caractère, même s'ils semblent mal encodés. Ne les corrige pas et ne les traduis pas.
 
 {prepared.visualization_instructions}
+
+Lorsque dataset.source contient des tableaux, copie les noms de colonnes fournis par
+le résultat dans dataset.dimensions avant d'utiliser ces noms dans series.encode.
+Sans dataset.dimensions ou ligne d'en-tête, utilise uniquement les indices numériques
+des colonnes dans encode. Chaque nom utilisé par encode doit pouvoir être résolu par
+ECharts.
 
 Pour toute visualisation cartésienne, active grid.containLabel et réserve des marges
 suffisantes. Lorsque des catégories ont des libellés longs, conserve leurs valeurs
