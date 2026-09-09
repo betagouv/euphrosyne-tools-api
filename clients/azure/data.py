@@ -43,6 +43,7 @@ from ..data_models import (
     TokenPermissions,
 )
 from ._storage import BaseStorageAzureClient
+from .utils import get_download_content_disposition
 
 load_dotenv()
 
@@ -310,7 +311,12 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         permission = FilePermissions(
             read=True, create=can_write, write=can_write, delete=can_write
         )
-        return self._generate_sas_url(dir_path, file_name, permission)
+        return self._generate_sas_url(
+            dir_path,
+            file_name,
+            permission,
+            content_disposition=get_download_content_disposition(file_name),
+        )
 
     def generate_project_documents_upload_sas_url(
         self, project_name: str, file_name: str
@@ -431,6 +437,8 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         dir_path: str,
         file_name: str,
         permission: FilePermissions,
+        *,
+        content_disposition: str | None = None,
     ) -> str:
         """Generate a signed URL (Shared Access Signature) that can be used
         to perform authenticated operations on a file in an Azure Fileshare.
@@ -442,6 +450,7 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
             permission=permission,
             expiry=datetime.utcnow() + timedelta(minutes=5),
             start=datetime.utcnow(),
+            content_disposition=content_disposition,
         )
         # pylint: disable=line-too-long
         return f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{dir_path}/{file_name}?{sas_params}"

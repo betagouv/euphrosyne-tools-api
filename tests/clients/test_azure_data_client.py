@@ -292,6 +292,23 @@ def test_generate_project_documents_sas_url_disables_delete_for_cool_storage(
     assert mock_kwargs["permission"].write is False
 
 
+def test_generate_project_documents_sas_url_does_not_force_hdf5_download(
+    client: DataAzureClient,
+):
+    with patch.object(
+        client, "_file_shared_access_signature"
+    ) as file_shared_access_signature_mock:
+        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+
+        client.generate_project_documents_sas_url(
+            dir_path="dir_path",
+            file_name="data.hdf5",
+        )
+
+    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    assert mock_kwargs["content_disposition"] is None
+
+
 @patch("clients.azure.data._get_projects_path")
 def test_generate_project_documents_upload_sas_url(
     _get_projects_path_mock: MagicMock,
@@ -378,6 +395,38 @@ def test_generate_run_data_sas_url(
     assert mock_kwargs["permission"].create == is_admin
     assert mock_kwargs["permission"].delete == is_admin
     assert mock_kwargs["permission"].write == is_admin
+    assert mock_kwargs["content_disposition"] is None
+
+
+@pytest.mark.parametrize(
+    ("file_name", "content_disposition"),
+    [
+        ("data.h5", 'attachment; filename="data.h5"'),
+        ("data.HDF5", 'attachment; filename="data.HDF5"'),
+        (
+            "résultat final.h5",
+            "attachment; filename*=utf-8''r%C3%A9sultat%20final.h5",
+        ),
+    ],
+)
+def test_generate_run_data_sas_url_forces_hdf5_download(
+    client: DataAzureClient,
+    file_name: str,
+    content_disposition: str,
+):
+    with patch.object(
+        client, "_file_shared_access_signature"
+    ) as file_shared_access_signature_mock:
+        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+
+        client.generate_run_data_sas_url(
+            dir_path="dir_path",
+            file_name=file_name,
+            is_admin=False,
+        )
+
+    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    assert mock_kwargs["content_disposition"] == content_disposition
 
 
 def test_generate_run_data_sas_url_disables_write_for_cool_storage(

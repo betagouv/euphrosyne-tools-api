@@ -1,9 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator, Iterable, TypeVar, cast
+from collections.abc import AsyncIterator, Iterable
+from pathlib import Path
+from typing import TypeVar, cast
+from urllib.parse import quote
 
 _T = TypeVar("_T")
+
+FORCED_DOWNLOAD_FILE_EXTENSIONS = {".h5", ".hdf5"}
+
+
+def get_download_content_disposition(file_name: str) -> str | None:
+    """Return an attachment disposition for file types that must be downloaded."""
+    if Path(file_name).suffix.lower() not in FORCED_DOWNLOAD_FILE_EXTENSIONS:
+        return None
+
+    quoted_file_name = quote(file_name, safe="")
+    if quoted_file_name != file_name:
+        return f"attachment; filename*=utf-8''{quoted_file_name}"
+    return f'attachment; filename="{file_name}"'
 
 
 async def iterate_blocking(iterator: Iterable[_T]) -> AsyncIterator[_T]:
