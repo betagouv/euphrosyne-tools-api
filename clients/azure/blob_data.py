@@ -37,7 +37,7 @@ from .data import (
     _generate_base_dir_path,
     _get_projects_path,
 )
-from .utils import iterate_blocking
+from .utils import get_download_content_disposition, iterate_blocking
 
 
 class AzureBlobFile(io.BytesIO):
@@ -301,6 +301,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
             ),
             expiry=now + timedelta(minutes=5),
             start=now,
+            content_disposition=get_download_content_disposition(file_name),
         )
         return (
             f"https://{self.storage_account_name}.blob.core.windows.net/"

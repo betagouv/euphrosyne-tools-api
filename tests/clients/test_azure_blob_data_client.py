@@ -215,6 +215,25 @@ def test_generate_run_data_sas_url_allows_admin_writes_for_hot_storage(
     assert permission.write is True
     assert permission.delete is True
     assert permission.add is True
+    assert generate_blob_sas_mock.call_args.kwargs["content_disposition"] is None
+
+
+@pytest.mark.parametrize("file_name", ["data.h5", "data.HDF5"])
+@patch("clients.azure.blob_data.generate_blob_sas", return_value="sas-token")
+def test_generate_run_data_sas_url_forces_hdf5_download(
+    generate_blob_sas_mock,
+    hot_client: BlobDataAzureClient,
+    file_name: str,
+):
+    hot_client.generate_run_data_sas_url(
+        dir_path="dir_path",
+        file_name=file_name,
+        is_admin=False,
+    )
+
+    assert generate_blob_sas_mock.call_args.kwargs["content_disposition"] == (
+        f'attachment; filename="{file_name}"'
+    )
 
 
 @patch("clients.azure.blob_data.generate_blob_sas", return_value="sas-token")
