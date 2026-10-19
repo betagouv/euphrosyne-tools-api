@@ -12,17 +12,16 @@ import sentry_sdk
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 
 # pylint: disable=wrong-import-position
-from azure.storage.file.fileservice import FileService
-from azure.storage.file.models import FilePermissions
-from azure.storage.file.sharedaccesssignature import FileSharedAccessSignature
 from azure.storage.fileshare import (
     AccountSasPermissions,
     CorsRule,
+    FileSasPermissions,
     ResourceTypes,
     ShareDirectoryClient,
     ShareFileClient,
     ShareServiceClient,
     generate_account_sas,
+    generate_file_sas,
 )
 from dotenv import load_dotenv
 from slugify import slugify
@@ -65,52 +64,35 @@ class FolderCreationError(Exception):
 class AzureFileShareFile(io.BytesIO):
     """File-like object for Azure File Share files."""
 
-    _offset = 0
-    _content_length: int | None = None
+    def __init__(
+        self,
+        file_client: ShareFileClient,
+    ) -> None:
+        self.file_client = file_client
+        self._offset = 0
+        self._content_length: int | None = None
+        super().__init__()
 
     @property
     def content_length(self) -> int:
         """Get the content length of the file."""
         if self._content_length is None:
-            self._content_length = self.file_service.get_file_properties(
-                self.share_name,
-                self.directory_name,
-                self.file_name,
-            ).properties.content_length
+            self._content_length = self.file_client.get_file_properties().size
         return self._content_length
 
-    def __init__(
-        self,
-        file_service: FileService,
-        share_name: str,
-        directory_name: str,
-        file_name: str,
-    ) -> None:
-        self.file_service = file_service
-        self.share_name = share_name
-        self.directory_name = directory_name
-        self.file_name = file_name
-        super().__init__()
-
     @functools.lru_cache
-    def _read_chunk(self, start_range: int, end_range: int) -> tuple[bytes, int]:
-        file = self.file_service.get_file_to_bytes(
-            self.share_name,
-            self.directory_name,
-            self.file_name,
-            start_range=start_range,
-            end_range=end_range,
-        )
-        return file.content, file.properties.content_length
+    def _read_chunk(self, offset: int, length: int) -> bytes:
+        return self.file_client.download_file(offset=offset, length=length).readall()
 
     def read(self, size: int | None = -1) -> bytes:
-        if not size:
+        if size == 0:
             return b""
-        end_range = self._offset + size - 1 if size > -1 else None
-        content, file_content_length = self._read_chunk(self._offset, end_range)
-        self._offset = (
-            self._offset + size if end_range is not None else file_content_length
-        )
+        remaining = self.content_length - self._offset
+        if remaining <= 0:
+            return b""
+        length = remaining if size is None or size < 0 else min(size, remaining)
+        content = self._read_chunk(self._offset, length)
+        self._offset += len(content)
         return content
 
     def readinto(self, buffer) -> int:
@@ -120,11 +102,16 @@ class AzureFileShareFile(io.BytesIO):
 
     def seek(self, offset: int, whence: int = SEEK_SET) -> int:
         if whence == SEEK_SET or whence is None:
-            self._offset = offset
+            position = offset
         elif whence == SEEK_CUR:
-            self._offset += offset
+            position = self._offset + offset
         elif whence == SEEK_END:
-            self._offset = self.content_length - offset
+            position = self.content_length + offset
+        else:
+            raise ValueError(f"Invalid whence: {whence}")
+        if position < 0:
+            raise ValueError("Negative seek position")
+        self._offset = position
         return self._offset
 
     def seekable(self) -> bool:
@@ -141,10 +128,6 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
     def __init__(self, storage_role: StorageRole = StorageRole.HOT):
         self.storage_role = storage_role
         super().__init__()
-        self._file_shared_access_signature = FileSharedAccessSignature(
-            account_name=self.storage_account_name, account_key=self._storage_key
-        )
-
         share_name = None
 
         if storage_role == StorageRole.HOT:
@@ -237,14 +220,12 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         filepath: str,
     ):
         """Return a downloader for a share file."""
-        directory_name = os.path.dirname(filepath)
-        file_name = os.path.basename(filepath)
-
         return AzureFileShareFile(
-            FileService(connection_string=self._storage_connection_string),
-            self.share_name,
-            directory_name,
-            file_name,
+            ShareFileClient.from_connection_string(
+                conn_str=self._storage_connection_string,
+                share_name=self.share_name,
+                file_path=filepath,
+            )
         )
 
     def is_project_data_available(self, project_name: str) -> bool:
@@ -308,7 +289,7 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         Azure Fileshare. Regular users can read. Admins can also write, create & delete.
         """
         can_write = self.can_write_run_data(is_admin=is_admin)
-        permission = FilePermissions(
+        permission = FileSasPermissions(
             read=True, create=can_write, write=can_write, delete=can_write
         )
         return self._generate_sas_url(
@@ -327,7 +308,7 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         """
         can_write = self.can_write_project_documents()
         dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
-        permission = FilePermissions(
+        permission = FileSasPermissions(
             read=False, create=can_write, write=can_write, delete=False
         )
         return self._generate_sas_url(dir_path, file_name, permission)
@@ -338,7 +319,7 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         generate_project_documents_upload_sas_url.
         """
         can_write = self.can_write_project_documents()
-        permission = FilePermissions(
+        permission = FileSasPermissions(
             read=True, create=False, write=False, delete=can_write
         )
         return self._generate_sas_url(dir_path, file_name, permission)
@@ -436,24 +417,27 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         self,
         dir_path: str,
         file_name: str,
-        permission: FilePermissions,
+        permission: FileSasPermissions,
         *,
         content_disposition: str | None = None,
     ) -> str:
         """Generate a signed URL (Shared Access Signature) that can be used
         to perform authenticated operations on a file in an Azure Fileshare.
         """
-        sas_params = self._file_shared_access_signature.generate_file(
+        file_path = [part for part in dir_path.split("/") if part] + [file_name]
+        start = datetime.now(timezone.utc)
+        sas_params = generate_file_sas(
+            account_name=self.storage_account_name,
+            account_key=self._storage_key,
             share_name=self.share_name,
-            directory_name=dir_path,
-            file_name=file_name,
+            file_path=file_path,
             permission=permission,
-            expiry=datetime.utcnow() + timedelta(minutes=5),
-            start=datetime.utcnow(),
+            expiry=start + timedelta(minutes=5),
+            start=start,
             content_disposition=content_disposition,
         )
         # pylint: disable=line-too-long
-        return f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{dir_path}/{file_name}?{sas_params}"
+        return f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{'/'.join(file_path)}?{sas_params}"
 
     def init_project_directory(self, project_name: str):
         """Create project folder on Fileshare with empty children folders (documents, runs)."""  # noqa: E501
