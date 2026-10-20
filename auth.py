@@ -2,10 +2,11 @@ import os
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, APIKeyQuery, OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jwt import InvalidTokenError
 from pydantic import BaseModel
 from slugify import slugify
 
@@ -212,8 +213,8 @@ def _decode_jwt(jwt_token: str):
             jwt_token,
             secret_key,
             algorithms=[ALGORITHM],
-            options={"require_exp": True},
+            options={"require": ["exp"]},
         )
-    except JWTError as error:
+    except InvalidTokenError as error:
         raise JWT_CREDENTIALS_EXCEPTION from error
     return payload

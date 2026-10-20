@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+import jwt
 import pytest
 from fastapi import HTTPException, status
-from jose import jwt
 
 import auth
 from auth import (
@@ -209,7 +209,7 @@ def test_generate_token_for_path(monkeypatch: pytest.MonkeyPatch):
 
 def test_generate_token_for_path_with_expiration(monkeypatch: pytest.MonkeyPatch):
     path = "/example"
-    exp = datetime.now(timezone.utc)
+    exp = datetime.now(timezone.utc) + timedelta(minutes=5)
     monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     token = generate_token_for_path(path, expiration=exp)
     decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
@@ -240,6 +240,50 @@ def test_decode_jwt_without_exp_raises(monkeypatch: pytest.MonkeyPatch):
     )
     with pytest.raises(HTTPException):
         _decode_jwt(token)
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "key", "claims"),
+    [
+        ("none", "", {"exp": 4102444800}),
+        ("HS384", "secret", {"exp": 4102444800}),
+        ("HS512", "secret", {"exp": 4102444800}),
+        ("HS256", "wrong-secret", {"exp": 4102444800}),
+        ("HS256", "secret", {"exp": 1}),
+        ("HS256", "secret", {"exp": "invalid"}),
+        ("HS256", "secret", {"exp": 4102444800, "nbf": 4102444800}),
+    ],
+)
+def test_decode_jwt_rejects_invalid_tokens(algorithm, key, claims):
+    token = jwt.encode(claims, key, algorithm=algorithm)
+
+    with pytest.raises(HTTPException) as exc:
+        _decode_jwt(token)
+
+    assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert exc.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_decode_jwt_rejects_malformed_token():
+    with pytest.raises(HTTPException) as exc:
+        _decode_jwt("not-a-jwt")
+
+    assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.anyio
+async def test_accepts_token_generated_with_python_jose():
+    # Generated with python-jose 3.5.0, HS256 and the test secret.
+    token = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJ1c2VyX2lkIjo0MiwiaXNfYWRtaW4iOmZhbHNlLCJwcm9qZWN0cyI6W10s"
+        "ImV4cCI6NDEwMjQ0NDgwMH0."
+        "FItKClrvPKMTdjgSPG0zyUBojPbpPRvcZpkaSjWiSYs"
+    )
+
+    user = await get_current_user(token)
+
+    assert user == User(id="42", projects=[], is_admin=False)
 
 
 def test_generate_token_for_euphrosyne_backend(monkeypatch: pytest.MonkeyPatch):
