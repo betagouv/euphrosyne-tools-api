@@ -1,11 +1,16 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, call, patch
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
-from azure.storage.fileshare import ShareDirectoryClient
+from azure.storage.fileshare import (
+    FileSasPermissions,
+    ShareDirectoryClient,
+    generate_file_sas,
+)
 from pytest import MonkeyPatch
 
 from clients.azure import DataAzureClient
@@ -23,8 +28,7 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
     with patch("clients.azure._storage.StorageManagementClient"):
-        with patch("clients.azure.data.FileSharedAccessSignature"):
-            return DataAzureClient()
+        return DataAzureClient()
 
 
 @pytest.fixture
@@ -34,8 +38,7 @@ def cool_client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
     monkeypatch.setenv("AZURE_STORAGE_FILESHARE_COOL", "cool-fileshare")
     with patch("clients.azure._storage.StorageManagementClient"):
-        with patch("clients.azure.data.FileSharedAccessSignature"):
-            return DataAzureClient(storage_role=StorageRole.COOL)
+        return DataAzureClient(storage_role=StorageRole.COOL)
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +56,7 @@ def test_init_uses_hot_fileshare(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_STORAGE_FILESHARE_COOL", "cool-fileshare")
     with patch(
         "clients.azure.data.BaseStorageAzureClient.__init__", autospec=True
-    ) as base_init_mock, patch("clients.azure.data.FileSharedAccessSignature"):
+    ) as base_init_mock:
         base_init_mock.side_effect = _mock_base_storage_init
         client = DataAzureClient()
     assert client.share_name == "hot-fileshare"
@@ -65,7 +68,7 @@ def test_init_uses_cool_fileshare(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_STORAGE_FILESHARE_COOL", "cool-fileshare")
     with patch(
         "clients.azure.data.BaseStorageAzureClient.__init__", autospec=True
-    ) as base_init_mock, patch("clients.azure.data.FileSharedAccessSignature"):
+    ) as base_init_mock:
         base_init_mock.side_effect = _mock_base_storage_init
         client = DataAzureClient(storage_role=StorageRole.COOL)
     assert client.share_name == "cool-fileshare"
@@ -76,10 +79,125 @@ def test_init_raises_for_unsupported_storage_role(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_STORAGE_FILESHARE", "hot-fileshare")
     with patch(
         "clients.azure.data.BaseStorageAzureClient.__init__", autospec=True
-    ) as base_init_mock, patch("clients.azure.data.FileSharedAccessSignature"):
+    ) as base_init_mock:
         base_init_mock.side_effect = _mock_base_storage_init
         with pytest.raises(ValueError, match="Unsupported storage role"):
             DataAzureClient(storage_role="WARM")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("client_fixture", ["client", "cool_client"])
+def test_download_run_file_uses_share_file_client(request, client_fixture):
+    client = request.getfixturevalue(client_fixture)
+    filepath = "/projects/project/runs/run/raw_data/résultat final.h5"
+    with patch("clients.azure.data.ShareFileClient.from_connection_string") as factory:
+        file = client.download_run_file(filepath)
+
+    factory.assert_called_once_with(
+        conn_str=client._storage_connection_string,
+        share_name=client.share_name,
+        file_path=filepath,
+    )
+    assert file.file_client is factory.return_value
+
+
+@pytest.mark.parametrize(
+    ("dir_path", "expected_path"),
+    [
+        (
+            "projects/project/documents",
+            ["projects", "project", "documents", "file.txt"],
+        ),
+        ("", ["file.txt"]),
+        (
+            "/projects/project/documents/",
+            ["projects", "project", "documents", "file.txt"],
+        ),
+    ],
+)
+def test_generate_sas_url_passes_credentials_path_and_lifetime(
+    client: DataAzureClient, dir_path, expected_path
+):
+    before = datetime.now(timezone.utc)
+    with patch("clients.azure.data.generate_file_sas", return_value="sas") as signer:
+        url = client._generate_sas_url(
+            dir_path, "file.txt", FileSasPermissions(read=True)
+        )
+    after = datetime.now(timezone.utc)
+
+    kwargs = signer.call_args.kwargs
+    assert kwargs["account_name"] == client.storage_account_name
+    assert kwargs["account_key"] == client._storage_key
+    assert kwargs["share_name"] == client.share_name
+    assert kwargs["file_path"] == expected_path
+    assert urlsplit(url).path == f"/fileshare/{'/'.join(expected_path)}"
+    assert before <= kwargs["start"] <= after
+    assert kwargs["expiry"] - kwargs["start"] == timedelta(minutes=5)
+
+
+@pytest.mark.parametrize(
+    ("client_fixture", "operation", "expected_permissions"),
+    [
+        ("client", "run_read", "r"),
+        ("client", "run_admin", "rcwd"),
+        ("cool_client", "run_admin", "r"),
+        ("client", "documents", "rd"),
+        ("cool_client", "documents", "r"),
+        ("client", "upload", "cw"),
+    ],
+)
+@pytest.mark.parametrize("directory_prefix", ["", "/"])
+def test_generate_real_file_sas(
+    request, client_fixture, operation, expected_permissions, directory_prefix
+):
+    client = request.getfixturevalue(client_fixture)
+    # A dummy base64 key allows signing locally without Azure credentials or requests.
+    client._storage_key = "dGVzdC1zdG9yYWdlLWtleQ=="
+    file_name = "résultat final.h5"
+    signed_strings = []
+
+    def sign(**kwargs):
+        return generate_file_sas(**kwargs, sts_hook=signed_strings.append)
+
+    with patch("clients.azure.data.generate_file_sas", side_effect=sign):
+        if operation == "upload":
+            with patch(
+                "clients.azure.data._get_projects_path", return_value="projects"
+            ):
+                url = client.generate_project_documents_upload_sas_url(
+                    "project", file_name
+                )
+            directory = "projects/project/documents"
+        elif operation == "documents":
+            directory = "projects/project/documents"
+            url = client.generate_project_documents_sas_url(
+                directory_prefix + directory, file_name
+            )
+        else:
+            directory = "projects/project/runs/run/raw_data"
+            url = client.generate_run_data_sas_url(
+                directory_prefix + directory,
+                file_name,
+                is_admin=operation == "run_admin",
+            )
+
+    assert urlsplit(url).path == f"/{client.share_name}/{directory}/{file_name}"
+    query = parse_qs(urlsplit(url).query)
+    assert query["sp"] == [expected_permissions]
+    assert query["sr"] == ["f"]
+    assert query["sig"][0]
+    start = datetime.fromisoformat(query["st"][0])
+    expiry = datetime.fromisoformat(query["se"][0])
+    assert expiry - start == timedelta(minutes=5)
+    assert (
+        f"/file/storageaccount/{client.share_name}/{directory}/{file_name}\n"
+        in signed_strings[0]
+    )
+    if operation.startswith("run"):
+        assert query["rscd"] == [
+            "attachment; filename*=utf-8''r%C3%A9sultat%20final.h5"
+        ]
+    else:
+        assert "rscd" not in query
 
 
 def test_delete_project_directory_removes_nested_files_and_directories(
@@ -247,10 +365,8 @@ def test_generate_project_documents_sas_url(
     client: DataAzureClient,
     monkeypatch: MonkeyPatch,
 ):
-    with patch.object(
-        client, "_file_shared_access_signature"
-    ) as file_shared_access_signature_mock:
-        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+    with patch("clients.azure.data.generate_file_sas") as generate_file_sas_mock:
+        generate_file_sas_mock.return_value = "params=params"
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
 
         url = client.generate_project_documents_sas_url(
@@ -263,10 +379,9 @@ def test_generate_project_documents_sas_url(
         url
         == "https://storageaccount.file.core.windows.net/fileshare/dir_path/hello.txt?params=params"
     )
-    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    mock_kwargs = generate_file_sas_mock.call_args.kwargs
     assert mock_kwargs["share_name"] == "fileshare"
-    assert mock_kwargs["directory_name"] == "dir_path"
-    assert mock_kwargs["file_name"] == "hello.txt"
+    assert mock_kwargs["file_path"] == ["dir_path", "hello.txt"]
     assert mock_kwargs["permission"].read is True
     assert mock_kwargs["permission"].delete is True
     assert mock_kwargs["permission"].create is False
@@ -276,16 +391,14 @@ def test_generate_project_documents_sas_url(
 def test_generate_project_documents_sas_url_disables_delete_for_cool_storage(
     cool_client: DataAzureClient,
 ):
-    with patch.object(
-        cool_client, "_file_shared_access_signature"
-    ) as file_shared_access_signature_mock:
-        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+    with patch("clients.azure.data.generate_file_sas") as generate_file_sas_mock:
+        generate_file_sas_mock.return_value = "params=params"
         cool_client.generate_project_documents_sas_url(
             dir_path="dir_path",
             file_name="hello.txt",
         )
 
-    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    mock_kwargs = generate_file_sas_mock.call_args.kwargs
     assert mock_kwargs["permission"].read is True
     assert mock_kwargs["permission"].delete is False
     assert mock_kwargs["permission"].create is False
@@ -295,17 +408,15 @@ def test_generate_project_documents_sas_url_disables_delete_for_cool_storage(
 def test_generate_project_documents_sas_url_does_not_force_hdf5_download(
     client: DataAzureClient,
 ):
-    with patch.object(
-        client, "_file_shared_access_signature"
-    ) as file_shared_access_signature_mock:
-        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+    with patch("clients.azure.data.generate_file_sas") as generate_file_sas_mock:
+        generate_file_sas_mock.return_value = "params=params"
 
         client.generate_project_documents_sas_url(
             dir_path="dir_path",
             file_name="data.hdf5",
         )
 
-    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    mock_kwargs = generate_file_sas_mock.call_args.kwargs
     assert mock_kwargs["content_disposition"] is None
 
 
@@ -315,10 +426,8 @@ def test_generate_project_documents_upload_sas_url(
     client: DataAzureClient,
     monkeypatch: MonkeyPatch,
 ):
-    with patch.object(
-        client, "_file_shared_access_signature"
-    ) as file_shared_access_signature_mock:
-        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+    with patch("clients.azure.data.generate_file_sas") as generate_file_sas_mock:
+        generate_file_sas_mock.return_value = "params=params"
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
         _get_projects_path_mock.return_value = "projects"
 
@@ -332,10 +441,9 @@ def test_generate_project_documents_upload_sas_url(
         url
         == "https://storageaccount.file.core.windows.net/fileshare/projects/project/documents/hello.txt?params=params"
     )
-    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    mock_kwargs = generate_file_sas_mock.call_args.kwargs
     assert mock_kwargs["share_name"] == "fileshare"
-    assert mock_kwargs["directory_name"] == "projects/project/documents"
-    assert mock_kwargs["file_name"] == "hello.txt"
+    assert mock_kwargs["file_path"] == ["projects", "project", "documents", "hello.txt"]
     assert mock_kwargs["permission"].read is False
     assert mock_kwargs["permission"].delete is False
     assert mock_kwargs["permission"].create is True
@@ -347,10 +455,8 @@ def test_generate_project_documents_upload_sas_url_raises_for_cool_storage(
     _get_projects_path_mock: MagicMock,
     cool_client: DataAzureClient,
 ):
-    with patch.object(
-        cool_client, "_file_shared_access_signature"
-    ) as file_shared_access_signature_mock:
-        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+    with patch("clients.azure.data.generate_file_sas") as generate_file_sas_mock:
+        generate_file_sas_mock.return_value = "params=params"
         _get_projects_path_mock.return_value = "projects"
 
         with pytest.raises(PermissionError):
@@ -359,7 +465,7 @@ def test_generate_project_documents_upload_sas_url_raises_for_cool_storage(
                 file_name="hello.txt",
             )
 
-    file_shared_access_signature_mock.generate_file.assert_not_called()
+    generate_file_sas_mock.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -371,10 +477,8 @@ def test_generate_run_data_sas_url(
     monkeypatch: MonkeyPatch,
     is_admin: bool,
 ):
-    with patch.object(
-        client, "_file_shared_access_signature"
-    ) as file_shared_access_signature_mock:
-        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+    with patch("clients.azure.data.generate_file_sas") as generate_file_sas_mock:
+        generate_file_sas_mock.return_value = "params=params"
         monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storage")
 
         url = client.generate_run_data_sas_url(
@@ -387,10 +491,9 @@ def test_generate_run_data_sas_url(
         url
         == "https://storageaccount.file.core.windows.net/fileshare/dir_path/hello.txt?params=params"
     )
-    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    mock_kwargs = generate_file_sas_mock.call_args.kwargs
     assert mock_kwargs["share_name"] == "fileshare"
-    assert mock_kwargs["directory_name"] == "dir_path"
-    assert mock_kwargs["file_name"] == "hello.txt"
+    assert mock_kwargs["file_path"] == ["dir_path", "hello.txt"]
     assert mock_kwargs["permission"].read is True
     assert mock_kwargs["permission"].create == is_admin
     assert mock_kwargs["permission"].delete == is_admin
@@ -414,10 +517,8 @@ def test_generate_run_data_sas_url_forces_hdf5_download(
     file_name: str,
     content_disposition: str,
 ):
-    with patch.object(
-        client, "_file_shared_access_signature"
-    ) as file_shared_access_signature_mock:
-        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+    with patch("clients.azure.data.generate_file_sas") as generate_file_sas_mock:
+        generate_file_sas_mock.return_value = "params=params"
 
         client.generate_run_data_sas_url(
             dir_path="dir_path",
@@ -425,24 +526,22 @@ def test_generate_run_data_sas_url_forces_hdf5_download(
             is_admin=False,
         )
 
-    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    mock_kwargs = generate_file_sas_mock.call_args.kwargs
     assert mock_kwargs["content_disposition"] == content_disposition
 
 
 def test_generate_run_data_sas_url_disables_write_for_cool_storage(
     cool_client: DataAzureClient,
 ):
-    with patch.object(
-        cool_client, "_file_shared_access_signature"
-    ) as file_shared_access_signature_mock:
-        file_shared_access_signature_mock.generate_file.return_value = "params=params"
+    with patch("clients.azure.data.generate_file_sas") as generate_file_sas_mock:
+        generate_file_sas_mock.return_value = "params=params"
         cool_client.generate_run_data_sas_url(
             dir_path="dir_path",
             file_name="hello.txt",
             is_admin=True,
         )
 
-    mock_kwargs = file_shared_access_signature_mock.generate_file.call_args.kwargs
+    mock_kwargs = generate_file_sas_mock.call_args.kwargs
     assert mock_kwargs["permission"].read is True
     assert mock_kwargs["permission"].create is False
     assert mock_kwargs["permission"].delete is False
