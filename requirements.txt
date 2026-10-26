@@ -10,7 +10,7 @@ azure-mgmt-storage==24.0.1
 azure-mgmt-web==11.0.1
 azure-storage-blob==12.31.0
 azure-storage-file-share==12.27.0
-black==26.5.1
+black==26.10.1
 h5grove @ git+https://github.com/wiwski/h5grove.git@feature/filepath-resolver
 httpx==0.28.1
 fastapi==0.141.1 
