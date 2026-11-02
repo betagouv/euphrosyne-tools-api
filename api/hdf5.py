@@ -31,11 +31,19 @@ router = APIRouter(
     prefix="/hdf5",
 )
 
-router.add_api_route("/attr/", h5grove_fastapi.get_attr, methods=["GET"])
-router.add_api_route("/data/", h5grove_fastapi.get_data, methods=["GET"])
-router.add_api_route("/meta/", h5grove_fastapi.get_meta, methods=["GET"])
-router.add_api_route("/stats/", h5grove_fastapi.get_stats, methods=["GET"])
-router.add_api_route("/paths/", h5grove_fastapi.get_paths, methods=["GET"])
+# Clients request these paths with or without a trailing slash. Both are served
+# directly so that neither depends on a redirect.
+for name, endpoint in {
+    "attr": h5grove_fastapi.get_attr,
+    "data": h5grove_fastapi.get_data,
+    "meta": h5grove_fastapi.get_meta,
+    "stats": h5grove_fastapi.get_stats,
+    "paths": h5grove_fastapi.get_paths,
+}.items():
+    router.add_api_route(f"/{name}", endpoint, methods=["GET"])
+    router.add_api_route(
+        f"/{name}/", endpoint, methods=["GET"], include_in_schema=False
+    )
 
 
 @functools.lru_cache
