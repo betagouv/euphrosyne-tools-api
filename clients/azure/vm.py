@@ -45,6 +45,8 @@ DeploymentStatus = Literal[
     "Updating",
 ]
 
+SecurityType = Literal["Standard", "TrustedLaunch"]
+
 
 class DeploymentNotFound(Exception):
     pass
@@ -236,11 +238,12 @@ class VMAzureClient:
             template_name=self.template_specs_name, version=spec_version
         )
 
+        image_definition = image_definition or self.template_specs_image_definition
         parameters = {
             "vmName": slugify(project_name),
             "fileShareProjectFolder": slugify(project_name),
             "imageGallery": self.template_specs_image_gallery,
-            "imageDefinition": image_definition or self.template_specs_image_definition,
+            "imageDefinition": image_definition,
             "resourcePrefix": self.resource_prefix,
             "storageAccountName": os.environ["AZURE_STORAGE_ACCOUNT"],
             "fileShareName": os.environ["AZURE_STORAGE_FILESHARE"],
@@ -248,6 +251,10 @@ class VMAzureClient:
             "accountPassword": os.environ["VM_PASSWORD"],
         }
         parameters["vmSize"] = PROJECT_TYPE_VM_SIZE[vm_size]
+        # Azure rejects parameters that a template does not declare, and older
+        # template versions do not have this one.
+        if "securityType" in template.get("parameters", {}):
+            parameters["securityType"] = self._get_image_security_type(image_definition)
         if vm_size and vm_size in self._vm_size_parameters_override:
             parameters.update(self._vm_size_parameters_override[vm_size])
 
@@ -311,6 +318,7 @@ class VMAzureClient:
                     gallery_name=self.template_specs_image_gallery,
                     gallery_image_name=self.template_specs_image_definition,
                 )
+                source_vm = self.get_vm(project_name)
                 poller = self._compute_mgmt_client.gallery_images.begin_create_or_update(
                     resource_group_name=self.resource_group_name,
                     gallery_name=self.template_specs_image_gallery,
@@ -320,12 +328,7 @@ class VMAzureClient:
                         "os_state": default_image.os_state,
                         "os_type": default_image.os_type,
                         "hyper_v_generation": default_image.hyper_v_generation,
-                        "features": [
-                            {
-                                "name": "SecurityType",
-                                "value": "TrustedLaunch",
-                            }
-                        ],
+                        "features": _security_type_to_image_features(source_vm),
                         "identifier": {
                             "publisher": default_image.identifier.publisher,
                             "offer": default_image.identifier.offer,
@@ -411,6 +414,19 @@ class VMAzureClient:
             template_spec_name=template_name,
             template_spec_version=version,
         ).main_template
+
+    def _get_image_security_type(self, image_definition: str) -> SecurityType:
+        """Returns the security type a VM must use to be deployed from an image
+        definition. Azure refuses the deployment if they do not match."""
+        image = self._compute_mgmt_client.gallery_images.get(
+            resource_group_name=self.resource_group_name,
+            gallery_name=self.template_specs_image_gallery,
+            gallery_image_name=image_definition,
+        )
+        for feature in image.features or []:
+            if feature.name == "SecurityType" and feature.value == "TrustedLaunch":
+                return "TrustedLaunch"
+        return "Standard"
 
     def list_vm_image_definitions(self) -> list[str]:
         """List VM image definitions, except default one."""
@@ -555,6 +571,13 @@ def wait_for_deployment_completeness(
     ):
         return deployment
     return None
+
+
+def _security_type_to_image_features(vm: VirtualMachine) -> list[dict[str, str]]:
+    """Returns the image definition features matching the VM security type."""
+    if vm.security_profile and vm.security_profile.security_type == "TrustedLaunch":
+        return [{"name": "SecurityType", "value": "TrustedLaunch"}]
+    return []
 
 
 def _project_name_to_vm_name(project_name: str):

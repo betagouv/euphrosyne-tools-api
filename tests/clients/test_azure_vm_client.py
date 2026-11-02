@@ -158,6 +158,68 @@ def test_deploys_with_proper_parameters_when_image_definition_set(
     )
 
 
+@pytest.mark.parametrize(
+    ("features", "expected_security_type"),
+    [
+        (None, "Standard"),
+        ([], "Standard"),
+        ([("SecurityType", "TrustedLaunchSupported")], "Standard"),
+        ([("DiskControllerTypes", "SCSI, NVMe")], "Standard"),
+        ([("SecurityType", "TrustedLaunch")], "TrustedLaunch"),
+    ],
+)
+@patch(
+    "clients.azure.vm.VMAzureClient._get_template_specs",
+    Mock(return_value={"parameters": {"securityType": {}}}),
+)
+@patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
+def test_deploys_with_image_security_type(
+    client: VMAzureClient,
+    features: list[tuple[str, str]] | None,
+    expected_security_type: str,
+):
+    def build_feature(name: str, value: str):
+        feature = Mock(value=value)
+        feature.name = name  # "name" is a reserved Mock constructor argument
+        return feature
+
+    client._compute_mgmt_client.gallery_images.get.return_value.features = (
+        features and [build_feature(*feature) for feature in features]
+    )
+
+    client.deploy_vm("vm-test")
+
+    client._compute_mgmt_client.gallery_images.get.assert_called_once_with(
+        resource_group_name="resource_group_name",
+        gallery_name="image_gallery",
+        gallery_image_name="image_definition",
+    )
+    call_args = (
+        client._resource_mgmt_client.deployments.begin_create_or_update.call_args[1]
+    )
+    assert (
+        call_args["parameters"]["properties"]["parameters"]["securityType"]["value"]
+        == expected_security_type
+    )
+
+
+@patch(
+    "clients.azure.vm.VMAzureClient._get_template_specs",
+    Mock(return_value={"parameters": {"vmName": {}}}),
+)
+@patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
+def test_deploy_omits_security_type_when_template_does_not_declare_it(
+    client: VMAzureClient,
+):
+    client.deploy_vm("vm-test")
+
+    client._compute_mgmt_client.gallery_images.get.assert_not_called()
+    call_args = (
+        client._resource_mgmt_client.deployments.begin_create_or_update.call_args[1]
+    )
+    assert "securityType" not in call_args["parameters"]["properties"]["parameters"]
+
+
 @patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
 @patch(
     "clients.azure.vm.VMAzureClient.list_vm_image_definitions", lambda _: ["animage"]
@@ -235,6 +297,49 @@ def test_create_image_without_version(client: VMAzureClient):
     assert (
         result.deployment_process
         is client._resource_mgmt_client.deployments.begin_create_or_update.return_value
+    )
+
+
+@pytest.mark.parametrize(
+    ("security_profile", "expected_features"),
+    [
+        (None, []),
+        (MagicMock(security_type="Standard"), []),
+        (
+            MagicMock(security_type="TrustedLaunch"),
+            [{"name": "SecurityType", "value": "TrustedLaunch"}],
+        ),
+    ],
+)
+@patch("clients.azure.vm.VMAzureClient._get_template_specs", dict)
+@patch("clients.azure.vm._project_name_to_vm_name", lambda x: x)
+def test_create_image__image_definition_matches_source_vm_security_type(
+    client: VMAzureClient,
+    security_profile: MagicMock | None,
+    expected_features: list[dict[str, str]],
+):
+    def effect(*args, **kwargs):
+        if kwargs["gallery_image_name"] == "new-image-def":
+            raise ResourceNotFoundError()
+        return MagicMock()
+
+    client._compute_mgmt_client.gallery_images.get.side_effect = effect
+    client._compute_mgmt_client.gallery_images.begin_create_or_update.return_value = (
+        MagicMock(status=MagicMock(return_value="Succeeded"))
+    )
+    client._compute_mgmt_client.virtual_machines.get.return_value = MagicMock(
+        security_profile=security_profile
+    )
+
+    client.create_new_image_version(
+        "vm-test", version="0.0.1", image_definition="new-image-def"
+    )
+
+    galery_image_create_call_args = (
+        client._compute_mgmt_client.gallery_images.begin_create_or_update.call_args[1]
+    )
+    assert (
+        galery_image_create_call_args["gallery_image"]["features"] == expected_features
     )
 
 
