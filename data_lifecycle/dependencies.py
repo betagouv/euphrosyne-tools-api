@@ -12,6 +12,61 @@ from .models import LifecycleState
 logger = logging.getLogger(__name__)
 
 FETCH_PROJECT_LIFECYCLE_RETRIES = 2
+RESPONSE_BODY_LOG_EXCERPT_LENGTH = 200
+
+
+def _response_body_excerpt(response: requests.Response) -> str:
+    """Return a truncated excerpt of the response body, for logging purposes."""
+    body = response.text
+    if len(body) > RESPONSE_BODY_LOG_EXCERPT_LENGTH:
+        return body[:RESPONSE_BODY_LOG_EXCERPT_LENGTH] + "...[truncated]"
+    return body
+
+
+def _parse_lifecycle_response(response: requests.Response) -> LifecycleState:
+    try:
+        content = response.json()
+    except ValueError as exc:
+        # requests.exceptions.JSONDecodeError is a ValueError subclass. This
+        # typically happens when a proxy / WAF answers with an HTML page.
+        logger.error(
+            "failed to fetch project data lifecycle.\n"
+            "Reason: storage backend returned a non-JSON response "
+            "(status=%s, content-type=%s).\nBody excerpt: %r",
+            response.status_code,
+            response.headers.get("Content-Type"),
+            _response_body_excerpt(response),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Storage backend returned a non-JSON response (fetch_project_lifecycle)",
+        ) from exc
+
+    try:
+        raw_state = content["lifecycle_state"]
+    except (KeyError, TypeError) as exc:
+        logger.error(
+            "failed to fetch project data lifecycle.\n"
+            "Reason: storage backend returned an invalid response.\nBody excerpt: %r",
+            _response_body_excerpt(response),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Storage backend returned an invalid response (fetch_project_lifecycle)",
+        ) from exc
+
+    try:
+        return LifecycleState(raw_state)
+    except ValueError as exc:
+        logger.error(
+            "failed to fetch project data lifecycle.\n"
+            "Reason: unknown lifecycle state returned by storage backend: %r",
+            raw_state,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Storage backend returned an invalid lifecycle state (fetch_project_lifecycle)",
+        ) from exc
 
 
 # TODO: implement CACHE
@@ -46,27 +101,7 @@ def fetch_project_lifecycle(project_slug: str) -> LifecycleState:
             )
 
         if response.ok:
-            try:
-                content = response.json()
-                return LifecycleState(content["lifecycle_state"])
-            except ValueError as exc:
-                logger.error(
-                    "failed to fetch project data lifecycle.\nReason: unknown lifecycle state returned by storage backend.\n%s",
-                    response.content,
-                )
-                raise HTTPException(
-                    status_code=502,
-                    detail="Storage backend returned an invalid lifecycle state (fetch_project_lifecycle)",
-                ) from exc
-            except KeyError as exc:
-                logger.error(
-                    "failed to fetch project data lifecycle.\nReason: storage backend returned an invalid response.\n%s",
-                    response.content,
-                )
-                raise HTTPException(
-                    status_code=502,
-                    detail="Storage backend returned an invalid response (fetch_project_lifecycle)",
-                ) from exc
+            return _parse_lifecycle_response(response)
 
         retry += 1
         if retry < FETCH_PROJECT_LIFECYCLE_RETRIES:

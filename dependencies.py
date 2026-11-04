@@ -63,7 +63,7 @@ def get_hot_project_data_client():
 def get_project_data_client(
     lifecycle_state: Annotated[LifecycleState, Depends(get_project_lifecycle)],
 ) -> AbstractDataClient:
-    if lifecycle_state not in [LifecycleState.HOT, LifecycleState.COOL]:
+    if lifecycle_state not in {LifecycleState.HOT, LifecycleState.COOL}:
         raise HTTPException(
             status_code=409,
             detail="Project data is not in a stable state (HOT or COOL)",

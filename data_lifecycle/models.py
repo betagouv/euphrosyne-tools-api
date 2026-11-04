@@ -17,6 +17,7 @@ class LifecycleState(str, Enum):
     COOL = "COOL"
     COOLING = "COOLING"
     RESTORING = "RESTORING"
+    ERROR = "ERROR"
 
 
 class LifecycleOperationStatus(str, Enum):

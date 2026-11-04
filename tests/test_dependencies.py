@@ -124,10 +124,15 @@ def test_get_project_data_client_returns_fileshare_client_for_fileshare_backend(
     blob_client_mock.assert_not_called()
 
 
-def test_get_project_data_client_raises_when_lifecycle_state_is_not_stable():
+@pytest.mark.parametrize(
+    "state",
+    [LifecycleState.COOLING, LifecycleState.RESTORING, LifecycleState.ERROR],
+)
+def test_get_project_data_client_raises_when_lifecycle_state_is_not_stable(
+    state: LifecycleState,
+):
     with pytest.raises(HTTPException) as error:
-        dependencies.get_project_data_client(LifecycleState.COOLING)
-    print(error)
+        dependencies.get_project_data_client(state)
     assert error.value.status_code == 409
     assert error.value.detail == "Project data is not in a stable state (HOT or COOL)"
 
