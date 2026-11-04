@@ -89,7 +89,7 @@ def test_fetch_project_lifecycle_returns_error_state(
     assert _fetch_with_response(response) == LifecycleState.ERROR
 
 
-def test_fetch_project_lifecycle_raises_bad_gateway_for_html_response(
+def test_fetch_project_lifecycle_propagates_html_response_error(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ):
@@ -97,14 +97,10 @@ def test_fetch_project_lifecycle_raises_bad_gateway_for_html_response(
     html = b"<html><head><title>Challenge</title></head><body>" + b"x" * 1000
     response = _make_response(200, html, "text/html; charset=utf-8")
 
-    with pytest.raises(HTTPException) as error:
+    with pytest.raises(requests.exceptions.JSONDecodeError):
         _fetch_with_response(response)
 
-    assert error.value.status_code == 502
-    assert error.value.detail == (
-        "Storage backend returned a non-JSON response (fetch_project_lifecycle)"
-    )
-    assert isinstance(error.value.__cause__, requests.exceptions.JSONDecodeError)
+    assert "non-JSON response" in caplog.text
     assert "status=200" in caplog.text
     assert "content-type=text/html; charset=utf-8" in caplog.text
     assert "<title>Challenge</title>" in caplog.text

@@ -26,10 +26,12 @@ def _response_body_excerpt(response: requests.Response) -> str:
 def _parse_lifecycle_response(response: requests.Response) -> LifecycleState:
     try:
         content = response.json()
-    except ValueError as exc:
+    except ValueError:
         # requests.exceptions.JSONDecodeError is a ValueError subclass. This
-        # typically happens when a proxy / WAF answers with an HTML page.
-        logger.error(
+        # typically happens when a proxy / WAF answers with an HTML page. It is
+        # not expected, so let it propagate as a 500 to be reported in Sentry;
+        # the warning below is attached to the event as a breadcrumb.
+        logger.warning(
             "failed to fetch project data lifecycle.\n"
             "Reason: storage backend returned a non-JSON response "
             "(status=%s, content-type=%s).\nBody excerpt: %r",
@@ -37,10 +39,7 @@ def _parse_lifecycle_response(response: requests.Response) -> LifecycleState:
             response.headers.get("Content-Type"),
             _response_body_excerpt(response),
         )
-        raise HTTPException(
-            status_code=502,
-            detail="Storage backend returned a non-JSON response (fetch_project_lifecycle)",
-        ) from exc
+        raise
 
     try:
         raw_state = content["lifecycle_state"]
