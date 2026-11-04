@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from fastapi import HTTPException
 from requests import RequestException
 
@@ -56,37 +57,75 @@ def test_fetch_project_lifecycle_raises_not_found(
     assert error.value.status_code == 404
 
 
-@pytest.mark.parametrize(
-    "json_side_effect,json_payload",
-    [
-        (ValueError("bad json"), None),
-        (None, {}),
-        (None, {"lifecycle_state": "WARM"}),
-    ],
-)
-def test_fetch_project_lifecycle_raises_bad_gateway_for_invalid_payload(
-    monkeypatch: pytest.MonkeyPatch,
-    json_side_effect: ValueError | None,
-    json_payload: dict[str, object] | None,
-):
-    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
-    response = MagicMock(status_code=200, ok=True)
-    if json_side_effect is not None:
-        response.json.side_effect = json_side_effect
-    else:
-        response.json.return_value = json_payload
+def _make_response(
+    status_code: int, body: bytes, content_type: str
+) -> requests.Response:
+    response = requests.Response()
+    response.status_code = status_code
+    response._content = body  # pylint: disable=protected-access
+    response.headers["Content-Type"] = content_type
+    response.encoding = "utf-8"
+    return response
 
+
+def _fetch_with_response(response: requests.Response) -> LifecycleState:
     with (
         patch(
             "data_lifecycle.dependencies.generate_token_for_euphrosyne_backend",
             return_value="token",
         ),
         patch("data_lifecycle.dependencies.requests.get", return_value=response),
-        pytest.raises(HTTPException) as error,
     ):
-        fetch_project_lifecycle("project-01")
+        return fetch_project_lifecycle("project-01")
+
+
+def test_fetch_project_lifecycle_returns_error_state(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
+    response = _make_response(200, b'{"lifecycle_state": "ERROR"}', "application/json")
+
+    assert _fetch_with_response(response) == LifecycleState.ERROR
+
+
+def test_fetch_project_lifecycle_propagates_html_response_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
+    response = _make_response(200, b"<html>Challenge</html>", "text/html")
+
+    with pytest.raises(requests.exceptions.JSONDecodeError):
+        _fetch_with_response(response)
+
+
+def test_fetch_project_lifecycle_raises_bad_gateway_for_unknown_state(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
+    response = _make_response(200, b'{"lifecycle_state": "WARM"}', "application/json")
+
+    with pytest.raises(HTTPException) as error:
+        _fetch_with_response(response)
 
     assert error.value.status_code == 502
+    assert error.value.detail == (
+        "Storage backend returned an invalid lifecycle state (fetch_project_lifecycle)"
+    )
+
+
+def test_fetch_project_lifecycle_raises_bad_gateway_for_missing_state(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
+    response = _make_response(200, b"{}", "application/json")
+
+    with pytest.raises(HTTPException) as error:
+        _fetch_with_response(response)
+
+    assert error.value.status_code == 502
+    assert error.value.detail == (
+        "Storage backend returned an invalid response (fetch_project_lifecycle)"
+    )
 
 
 def test_fetch_project_lifecycle_retries_then_raises_service_unavailable(

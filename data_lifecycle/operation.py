@@ -564,7 +564,7 @@ def _execute_from_data_deletion(
 
 def _validate_from_data_deletion_target(*, deletion: FromDataDeletionOperation) -> None:
     lifecycle_state = fetch_project_lifecycle(deletion.project_slug)
-    if lifecycle_state in {LifecycleState.COOLING, LifecycleState.RESTORING}:
+    if lifecycle_state not in {LifecycleState.HOT, LifecycleState.COOL}:
         raise FromDataDeletionValidationError(
             "Project data is not in a stable state (HOT or COOL)"
         )

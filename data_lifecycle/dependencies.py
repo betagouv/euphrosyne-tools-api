@@ -46,8 +46,8 @@ def fetch_project_lifecycle(project_slug: str) -> LifecycleState:
             )
 
         if response.ok:
+            content = response.json()
             try:
-                content = response.json()
                 return LifecycleState(content["lifecycle_state"])
             except ValueError as exc:
                 logger.error(

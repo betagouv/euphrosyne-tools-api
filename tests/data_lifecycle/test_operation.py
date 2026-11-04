@@ -512,7 +512,7 @@ def test_execute_from_data_deletion_rejects_active_storage_side(
 
 @pytest.mark.parametrize(
     "state",
-    [LifecycleState.COOLING, LifecycleState.RESTORING],
+    [LifecycleState.COOLING, LifecycleState.RESTORING, LifecycleState.ERROR],
 )
 def test_execute_from_data_deletion_rejects_transitional_state(
     monkeypatch: pytest.MonkeyPatch,
