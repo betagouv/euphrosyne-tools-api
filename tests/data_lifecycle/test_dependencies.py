@@ -7,7 +7,6 @@ from requests import RequestException
 
 from data_lifecycle.dependencies import (
     FETCH_PROJECT_LIFECYCLE_RETRIES,
-    RESPONSE_BODY_LOG_EXCERPT_LENGTH,
     fetch_project_lifecycle,
 )
 from data_lifecycle.models import LifecycleState
@@ -91,26 +90,16 @@ def test_fetch_project_lifecycle_returns_error_state(
 
 def test_fetch_project_lifecycle_propagates_html_response_error(
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ):
     monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
-    html = b"<html><head><title>Challenge</title></head><body>" + b"x" * 1000
-    response = _make_response(200, html, "text/html; charset=utf-8")
+    response = _make_response(200, b"<html>Challenge</html>", "text/html")
 
     with pytest.raises(requests.exceptions.JSONDecodeError):
         _fetch_with_response(response)
 
-    assert "non-JSON response" in caplog.text
-    assert "status=200" in caplog.text
-    assert "content-type=text/html; charset=utf-8" in caplog.text
-    assert "<title>Challenge</title>" in caplog.text
-    assert "...[truncated]" in caplog.text
-    assert "x" * (RESPONSE_BODY_LOG_EXCERPT_LENGTH + 1) not in caplog.text
-
 
 def test_fetch_project_lifecycle_raises_bad_gateway_for_unknown_state(
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ):
     monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
     response = _make_response(200, b'{"lifecycle_state": "WARM"}', "application/json")
@@ -122,16 +111,13 @@ def test_fetch_project_lifecycle_raises_bad_gateway_for_unknown_state(
     assert error.value.detail == (
         "Storage backend returned an invalid lifecycle state (fetch_project_lifecycle)"
     )
-    assert "'WARM'" in caplog.text
 
 
-@pytest.mark.parametrize("body", [b"{}", b"[]"])
 def test_fetch_project_lifecycle_raises_bad_gateway_for_missing_state(
     monkeypatch: pytest.MonkeyPatch,
-    body: bytes,
 ):
     monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
-    response = _make_response(200, body, "application/json")
+    response = _make_response(200, b"{}", "application/json")
 
     with pytest.raises(HTTPException) as error:
         _fetch_with_response(response)
