@@ -20,7 +20,7 @@ def get_version():
         gallery_image_name=azure_client.template_specs_image_definition,
     )
 
-    versions = sorted(map(lambda x: Version(x), versions))
+    versions = sorted(Version(x) for x in versions)
     for idx, version in enumerate(versions):
         if idx == len(versions) - 1:
             logger.info(f"{version} (latest)")

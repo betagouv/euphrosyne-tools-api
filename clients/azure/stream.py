@@ -4,15 +4,16 @@ Streaming zip files from Azure file shares.
 This module provides functions for streaming and zipping files from Azure file shares.
 """
 
-from typing import Any, AsyncGenerator, Coroutine, Generator
-from stat import S_IFREG
-import os
-from azure.storage.fileshare._download import StorageStreamDownloader
-
-from stream_zip import async_stream_zip, ZIP_AUTO, Method  # type: ignore[attr-defined]
 import asyncio
-import logging
 import datetime
+import logging
+import os
+from collections.abc import AsyncGenerator, Coroutine, Generator
+from stat import S_IFREG
+from typing import Any
+
+from azure.storage.fileshare._download import StorageStreamDownloader
+from stream_zip import ZIP_AUTO, Method, async_stream_zip  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ async def iter_files_zip_attr_async(
         for _ in range(limit):
             try:
                 # Schedule the file download task
-                file = await anext(files)  # type: ignore[call-overload] # noqa: F821
+                file = await anext(files)  # type: ignore[call-overload]
                 tasks.append(
                     asyncio.create_task(download_file_async(file))  # type: ignore[arg-type]
                 )

@@ -21,8 +21,8 @@ from data_lifecycle.models import (
     LifecycleOperation,
     LifecycleOperationPhase,
     LifecycleOperationProgressStatus,
-    LifecycleState,
     LifecycleOperationType,
+    LifecycleState,
 )
 from data_lifecycle.storage_types import StorageRole
 

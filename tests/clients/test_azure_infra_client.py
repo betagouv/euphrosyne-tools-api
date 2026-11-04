@@ -11,9 +11,11 @@ from clients.azure.infra import InfraAzureClient
 def infra_client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_GROUP_NAME", "resource_group_name")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "subscription_id")
-    with patch("clients.azure.infra.WebSiteManagementClient"):
-        with patch("clients.azure.infra.ContainerInstanceManagementClient"):
-            return InfraAzureClient()
+    with (
+        patch("clients.azure.infra.WebSiteManagementClient"),
+        patch("clients.azure.infra.ContainerInstanceManagementClient"),
+    ):
+        return InfraAzureClient()
 
 
 def test_client_restart_app(client: InfraAzureClient):

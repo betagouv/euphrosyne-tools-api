@@ -51,9 +51,7 @@ def test_init_project_data(app: FastAPI, client: TestClient):
 
 
 def test_init_project_data_when_caught_error(app: FastAPI, client: TestClient):
-    init_project_directory_mock = MagicMock(
-        **{"side_effect": FolderCreationError("an error")}
-    )
+    init_project_directory_mock = MagicMock(side_effect=FolderCreationError("an error"))
     app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
         init_project_directory=init_project_directory_mock
     )
@@ -93,9 +91,7 @@ def test_init_run_data(app: FastAPI, client: TestClient):
 
 
 def test_init_run_data_when_caught_error(app: FastAPI, client: TestClient):
-    init_run_directory_mock = MagicMock(
-        **{"side_effect": FolderCreationError("an error")}
-    )
+    init_run_directory_mock = MagicMock(side_effect=FolderCreationError("an error"))
     app.dependency_overrides[get_hot_project_data_client] = lambda: MagicMock(
         init_run_directory=init_run_directory_mock
     )
@@ -135,9 +131,7 @@ def test_change_run_name(app: FastAPI, client: TestClient):
 
 
 def test_change_run_name_when_caught_error(app: FastAPI, client: TestClient):
-    rename_run_directory_mock = MagicMock(
-        **{"side_effect": FolderCreationError("an error")}
-    )
+    rename_run_directory_mock = MagicMock(side_effect=FolderCreationError("an error"))
     app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         rename_run_directory=rename_run_directory_mock
     )
@@ -161,7 +155,7 @@ def test_change_project_name(app: FastAPI, client: TestClient):
 
 def test_change_project_name_when_caught_error(app: FastAPI, client: TestClient):
     rename_project_directory_mock = MagicMock(
-        **{"side_effect": FolderCreationError("an error")}
+        side_effect=FolderCreationError("an error")
     )
     app.dependency_overrides[get_project_data_client] = lambda: MagicMock(
         rename_project_directory=rename_project_directory_mock
@@ -346,15 +340,17 @@ def test_zip_project_run_data_with_data_request(
     monkeypatch.setenv("DATA_PROJECTS_LOCATION_PREFIX", "projects")
 
     app.dependency_overrides[verify_path_permission] = lambda: MagicMock()
-    with patch("fastapi.BackgroundTasks.add_task") as add_background_task_mock:
-        with patch(
+    with (
+        patch("fastapi.BackgroundTasks.add_task") as add_background_task_mock,
+        patch(
             "api.data.stream_zip_from_azure_files_async"
-        ) as stream_zip_from_azure_files_mock:
-            decode_jwt_mock.return_value = {"data_request": "12"}
-            stream_zip_from_azure_files_mock.return_value = (s.encode() for s in "abc")
-            response = client.get(
-                "/data/run-data-zip?token=token&path=projects/project-01/runs/runur/raw_data&data_request=12"
-            )
+        ) as stream_zip_from_azure_files_mock,
+    ):
+        decode_jwt_mock.return_value = {"data_request": "12"}
+        stream_zip_from_azure_files_mock.return_value = (s.encode() for s in "abc")
+        response = client.get(
+            "/data/run-data-zip?token=token&path=projects/project-01/runs/runur/raw_data&data_request=12"
+        )
 
     assert response.status_code == 200
     assert add_background_task_mock.call_count == 1

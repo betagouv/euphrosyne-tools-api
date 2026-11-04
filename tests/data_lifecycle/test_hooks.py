@@ -1,5 +1,5 @@
-import json
 import datetime
+import json
 from unittest import mock
 from uuid import uuid4
 
@@ -39,18 +39,17 @@ def test_post_lifecycle_operation_callback_retries_on_transient_failure(
     with mock.patch(
         "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
         return_value="token",
-    ):
-        with mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
-            post_mock.side_effect = [
-                requests.RequestException("network"),
-                success_response,
-            ]
-            result = post_lifecycle_operation_callback(
-                payload,
-                max_attempts=2,
-                initial_backoff_seconds=0,
-                sleep=lambda _: None,
-            )
+    ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
+        post_mock.side_effect = [
+            requests.RequestException("network"),
+            success_response,
+        ]
+        result = post_lifecycle_operation_callback(
+            payload,
+            max_attempts=2,
+            initial_backoff_seconds=0,
+            sleep=lambda _: None,
+        )
 
     assert result is True
     assert post_mock.call_count == 2
@@ -78,15 +77,14 @@ def test_post_lifecycle_operation_callback_retries_on_5xx(
     with mock.patch(
         "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
         return_value="token",
-    ):
-        with mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
-            post_mock.side_effect = [error_response, success_response]
-            result = post_lifecycle_operation_callback(
-                payload,
-                max_attempts=2,
-                initial_backoff_seconds=0,
-                sleep=lambda _: None,
-            )
+    ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
+        post_mock.side_effect = [error_response, success_response]
+        result = post_lifecycle_operation_callback(
+            payload,
+            max_attempts=2,
+            initial_backoff_seconds=0,
+            sleep=lambda _: None,
+        )
 
     assert result is True
     assert post_mock.call_count == 2
@@ -108,10 +106,9 @@ def test_post_lifecycle_operation_callback_success(monkeypatch: pytest.MonkeyPat
     with mock.patch(
         "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
         return_value="token",
-    ):
-        with mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
-            post_mock.return_value = success_response
-            result = post_lifecycle_operation_callback(payload)
+    ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
+        post_mock.return_value = success_response
+        result = post_lifecycle_operation_callback(payload)
 
     assert result is True
     assert post_mock.call_count == 1
@@ -135,10 +132,9 @@ def test_post_lifecycle_operation_callback_rejected_on_4xx(
     with mock.patch(
         "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
         return_value="token",
-    ):
-        with mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
-            post_mock.return_value = response
-            result = post_lifecycle_operation_callback(payload)
+    ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
+        post_mock.return_value = response
+        result = post_lifecycle_operation_callback(payload)
 
     assert result is False
     assert post_mock.call_count == 1
@@ -181,12 +177,11 @@ def test_post_lifecycle_operation_serialization(
     with mock.patch(
         "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
         return_value="token",
-    ):
-        with mock.patch(
-            "requests.sessions.Session.send",
-            mock.MagicMock(return_value=mock.MagicMock(status_code=200)),
-        ) as send_mock:
-            post_lifecycle_operation_callback(payload)
+    ), mock.patch(
+        "requests.sessions.Session.send",
+        mock.MagicMock(return_value=mock.MagicMock(status_code=200)),
+    ) as send_mock:
+        post_lifecycle_operation_callback(payload)
 
     assert send_mock.call_count == 1
 
@@ -222,12 +217,11 @@ def test_post_from_data_deletion_callback_serialization(
     with mock.patch(
         "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
         return_value="token",
-    ):
-        with mock.patch(
-            "requests.sessions.Session.send",
-            mock.MagicMock(return_value=mock.MagicMock(status_code=200)),
-        ) as send_mock:
-            post_from_data_deletion_callback(payload)
+    ), mock.patch(
+        "requests.sessions.Session.send",
+        mock.MagicMock(return_value=mock.MagicMock(status_code=200)),
+    ) as send_mock:
+        post_from_data_deletion_callback(payload)
 
     assert send_mock.call_count == 1
 

@@ -306,12 +306,14 @@ def test_get_project_directory_stats_raises_when_fileshare_root_is_missing(
         "not found"
     )
 
-    with patch(
-        "clients.azure.data.ShareDirectoryClient.from_connection_string",
-        return_value=root_dir_client,
+    with (
+        patch(
+            "clients.azure.data.ShareDirectoryClient.from_connection_string",
+            return_value=root_dir_client,
+        ),
+        pytest.raises(ProjectDataDirectoryNotFound),
     ):
-        with pytest.raises(ProjectDataDirectoryNotFound):
-            client.get_project_directory_stats("project-01")
+        client.get_project_directory_stats("project-01")
 
 
 def test_get_project_directory_stats_raises_when_fileshare_child_is_missing(
@@ -328,12 +330,14 @@ def test_get_project_directory_stats_raises_when_fileshare_child_is_missing(
     ]
     root_dir_client.get_subdirectory_client.return_value = child_dir_client
 
-    with patch(
-        "clients.azure.data.ShareDirectoryClient.from_connection_string",
-        return_value=root_dir_client,
+    with (
+        patch(
+            "clients.azure.data.ShareDirectoryClient.from_connection_string",
+            return_value=root_dir_client,
+        ),
+        pytest.raises(ProjectDataDirectoryNotFound),
     ):
-        with pytest.raises(ProjectDataDirectoryNotFound):
-            client.get_project_directory_stats("project-01")
+        client.get_project_directory_stats("project-01")
 
 
 def test_get_project_documents_with_prefix(
@@ -346,7 +350,9 @@ def test_get_project_documents_with_prefix(
             for p in [
                 ProjectFile(
                     name="file-1.txt",
-                    last_modified=datetime(2022, 6, 22, 11, 22, 33),
+                    last_modified=datetime(
+                        2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc
+                    ),
                     size=222,
                     path="/prefix/project/documents/file-1.txt",
                 )
@@ -551,19 +557,21 @@ def test_generate_run_data_sas_url_disables_write_for_cool_storage(
 def test_generate_project_directory_token_raises_for_cool_storage_with_write_permissions(
     cool_client: DataAzureClient,
 ):
-    with patch.object(cool_client, "_generate_share_sas_token") as sas_token_mock:
-        with pytest.raises(PermissionError):
-            cool_client.generate_project_directory_token(
-                project_name="project-name",
-                permission={
-                    "read": True,
-                    "list": True,
-                    "write": True,
-                    "delete": True,
-                    "add": True,
-                    "create": True,
-                },
-            )
+    with (
+        patch.object(cool_client, "_generate_share_sas_token") as sas_token_mock,
+        pytest.raises(PermissionError),
+    ):
+        cool_client.generate_project_directory_token(
+            project_name="project-name",
+            permission={
+                "read": True,
+                "list": True,
+                "write": True,
+                "delete": True,
+                "add": True,
+                "create": True,
+            },
+        )
 
     sas_token_mock.assert_not_called()
 
@@ -687,13 +695,13 @@ def test_list_files_recursive_with_detailed_info(
     share_file_client.get_file_properties.side_effect = [
         azure_factories.file_properties_factory(
             name="file-1.txt",
-            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc),
             size=123,
             path="/file-1.txt",
         ),
         azure_factories.file_properties_factory(
             name="file-3.txt",
-            last_modified=datetime(2022, 6, 22, 11, 22, 33),
+            last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc),
             size=123,
             path="directory-1/file-2.txt",
         ),
@@ -874,17 +882,22 @@ def test_change_run_name_raise_error(
 def test_is_project_data_available_returns_true(
     client: DataAzureClient,
 ):
-    with patch.object(
-        ShareDirectoryClient,
-        "list_directories_and_files",
-        return_value=[
-            {"name": "run1", "is_directory": True},
-            {"name": "run2", "is_directory": True},
-        ],
-    ), patch.object(
-        ShareDirectoryClient,
-        "get_subdirectory_client",
-        return_value=MagicMock(list_directories_and_files=lambda: [{"name": "file1"}]),
+    with (
+        patch.object(
+            ShareDirectoryClient,
+            "list_directories_and_files",
+            return_value=[
+                {"name": "run1", "is_directory": True},
+                {"name": "run2", "is_directory": True},
+            ],
+        ),
+        patch.object(
+            ShareDirectoryClient,
+            "get_subdirectory_client",
+            return_value=MagicMock(
+                list_directories_and_files=lambda: [{"name": "file1"}]
+            ),
+        ),
     ):
         result = client.is_project_data_available("test_project")
         assert result
@@ -908,14 +921,17 @@ def test_is_project_data_available_when_project_dir_not_exist(
 def test_is_project_data_available_when_run_dir_empty(
     client: DataAzureClient,
 ):
-    with patch.object(
-        ShareDirectoryClient,
-        "list_directories_and_files",
-        return_value=[{"name": "run1", "is_directory": True}],
-    ), patch.object(
-        ShareDirectoryClient,
-        "get_subdirectory_client",
-        return_value=MagicMock(list_directories_and_files=lambda: []),
+    with (
+        patch.object(
+            ShareDirectoryClient,
+            "list_directories_and_files",
+            return_value=[{"name": "run1", "is_directory": True}],
+        ),
+        patch.object(
+            ShareDirectoryClient,
+            "get_subdirectory_client",
+            return_value=MagicMock(list_directories_and_files=list),
+        ),
     ):
         result = client.is_project_data_available("test_project")
         assert not result
@@ -926,15 +942,18 @@ def test_is_project_data_available_when_run_dir_not_exists(
     init_run_directory_mock: MagicMock,
     client: DataAzureClient,
 ):
-    with patch.object(
-        ShareDirectoryClient,
-        "list_directories_and_files",
-        return_value=[{"name": "run1", "is_directory": True}],
-    ), patch.object(
-        ShareDirectoryClient,
-        "get_subdirectory_client",
-        return_value=MagicMock(
-            list_directories_and_files=MagicMock(side_effect=ResourceNotFoundError)
+    with (
+        patch.object(
+            ShareDirectoryClient,
+            "list_directories_and_files",
+            return_value=[{"name": "run1", "is_directory": True}],
+        ),
+        patch.object(
+            ShareDirectoryClient,
+            "get_subdirectory_client",
+            return_value=MagicMock(
+                list_directories_and_files=MagicMock(side_effect=ResourceNotFoundError)
+            ),
         ),
     ):
         result = client.is_project_data_available("test_project")

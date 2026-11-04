@@ -1,8 +1,9 @@
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import asdict
-from typing import Any, Callable
+from typing import Any
 
 import requests
 

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import tempfile
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
+
+logger = logging.getLogger(__name__)
 
 AzCopyJobState = Literal[
     "PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN"
@@ -355,6 +359,7 @@ def _run_azcopy_jobs_show(
             capture_output=True,
             text=True,
             env=_build_azcopy_env(),
+            check=False,
         )
     except FileNotFoundError as exc:
         raise AzCopyNotInstalledError(
@@ -527,8 +532,7 @@ def _drain_stream(
         try:
             stream.close()
         except Exception:
-            # Best-effort cleanup: errors on closing the stream are non-fatal and can be safely ignored.
-            pass
+            logger.debug("Failed to close AzCopy stream", exc_info=True)
 
 
 def _extract_job_id(text: str) -> str | None:
@@ -636,7 +640,7 @@ def _read_tail_lines(
 
             # Read backwards until we have enough newlines for max_lines lines.
             while pos > 0 and newlines <= max_lines:
-                read_size = block_size if pos >= block_size else pos
+                read_size = min(block_size, pos)
                 pos -= read_size
                 f.seek(pos, os.SEEK_SET)
                 chunk = f.read(read_size)
@@ -664,15 +668,16 @@ def _terminate_process(process: subprocess.Popen) -> None:
     try:
         process.terminate()
         process.wait(timeout=2)
-    except Exception:
+    except (OSError, subprocess.TimeoutExpired):
         try:
             process.kill()
-        except Exception:
+        except OSError:
             return
 
 
 def raise_for_error_in_line_log(line: str) -> None:
     payload = json.loads(line)
-    if payload.get("MessageType") == "Error":
-        if "403" in payload.get("MessageContent", ""):
-            raise AzCopyPermissionError(f"AzCopy permission error: {line}")
+    if payload.get("MessageType") == "Error" and "403" in payload.get(
+        "MessageContent", ""
+    ):
+        raise AzCopyPermissionError(f"AzCopy permission error: {line}")

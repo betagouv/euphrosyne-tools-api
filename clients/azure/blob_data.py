@@ -4,9 +4,9 @@ import asyncio
 import functools
 import io
 import os
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from io import SEEK_CUR, SEEK_END, SEEK_SET
-from typing import AsyncIterator
 
 import sentry_sdk
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -48,6 +48,7 @@ class AzureBlobFile(io.BytesIO):
 
     def __init__(self, blob_client: BlobClient) -> None:
         self.blob_client = blob_client
+        self._read_chunk_cached = functools.lru_cache(maxsize=128)(self._read_chunk)
         super().__init__()
 
     @property
@@ -57,7 +58,6 @@ class AzureBlobFile(io.BytesIO):
             self._content_length = self.blob_client.get_blob_properties().size
         return self._content_length
 
-    @functools.lru_cache(maxsize=128)
     def _read_chunk(self, start_range: int, length: int | None) -> bytes:
         downloader = self.blob_client.download_blob(
             offset=start_range,
@@ -75,7 +75,7 @@ class AzureBlobFile(io.BytesIO):
             if remaining <= 0:
                 return b""
             length = min(size, remaining)
-        content = self._read_chunk(self._offset, length)
+        content = self._read_chunk_cached(self._offset, length)
         self._offset += len(content)
         return content
 

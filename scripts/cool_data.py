@@ -76,9 +76,9 @@ def main():
     while True:
         try:
             status = poll(job.job_id)
-        except AzCopyJobNotFoundError as e:
+        except AzCopyJobNotFoundError:
             if job_id_not_found_retries >= POLL_MAX_RETRIES:
-                raise e
+                raise
             logger.warning("Job not found during polling. Retrying...")
             job_id_not_found_retries += 1
             time.sleep(5)
