@@ -49,9 +49,9 @@ def test_fetch_project_lifecycle_raises_not_found(
             return_value="token",
         ),
         patch("data_lifecycle.dependencies.requests.get", return_value=response),
+        pytest.raises(HTTPException) as error,
     ):
-        with pytest.raises(HTTPException) as error:
-            fetch_project_lifecycle("project-01")
+        fetch_project_lifecycle("project-01")
 
     assert error.value.status_code == 404
 
@@ -82,9 +82,9 @@ def test_fetch_project_lifecycle_raises_bad_gateway_for_invalid_payload(
             return_value="token",
         ),
         patch("data_lifecycle.dependencies.requests.get", return_value=response),
+        pytest.raises(HTTPException) as error,
     ):
-        with pytest.raises(HTTPException) as error:
-            fetch_project_lifecycle("project-01")
+        fetch_project_lifecycle("project-01")
 
     assert error.value.status_code == 502
 
@@ -104,9 +104,9 @@ def test_fetch_project_lifecycle_retries_then_raises_service_unavailable(
             "data_lifecycle.dependencies.requests.get", return_value=response
         ) as get_mock,
         patch("data_lifecycle.dependencies.time.sleep") as sleep_mock,
+        pytest.raises(HTTPException) as error,
     ):
-        with pytest.raises(HTTPException) as error:
-            fetch_project_lifecycle("project-01")
+        fetch_project_lifecycle("project-01")
 
     assert error.value.status_code == 503
     assert get_mock.call_count == FETCH_PROJECT_LIFECYCLE_RETRIES
@@ -126,9 +126,9 @@ def test_fetch_project_lifecycle_retries_when_request_exc(
         ),
         patch("data_lifecycle.dependencies.requests.get", new=get_mock),
         patch("data_lifecycle.dependencies.time.sleep") as sleep_mock,
+        pytest.raises(HTTPException) as error,
     ):
-        with pytest.raises(HTTPException) as error:
-            fetch_project_lifecycle("project-01")
+        fetch_project_lifecycle("project-01")
 
     assert error.value.status_code == 503
     assert get_mock.call_count == FETCH_PROJECT_LIFECYCLE_RETRIES

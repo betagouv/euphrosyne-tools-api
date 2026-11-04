@@ -5,7 +5,7 @@ import os
 import re
 import typing
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.core.polling import LROPoller
@@ -60,13 +60,17 @@ class ImageDefinitionNotFound(Exception):
     pass
 
 
+class ImageCreationError(Exception):
+    pass
+
+
 @dataclass
 class AzureVMDeploymentProperties:
     project_name: str
     username: str
     password: str
     deployment_process: LROPoller[DeploymentExtended]
-    vm_size: Optional[VMSizes] = None
+    vm_size: VMSizes | None = None
 
 
 @dataclass
@@ -175,7 +179,7 @@ class VMAzureClient:
             if deployment.properties and deployment.properties.timestamp:
                 ts: datetime.datetime = deployment.properties.timestamp
                 return ts
-            return datetime.datetime.min
+            return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
 
         sorted_deployments = sorted(project_deployments, key=sort_func, reverse=True)
 
@@ -212,10 +216,10 @@ class VMAzureClient:
     def deploy_vm(
         self,
         project_name: str,
-        vm_size: Optional[VMSizes] = None,
-        spec_version: Optional[str] = None,
+        vm_size: VMSizes | None = None,
+        spec_version: str | None = None,
         image_definition: str | None = None,
-    ) -> Optional[AzureVMDeploymentProperties]:
+    ) -> AzureVMDeploymentProperties | None:
         """Deploys a VM based on Template Specs specified
         with AZURE_TEMPLATE_SPECS_NAME env variable.
         In both cases where the deployment is created or it has
@@ -300,7 +304,7 @@ class VMAzureClient:
         to the image gallery with the given version. If no version is given, the latest
         version will be used and incremented by 1. If no image_definition is given, the
         default one will be used.
-        """  # noqa: E501
+        """
         vm_name = _project_name_to_vm_name(project_name)
         template = self._get_template_specs(template_name="captureVMSpec")
 
@@ -338,8 +342,9 @@ class VMAzureClient:
                 )
                 poller.result()
                 if poller.status() != "Succeeded":
-                    # pylint: disable=raise-missing-from,broad-exception-raised
-                    raise Exception(f"Failed to create image {image_definition}")
+                    raise ImageCreationError(
+                        f"Failed to create image {image_definition}"
+                    )
                 logger.info("Image %s created", image_definition)
 
         if version is None:
@@ -404,10 +409,10 @@ class VMAzureClient:
                 expand="versions",
             )
 
-            version = sorted(
+            version = max(
                 template_spec.versions.keys(),
                 key=lambda s: [int(u) for u in s.split(".")],
-            )[-1]
+            )
 
         return self._template_specs_client.template_spec_versions.get(
             resource_group_name=self.resource_group_name,
@@ -499,7 +504,7 @@ class VMAzureClient:
                 gallery_image_name=gallery_image_name,
             )
         )
-        return list(map(lambda img_version: str(img_version.name), image_versions))
+        return [str(img_version.name) for img_version in image_versions]
 
     def get_latest_image_version(self, image_definition: str) -> str:
         """
@@ -557,7 +562,7 @@ class VMAzureClient:
 
 def wait_for_deployment_completeness(
     poller: LROPoller[DeploymentExtended],
-) -> Optional[DeploymentExtended]:
+) -> DeploymentExtended | None:
     deployment = poller.result()
     if (
         deployment.properties
@@ -587,7 +592,8 @@ def _project_name_to_vm_name(project_name: str):
 
 
 def _project_name_to_deployment_name(project_name: str):
-    return f"{slugify(project_name)}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+    return f"{slugify(project_name)}-{timestamp}"
 
 
 def _get_project_name_from_deployment(deployment_name: str):

@@ -6,7 +6,6 @@ import io
 import os
 from datetime import datetime, timedelta, timezone
 from io import SEEK_CUR, SEEK_END, SEEK_SET
-from typing import TYPE_CHECKING
 
 import sentry_sdk
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -27,9 +26,6 @@ from dotenv import load_dotenv
 from slugify import slugify
 
 from data_lifecycle.storage_types import StorageRole
-
-if TYPE_CHECKING:
-    pass
 
 # pylint: disable=wrong-import-position
 from ..data_client import AbstractDataClient, ProjectDataDirectoryNotFound
@@ -80,7 +76,7 @@ class AzureFileShareFile(io.BytesIO):
             self._content_length = self.file_client.get_file_properties().size
         return self._content_length
 
-    @functools.lru_cache
+    @functools.lru_cache  # noqa: B019
     def _read_chunk(self, offset: int, length: int) -> bytes:
         return self.file_client.download_file(offset=offset, length=length).readall()
 
@@ -440,7 +436,7 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         return f"https://{self.storage_account_name}.file.core.windows.net/{self.share_name}/{'/'.join(file_path)}?{sas_params}"
 
     def init_project_directory(self, project_name: str):
-        """Create project folder on Fileshare with empty children folders (documents, runs)."""  # noqa: E501
+        """Create project folder on Fileshare with empty children folders (documents, runs)."""
         dir_client = ShareDirectoryClient.from_connection_string(
             conn_str=self._storage_connection_string,
             share_name=self.share_name,

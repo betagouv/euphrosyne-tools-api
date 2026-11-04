@@ -8,8 +8,15 @@ exclude = [
   "__pycache__"
 ]
 
-[tool.ruff.pylint]
+[tool.ruff.lint.pylint]
 max-args = 6
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+  "fastapi.Body",
+  "fastapi.Depends",
+  "fastapi.Query",
+]
 
 [tool.black]
 line-length = 88

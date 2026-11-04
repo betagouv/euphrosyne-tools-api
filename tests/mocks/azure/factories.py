@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
+
 from azure.storage.fileshare import FileProperties
 
 
@@ -11,14 +12,22 @@ def file_properties_factory(**kwargs) -> FileProperties:
     file_properties.content_length = 342191
     file_properties.metadata = {}
     file_properties.file_type = "File"
-    file_properties.last_modified = datetime(2023, 7, 27, 13, 18, 37)
+    file_properties.last_modified = datetime(
+        2023, 7, 27, 13, 18, 37, tzinfo=timezone.utc
+    )
     file_properties.etag = "abc"
     file_properties.size = 342191
     file_properties.content_range = None
     file_properties.server_encrypted = True
-    file_properties.change_time = datetime(2023, 7, 27, 13, 18, 37, 570986)
-    file_properties.creation_time = datetime(2023, 7, 27, 13, 18, 34, 563745)
-    file_properties.last_write_time = datetime(2023, 7, 27, 13, 18, 37, 570986)
+    file_properties.change_time = datetime(
+        2023, 7, 27, 13, 18, 37, 570986, tzinfo=timezone.utc
+    )
+    file_properties.creation_time = datetime(
+        2023, 7, 27, 13, 18, 34, 563745, tzinfo=timezone.utc
+    )
+    file_properties.last_write_time = datetime(
+        2023, 7, 27, 13, 18, 37, 570986, tzinfo=timezone.utc
+    )
     file_properties.last_access_time = None
     file_properties.file_attributes = "Archive"
     file_properties.permission_key = "1234"

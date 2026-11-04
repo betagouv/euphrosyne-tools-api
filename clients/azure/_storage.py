@@ -23,9 +23,7 @@ class BaseStorageAzureClient:
             storage_account_name=self.storage_account_name,
         )
 
-        self._storage_connection_string = "DefaultEndpointsProtocol=https;AccountName={};AccountKey={};EndpointSuffix=core.windows.net".format(  # noqa: E501
-            self.storage_account_name, self._storage_key
-        )
+        self._storage_connection_string = f"DefaultEndpointsProtocol=https;AccountName={self.storage_account_name};AccountKey={self._storage_key};EndpointSuffix=core.windows.net"
 
 
 def _get_storage_key(

@@ -7,7 +7,7 @@ from data_lifecycle.storage_resolver import (
     resolve_cool_location,
     resolve_hot_location,
 )
-from data_lifecycle.storage_types import StorageRole, StorageBackend
+from data_lifecycle.storage_types import StorageBackend, StorageRole
 
 
 @pytest.fixture(autouse=True)

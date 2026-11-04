@@ -1,5 +1,5 @@
 import pathlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -97,7 +97,7 @@ async def zip_project_run_data(
         )
     except RunDataNotFound:
         raise HTTPException(status_code=404, detail="Run data not found.")
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     if data_request:
         # If request come from a data request, log it in Euphrosyne
         background_tasks.add_task(
@@ -126,7 +126,7 @@ def list_run_data(
     azure_client: DataAzureClient = Depends(get_project_data_client),
 ):
     try:
-        return azure_client.get_run_files_folders(project_slug, run_name, data_type, folder)  # type: ignore # noqa: E501
+        return azure_client.get_run_files_folders(project_slug, run_name, data_type, folder)  # type: ignore
     except RunDataNotFound:
         return JSONResponse(
             {"detail": "Run data not found"},

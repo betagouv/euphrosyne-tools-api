@@ -70,21 +70,19 @@ def test_init_raises_if_container_not_configured(monkeypatch: MonkeyPatch):
     monkeypatch.delenv("AZURE_STORAGE_DATA_CONTAINER", raising=False)
     with patch(
         "clients.azure.blob_data.BlobAzureClient.__init__", return_value=None
-    ) as base_init_mock:
-        with pytest.raises(
-            ValueError,
-            match="AZURE_STORAGE_DATA_CONTAINER environment variable is not set",
-        ):
-            BlobDataAzureClient()
+    ) as base_init_mock, pytest.raises(
+        ValueError,
+        match="AZURE_STORAGE_DATA_CONTAINER environment variable is not set",
+    ):
+        BlobDataAzureClient()
     base_init_mock.assert_not_called()
 
 
 def test_init_raises_for_unsupported_storage_role():
     with patch(
         "clients.azure.blob_data.BlobAzureClient.__init__", return_value=None
-    ) as base_init_mock:
-        with pytest.raises(ValueError, match="Unsupported storage role"):
-            BlobDataAzureClient(storage_role="WARM")  # type: ignore[arg-type]
+    ) as base_init_mock, pytest.raises(ValueError, match="Unsupported storage role"):
+        BlobDataAzureClient(storage_role="WARM")  # type: ignore[arg-type]
     base_init_mock.assert_not_called()
 
 

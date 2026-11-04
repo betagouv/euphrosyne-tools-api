@@ -16,9 +16,11 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_GROUP_NAME", "resource_group_name")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
-    with patch("clients.azure._storage.StorageManagementClient"):
-        with patch("clients.azure.blob.BlobServiceClient"):
-            return ImageStorageClient(project_slug="test-project")
+    with (
+        patch("clients.azure._storage.StorageManagementClient"),
+        patch("clients.azure.blob.BlobServiceClient"),
+    ):
+        return ImageStorageClient(project_slug="test-project")
 
 
 def test_get_object_image_blob_name(client: ImageStorageClient):
@@ -100,13 +102,15 @@ def test_set_cors_policy(client):
         "allowed_methods": ["DELETE", "GET", "HEAD", "POST", "OPTIONS", "PUT"],
         "allowed_headers": ["authorization", "content-type", "x-ms-*"],
     }
-    with patch.object(
-        client.blob_service_client, "set_service_properties", new_callable=MagicMock
-    ) as mock_set_service_properties:
-        with patch("clients.azure.blob.CorsRule") as mock_cors_rule:
-            client.set_cors_policy(allowed_origins)
-            mock_set_service_properties.assert_called_once()
-            mock_cors_rule.assert_called_once_with(**cors_rule)
+    with (
+        patch.object(
+            client.blob_service_client, "set_service_properties", new_callable=MagicMock
+        ) as mock_set_service_properties,
+        patch("clients.azure.blob.CorsRule") as mock_cors_rule,
+    ):
+        client.set_cors_policy(allowed_origins)
+        mock_set_service_properties.assert_called_once()
+        mock_cors_rule.assert_called_once_with(**cors_rule)
 
 
 @pytest.mark.asyncio

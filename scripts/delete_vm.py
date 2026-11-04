@@ -28,8 +28,12 @@ def delete_vm_script():
 
 
 def delete_vm(
-    project_name: str, azure_client=VMAzureClient(), guacamole_client=GuacamoleClient()
+    project_name: str,
+    azure_client: VMAzureClient | None = None,
+    guacamole_client: GuacamoleClient | None = None,
 ):
+    azure_client = azure_client or VMAzureClient()
+    guacamole_client = guacamole_client or GuacamoleClient()
     logger.info("%s - Deleting Azure VM...", project_name)
     status = azure_client.delete_vm(project_name)
     logger.info(

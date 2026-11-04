@@ -16,9 +16,11 @@ def client(monkeypatch: MonkeyPatch):
     monkeypatch.setenv("AZURE_RESOURCE_GROUP_NAME", "resource_group_name")
     monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "ID")
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "storageaccount")
-    with patch("clients.azure._storage.StorageManagementClient"):
-        with patch("clients.azure.config.BlobServiceClient"):
-            return ConfigAzureClient()
+    with (
+        patch("clients.azure._storage.StorageManagementClient"),
+        patch("clients.azure.config.BlobServiceClient"),
+    ):
+        return ConfigAzureClient()
 
 
 def test_get_or_create_blob_when_blob_exists(client: ConfigAzureClient):
