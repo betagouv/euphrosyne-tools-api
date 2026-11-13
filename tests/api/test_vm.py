@@ -57,7 +57,7 @@ def test_list_vms_created_before(client: TestClient):
 
     assert response.status_code == 200
     assert list_vms_mock.call_args.kwargs["created_before"] == datetime.datetime(
-        2022, 1, 1, 0, 0, tzinfo=datetime.timezone.utc
+        2022, 1, 1, 0, 0, tzinfo=datetime.UTC
     )
 
 

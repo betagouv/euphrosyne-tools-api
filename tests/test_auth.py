@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import jwt
@@ -29,7 +29,7 @@ from exceptions import NoProjectMembershipException
 
 def _generate_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    expire = datetime.now(UTC) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, "secret", algorithm=ALGORITHM)
     return encoded_jwt
@@ -215,7 +215,7 @@ def test_generate_token_for_path(monkeypatch: pytest.MonkeyPatch):
 
 def test_generate_token_for_path_with_expiration(monkeypatch: pytest.MonkeyPatch):
     path = "/example"
-    exp = datetime.now(timezone.utc) + timedelta(minutes=5)
+    exp = datetime.now(UTC) + timedelta(minutes=5)
     monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     token = generate_token_for_path(path, expiration=exp)
     decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
@@ -226,7 +226,7 @@ def test_generate_token_for_path_with_expiration(monkeypatch: pytest.MonkeyPatch
 def test_generate_jwt_token(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     with patch.object(auth, "datetime") as datetime_mock:
-        utcnow = datetime.now(timezone.utc)
+        utcnow = datetime.now(UTC)
         datetime_mock.now.return_value = utcnow
         token = _generate_jwt_token({"test": "test"})
     assert isinstance(token, str)
@@ -306,7 +306,7 @@ def test_extra_payload_token_getter():
     token = jwt.encode(
         {
             "test": "value",
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
+            "exp": datetime.now(UTC) + timedelta(minutes=15),
         },
         "secret",
         algorithm=ALGORITHM,

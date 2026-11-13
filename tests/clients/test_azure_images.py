@@ -41,7 +41,7 @@ def test_get_container_name_for_project(client):
 
 
 def test_generate_sas_token_for_container(client):
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     with patch("clients.azure.blob.datetime") as mock_datetime:
         mock_datetime.datetime.now.return_value = now
         with patch(

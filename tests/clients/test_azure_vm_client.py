@@ -480,13 +480,11 @@ def test_get_deployment_raises_if_deployment_absent(client: VMAzureClient):
 def test_get_latest_ongoing_deployment_for_project(client: VMAzureClient):
     ongoing_deployments = [
         MagicMock(
-            properties=MagicMock(
-                timestamp=datetime.datetime.now(datetime.timezone.utc)
-            ),
+            properties=MagicMock(timestamp=datetime.datetime.now(datetime.UTC)),
         ),
         MagicMock(
             properties=MagicMock(
-                timestamp=datetime.datetime.now(datetime.timezone.utc)
+                timestamp=datetime.datetime.now(datetime.UTC)
                 + datetime.timedelta(days=1)
             ),
         ),
@@ -634,7 +632,7 @@ def test_list_vms_with_exclude(client: VMAzureClient):
 
 
 def test_list_vms_with_created_before(client: VMAzureClient):
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     vms = []
     for name, time_created in [
         ("eupro-prod-vm-test1", now - datetime.timedelta(hours=25)),

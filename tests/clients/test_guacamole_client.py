@@ -1,7 +1,7 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -219,9 +219,9 @@ def test_vm_to_shutdown(client: GuacamoleClient):
             ),
         ),
     ):
-        fake_now = datetime.fromtimestamp(
-            1662369688000 / 1000, tz=timezone.utc
-        ) + timedelta(minutes=35)
+        fake_now = datetime.fromtimestamp(1662369688000 / 1000, tz=UTC) + timedelta(
+            minutes=35
+        )
 
         projects_to_shutdown = client.get_vm_to_shutdown(from_date=fake_now)
         assert projects_to_shutdown == []
@@ -232,7 +232,7 @@ def test_vm_to_shutdown(client: GuacamoleClient):
         assert projects_to_shutdown == ["update-setup"]
 
         fake_now_before_shutdown = datetime.fromtimestamp(
-            1662369688000 / 1000, tz=timezone.utc
+            1662369688000 / 1000, tz=UTC
         ) + timedelta(minutes=20)
         projects_to_shutdown = client.get_vm_to_shutdown(
             skip_groups=["default"], from_date=fake_now_before_shutdown

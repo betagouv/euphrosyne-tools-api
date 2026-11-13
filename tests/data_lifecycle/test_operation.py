@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -181,7 +181,7 @@ def test_execute_cool_operation_sets_job_id_and_sends_success_callback(
         "start_copy",
         lambda _source, _dest: AzCopyJobRef(
             job_id="job-1",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             command=["azcopy", "copy"],
             environment={},
             log_dir="/tmp/.azcopy",
@@ -716,7 +716,7 @@ def test_execute_cool_operation_failure_after_job_id_contains_diagnostics(
         "start_copy",
         lambda _source, _dest: AzCopyJobRef(
             job_id="job-2",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             command=["azcopy", "copy"],
             environment={},
             log_dir="/tmp/.azcopy",
@@ -797,7 +797,7 @@ def test_execute_restore_operation_sets_job_id_and_sends_success_callback(
         "start_copy",
         lambda _source, _dest: AzCopyJobRef(
             job_id="job-restore-1",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             command=["azcopy", "copy"],
             environment={},
             log_dir="/tmp/.azcopy",

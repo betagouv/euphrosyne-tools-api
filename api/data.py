@@ -1,5 +1,5 @@
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -97,7 +97,7 @@ async def zip_project_run_data(
         )
     except RunDataNotFound:
         raise HTTPException(status_code=404, detail="Run data not found.")
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     if data_request:
         # If request come from a data request, log it in Euphrosyne
         background_tasks.add_task(

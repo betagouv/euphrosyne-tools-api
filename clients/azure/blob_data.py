@@ -5,7 +5,7 @@ import functools
 import io
 import os
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from io import SEEK_CUR, SEEK_END, SEEK_SET
 
 import sentry_sdk
@@ -254,7 +254,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
     ) -> SASCredentials:
         """Generate URL with Shared Access Signature to upload run data."""
         dir_path = _generate_base_dir_path(project_name, run_name, data_type)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         token = generate_container_sas(
             account_name=self.storage_account_name,
             container_name=self.container_name,
@@ -285,7 +285,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
     ) -> str:
         """Generate a signed URL to manage run data in Azure Blob Storage."""
         blob_name = self._join_blob_path(dir_path, file_name)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         can_write = self.can_write_run_data(is_admin=is_admin)
         token = generate_blob_sas(
             account_name=self.storage_account_name,
@@ -314,7 +314,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
         """Generate a signed URL to upload project documents to blob storage."""
         dir_path = os.path.join(_generate_base_dir_path(project_name), "documents")
         blob_name = self._join_blob_path(dir_path, file_name)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         can_write = self.can_write_project_documents()
         token = generate_blob_sas(
             account_name=self.storage_account_name,
@@ -339,7 +339,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
     def generate_project_documents_sas_url(self, dir_path: str, file_name: str) -> str:
         """Generate a signed URL to download/delete project documents."""
         blob_name = self._join_blob_path(dir_path, file_name)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         can_write = self.can_write_project_documents()
         token = generate_blob_sas(
             account_name=self.storage_account_name,
@@ -366,7 +366,7 @@ class BlobDataAzureClient(BlobAzureClient, AbstractDataClient):
     ) -> str:
         """Generate a SAS token with permissions to manage the project directory
         within the Azure Blob Storage container."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         self.check_write_permissions(permission, force_write=force_write)
 

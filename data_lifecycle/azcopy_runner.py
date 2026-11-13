@@ -8,7 +8,7 @@ import tempfile
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
@@ -176,7 +176,7 @@ def start_copy(
         options=resolved_options,
     )
 
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     stdout_path, stderr_path = _create_log_files(log_dir, started_at)
 
     try:

@@ -179,7 +179,7 @@ class VMAzureClient:
             if deployment.properties and deployment.properties.timestamp:
                 ts: datetime.datetime = deployment.properties.timestamp
                 return ts
-            return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+            return datetime.datetime.min.replace(tzinfo=datetime.UTC)
 
         sorted_deployments = sorted(project_deployments, key=sort_func, reverse=True)
 
@@ -592,7 +592,7 @@ def _project_name_to_vm_name(project_name: str):
 
 
 def _project_name_to_deployment_name(project_name: str):
-    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d%H%M%S")
     return f"{slugify(project_name)}-{timestamp}"
 
 

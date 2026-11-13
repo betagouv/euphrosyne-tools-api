@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -632,7 +632,7 @@ def _execute_lifecycle_operation(
             exc,
         )
     finally:
-        operation.finished_at = datetime.now(timezone.utc)
+        operation.finished_at = datetime.now(UTC)
 
         delivered = post_lifecycle_operation_callback(operation)
         if not delivered:
