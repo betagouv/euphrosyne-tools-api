@@ -36,7 +36,7 @@ class TestPostDataEvent(unittest.TestCase):
             },
             json={
                 "path": "path",
-                "data_request": "12",
+                "data_request": 12,
             },
         )
 

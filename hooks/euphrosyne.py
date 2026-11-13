@@ -19,7 +19,8 @@ def post_data_access_event(path: str, data_request: str):
         return
     token = generate_token_for_euphrosyne_backend()
     headers = {"Authorization": f"Bearer {token}"}
-    data = {"path": path, "data_request": data_request}
+    # The token carries the id as a string; the Euphrosyne API expects an integer.
+    data = {"path": path, "data_request": int(data_request)}
     response = requests.post(
         f"{euphroyne_backend_url}/api/data-request/access-event",
         headers=headers,
