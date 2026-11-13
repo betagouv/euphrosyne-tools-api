@@ -4,7 +4,7 @@ import asyncio
 import functools
 import io
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from io import SEEK_CUR, SEEK_END, SEEK_SET
 
 import sentry_sdk
@@ -406,7 +406,7 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
             account_key=self._storage_key,
             resource_types=ResourceTypes(container=True, object=True),
             permission=permission,
-            expiry=datetime.now(timezone.utc) + timedelta(hours=1),
+            expiry=datetime.now(UTC) + timedelta(hours=1),
         )
 
     def _generate_sas_url(
@@ -421,7 +421,7 @@ class DataAzureClient(BaseStorageAzureClient, AbstractDataClient):
         to perform authenticated operations on a file in an Azure Fileshare.
         """
         file_path = [part for part in dir_path.split("/") if part] + [file_name]
-        start = datetime.now(timezone.utc)
+        start = datetime.now(UTC)
         sas_params = generate_file_sas(
             account_name=self.storage_account_name,
             account_key=self._storage_key,

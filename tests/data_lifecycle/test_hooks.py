@@ -159,7 +159,7 @@ def test_post_lifecycle_operation_serialization(
 ):
     monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "http://localhost")
     operation_id = uuid4()
-    finished_at = datetime.datetime.now(datetime.timezone.utc)
+    finished_at = datetime.datetime.now(datetime.UTC)
     payload = LifecycleOperation(
         project_slug="project-5",
         operation_id=operation_id,

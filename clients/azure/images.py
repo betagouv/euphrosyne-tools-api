@@ -70,8 +70,7 @@ class ImageStorageClient(BlobAzureClient):
                 write=True,
                 delete=False,
             ),
-            expiry=datetime.datetime.now(datetime.timezone.utc)
-            + datetime.timedelta(minutes=2),
+            expiry=datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=2),
         )
 
         try:

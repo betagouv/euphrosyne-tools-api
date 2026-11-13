@@ -1,6 +1,6 @@
 # pylint: disable=protected-access, no-member, redefined-outer-name
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, call, patch
 from urllib.parse import parse_qs, urlsplit
 
@@ -117,12 +117,12 @@ def test_download_run_file_uses_share_file_client(request, client_fixture):
 def test_generate_sas_url_passes_credentials_path_and_lifetime(
     client: DataAzureClient, dir_path, expected_path
 ):
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     with patch("clients.azure.data.generate_file_sas", return_value="sas") as signer:
         url = client._generate_sas_url(
             dir_path, "file.txt", FileSasPermissions(read=True)
         )
-    after = datetime.now(timezone.utc)
+    after = datetime.now(UTC)
 
     kwargs = signer.call_args.kwargs
     assert kwargs["account_name"] == client.storage_account_name
@@ -350,9 +350,7 @@ def test_get_project_documents_with_prefix(
             for p in [
                 ProjectFile(
                     name="file-1.txt",
-                    last_modified=datetime(
-                        2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc
-                    ),
+                    last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=UTC),
                     size=222,
                     path="/prefix/project/documents/file-1.txt",
                 )
@@ -695,13 +693,13 @@ def test_list_files_recursive_with_detailed_info(
     share_file_client.get_file_properties.side_effect = [
         azure_factories.file_properties_factory(
             name="file-1.txt",
-            last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc),
+            last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=UTC),
             size=123,
             path="/file-1.txt",
         ),
         azure_factories.file_properties_factory(
             name="file-3.txt",
-            last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=timezone.utc),
+            last_modified=datetime(2022, 6, 22, 11, 22, 33, tzinfo=UTC),
             size=123,
             path="directory-1/file-2.txt",
         ),

@@ -39,7 +39,7 @@ class BlobAzureClient(BaseStorageAzureClient):
         return self.blob_service_client.get_container_client(container_name)
 
     def _generate_sas_token_for_container(self):
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         return generate_container_sas(
             self.storage_account_name,
             self.container_name,

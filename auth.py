@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -194,9 +194,7 @@ class ExtraPayloadTokenGetter:
 
 def _generate_jwt_token(payload: dict[str, Any], expiration: datetime | None = None):
     if expiration is None:
-        expiration = datetime.now(timezone.utc) + timedelta(
-            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+        expiration = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "exp": expiration,
         **payload,
