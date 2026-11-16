@@ -16,7 +16,7 @@ httpx==0.28.1
 fastapi==0.162.5 
 isort==9.0.2 
 mypy==2.4.1
-pydantic-settings==2.15.0 
+pydantic-settings==2.16.2 
 python-dotenv==1.2.4 
 PyJWT==2.15.1
 python-slugify==9.1.3
