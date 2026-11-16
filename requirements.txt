@@ -28,4 +28,4 @@ sentry-sdk[fastapi]==2.75.0
 stream-zip==0.0.84
 types-python-slugify==8.0.2.20240310 
 types-requests==2.33.0.20261030
-uvicorn[standard]==0.53.0
+uvicorn[standard]==0.54.0
