@@ -55,7 +55,7 @@ EUPHROSYNE_PUBLIC_KEY_PEM = (
 @pytest.fixture(autouse=True)
 def setenv(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("EUPHROSYNE_JWT_PUBLIC_KEY", EUPHROSYNE_PUBLIC_KEY_PEM)
-    monkeypatch.setenv("PATH_TOKEN_SECRET_KEY", "secret")
+    monkeypatch.setenv("PATH_TOKEN_SECRET", "secret")
     monkeypatch.setenv("TOOLS_API_BACKEND_TOKEN_SECRET", "backend-secret")
 
 
