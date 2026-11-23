@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import UTC, datetime, timedelta
 from functools import cache
@@ -7,7 +8,7 @@ import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, APIKeyQuery, OAuth2PasswordBearer
-from jwt import PyJWKClient, PyJWTError
+from jwt import PyJWKClient, PyJWKClientConnectionError, PyJWTError
 from pydantic import BaseModel
 from slugify import slugify
 
@@ -15,6 +16,8 @@ from clients.azure import VaultClient
 from exceptions import NoProjectMembershipException
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Tokens issued by Euphrosyne (its OpenID Connect provider) are signed with its
 # RSA key. The Tools API reads the public keys at /.well-known/jwks.json.
@@ -30,6 +33,10 @@ JWT_CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="Could not validate credentials",
     headers={"WWW-Authenticate": "Bearer"},
+)
+JWKS_UNAVAILABLE_EXCEPTION = HTTPException(
+    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    detail="Could not fetch Euphrosyne's signing keys",
 )
 # User the Euphrosyne backend acts as.
 EUPHROSYNE_BACKEND_USER = "euphrosyne"
@@ -238,6 +245,11 @@ def _decode_euphrosyne_jwt(jwt_token: str) -> dict:
             issuer=euphrosyne_url(),
             options={"require": ["exp", "iss"]},
         )
+    # The key set could not be read: Euphrosyne is down, or its URL answers
+    # something other than JSON (an HTML page, a redirect to its login page).
+    except (PyJWKClientConnectionError, ValueError) as error:
+        logger.error("Could not fetch Euphrosyne's JWKS: %s", error)
+        raise JWKS_UNAVAILABLE_EXCEPTION from error
     except PyJWTError as error:
         raise JWT_CREDENTIALS_EXCEPTION from error
     if payload.get("token_use") != "access":

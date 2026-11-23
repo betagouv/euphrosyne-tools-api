@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -5,6 +6,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException, status
+from jwt import PyJWKClient, PyJWKClientConnectionError
 
 import auth
 from auth import (
@@ -63,6 +65,33 @@ async def test_get_current_user_rejects_tokens_not_issued_to_a_tools_user(claims
     with pytest.raises(HTTPException) as exception:
         await get_current_user(_generate_token(claims))
     assert exception.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+class _UnreadableJWKClient(PyJWKClient):
+    def __init__(self, error):
+        super().__init__(f"{EUPHROSYNE_URL}/.well-known/jwks.json")
+        self.error = error
+
+    def fetch_data(self):
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        # Euphrosyne answered an HTML page, e.g. its login page.
+        pytest.param(json.JSONDecodeError("Expecting value", "", 0), id="not-json"),
+        pytest.param(PyJWKClientConnectionError("timed out"), id="unreachable"),
+    ],
+)
+def test_decode_answers_503_when_the_jwks_cannot_be_read(monkeypatch, caplog, error):
+    monkeypatch.setattr(auth, "_jwks_client", lambda: _UnreadableJWKClient(error))
+
+    with pytest.raises(HTTPException) as exception:
+        _decode_euphrosyne_jwt(_user_token())
+
+    assert exception.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert "Could not fetch Euphrosyne's JWKS" in caplog.text
 
 
 @pytest.mark.anyio
