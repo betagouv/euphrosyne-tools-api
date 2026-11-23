@@ -3,7 +3,7 @@ import os
 
 import requests
 
-from auth import generate_token_for_euphrosyne_backend
+from clients.euphrosyne_oidc import EuphrosyneTokenError, get_euphrosyne_backend_token
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,11 @@ def post_data_access_event(path: str, data_request: str):
     except KeyError:
         logger.error("EUPHROSYNE_BACKEND_URL environment variable is not set")
         return
-    token = generate_token_for_euphrosyne_backend()
+    try:
+        token = get_euphrosyne_backend_token()
+    except EuphrosyneTokenError as error:
+        logger.error("Cannot post data access event to Euphrosyne: %s", error)
+        return
     headers = {"Authorization": f"Bearer {token}"}
     # The token carries the id as a string; the Euphrosyne API expects an integer.
     data = {"path": path, "data_request": int(data_request)}

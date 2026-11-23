@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 import requests
 
+from clients.euphrosyne_oidc import EuphrosyneTokenError
 from data_lifecycle.hooks import (
     post_from_data_deletion_callback,
     post_lifecycle_operation_callback,
@@ -37,7 +38,7 @@ def test_post_lifecycle_operation_callback_retries_on_transient_failure(
     success_response.text = "ok"
 
     with mock.patch(
-        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
+        "data_lifecycle.hooks.get_euphrosyne_backend_token",
         return_value="token",
     ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
         post_mock.side_effect = [
@@ -75,7 +76,7 @@ def test_post_lifecycle_operation_callback_retries_on_5xx(
     success_response.text = "ok"
 
     with mock.patch(
-        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
+        "data_lifecycle.hooks.get_euphrosyne_backend_token",
         return_value="token",
     ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
         post_mock.side_effect = [error_response, success_response]
@@ -104,7 +105,7 @@ def test_post_lifecycle_operation_callback_success(monkeypatch: pytest.MonkeyPat
     success_response.text = "ok"
 
     with mock.patch(
-        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
+        "data_lifecycle.hooks.get_euphrosyne_backend_token",
         return_value="token",
     ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
         post_mock.return_value = success_response
@@ -130,7 +131,7 @@ def test_post_lifecycle_operation_callback_rejected_on_4xx(
     response.text = "bad request"
 
     with mock.patch(
-        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
+        "data_lifecycle.hooks.get_euphrosyne_backend_token",
         return_value="token",
     ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
         post_mock.return_value = response
@@ -175,7 +176,7 @@ def test_post_lifecycle_operation_serialization(
     )
 
     with mock.patch(
-        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
+        "data_lifecycle.hooks.get_euphrosyne_backend_token",
         return_value="token",
     ), mock.patch(
         "requests.sessions.Session.send",
@@ -215,7 +216,7 @@ def test_post_from_data_deletion_callback_serialization(
     )
 
     with mock.patch(
-        "data_lifecycle.hooks.generate_token_for_euphrosyne_backend",
+        "data_lifecycle.hooks.get_euphrosyne_backend_token",
         return_value="token",
     ), mock.patch(
         "requests.sessions.Session.send",
@@ -235,3 +236,24 @@ def test_post_from_data_deletion_callback_serialization(
             "message": "boom",
         },
     }
+
+
+def test_post_lifecycle_operation_callback_fails_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "http://localhost")
+    payload = LifecycleOperation(
+        project_slug="project-1",
+        operation_id=uuid4(),
+        type=LifecycleOperationType.COOL,
+        status=LifecycleOperationStatus.SUCCEEDED,
+    )
+
+    with mock.patch(
+        "data_lifecycle.hooks.get_euphrosyne_backend_token",
+        side_effect=EuphrosyneTokenError("refused"),
+    ), mock.patch("data_lifecycle.hooks.requests.post") as post_mock:
+        result = post_lifecycle_operation_callback(payload, sleep=lambda _: None)
+
+    assert result is False
+    post_mock.assert_not_called()

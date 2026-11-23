@@ -1,12 +1,13 @@
 import os
 from datetime import UTC, datetime, timedelta
+from functools import cache
 from typing import Any
 
 import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, APIKeyQuery, OAuth2PasswordBearer
-from jwt import InvalidTokenError
+from jwt import PyJWKClient, PyJWTError
 from pydantic import BaseModel
 from slugify import slugify
 
@@ -15,21 +16,23 @@ from exceptions import NoProjectMembershipException
 
 load_dotenv()
 
-# Tokens issued by Euphrosyne are signed with its RSA private key: the Tools API
-# only holds the public key and cannot sign them.
+# Tokens issued by Euphrosyne (its OpenID Connect provider) are signed with its
+# RSA key. The Tools API reads the public keys at /.well-known/jwks.json.
 EUPHROSYNE_ALGORITHM = "RS256"
-# Tokens the Tools API signs itself (path tokens, calls to Euphrosyne) use
-# secrets of their own, never a secret of Euphrosyne.
+# Path tokens, which the Tools API signs and verifies itself.
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 5
-# Scope of the token Euphrosyne puts in EROS image URLs (see eros_proxy).
-EROS_SCOPE = "tools:eros"
+# Scopes of the tokens Euphrosyne issues for the Tools API.
+TOOLS_SCOPE = "tools"  # a user: web front end, Herma
+BACKEND_SCOPE = "tools:backend"  # Euphrosyne itself
+EROS_SCOPE = "tools:eros"  # token Euphrosyne puts in EROS image URLs
 JWT_CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="Could not validate credentials",
     headers={"WWW-Authenticate": "Bearer"},
 )
-EUPHROSYNE_TOKEN_USER_ID_VALUE = "euphrosyne"  # user id value when decoding jwt token
+# User the Euphrosyne backend acts as.
+EUPHROSYNE_BACKEND_USER = "euphrosyne"
 
 api_key_header_auth = APIKeyHeader(name="X-API-KEY", auto_error=False)
 api_key_query_auth = APIKeyQuery(name="api_key")
@@ -64,13 +67,14 @@ async def get_current_user(
             return User(id="0", projects=[], is_admin=True)
         raise JWT_CREDENTIALS_EXCEPTION
     payload = _decode_euphrosyne_jwt(jwt_token)
-    user_id = payload.get("sub") or payload.get("user_id")
-    if not user_id:
+    if _is_backend_payload(payload):
+        return User(id=EUPHROSYNE_BACKEND_USER, projects=[], is_admin=True)
+    if not _is_user_payload(payload):
         raise JWT_CREDENTIALS_EXCEPTION
     return User(
-        id=str(user_id),
-        projects=payload.get("projects"),
-        is_admin=payload.get("is_admin"),
+        id=payload["sub"],
+        projects=payload.get("projects") or [],
+        is_admin=bool(payload.get("is_admin")),
     )
 
 
@@ -86,10 +90,22 @@ def verify_admin_permission(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Only admins are allowed")
 
 
+def _scopes(payload: dict) -> set[str]:
+    return set(str(payload.get("scope") or "").split())
+
+
+def _is_user_payload(payload: dict) -> bool:
+    """A token issued to a user for the Tools API (not to another application)."""
+    return bool(payload.get("sub")) and TOOLS_SCOPE in _scopes(payload)
+
+
+def _is_backend_payload(payload: dict) -> bool:
+    return not payload.get("sub") and BACKEND_SCOPE in _scopes(payload)
+
+
 def _is_euphrosyne_backend(jwt_token: str):
     """Check if the JWT token is for Euphrosyne backend."""
-    payload = _decode_euphrosyne_jwt(jwt_token)
-    return payload.get("user_id") == EUPHROSYNE_TOKEN_USER_ID_VALUE
+    return _is_backend_payload(_decode_euphrosyne_jwt(jwt_token))
 
 
 def verify_is_euphrosyne_backend(jwt_token: str | None = Depends(oauth2_scheme)):
@@ -106,13 +122,10 @@ def verify_is_euphrosyne_backend_or_admin(
     """For euphrosyne - euphro tools communication, verify JWT token or admin user."""
     if not jwt_token:
         raise JWT_CREDENTIALS_EXCEPTION
-    is_euphrosyne_backend = _is_euphrosyne_backend(jwt_token)
-
-    if is_euphrosyne_backend:
-        return
-
     payload = _decode_euphrosyne_jwt(jwt_token)
-    if payload.get("is_admin"):
+    if _is_backend_payload(payload):
+        return
+    if _is_user_payload(payload) and payload.get("is_admin"):
         return
 
     raise HTTPException(status_code=403, detail="Not allowed")
@@ -148,25 +161,8 @@ def verify_eros_query_url_jwt(token: str | None = Depends(token_query_auth)):
     if not token:
         raise JWT_CREDENTIALS_EXCEPTION
     payload = _decode_euphrosyne_jwt(token)
-    scopes = str(payload.get("scope") or "").split()
-    if not (payload.get("sub") or payload.get("user_id")) and EROS_SCOPE not in scopes:
+    if not _is_user_payload(payload) and EROS_SCOPE not in _scopes(payload):
         raise HTTPException(status_code=403, detail="Not allowed")
-
-
-def generate_token_for_euphrosyne_backend():
-    """
-    Generates a JWT token for Euphrosyne backend.
-
-    Returns:
-        str: The generated JWT token.
-
-    """
-    return _generate_jwt_token(
-        payload={
-            "user_id": EUPHROSYNE_TOKEN_USER_ID_VALUE,
-        },
-        secret_key=os.environ["TOOLS_API_BACKEND_TOKEN_SECRET"],
-    )
 
 
 def generate_token_for_path(
@@ -219,19 +215,32 @@ def _generate_jwt_token(
     return jwt.encode(payload, secret_key, algorithm=ALGORITHM)
 
 
+def euphrosyne_url() -> str:
+    return os.environ["EUPHROSYNE_BACKEND_URL"].rstrip("/")
+
+
+@cache
+def _jwks_client() -> PyJWKClient:
+    # Keys are cached; a token signed with a new key (rotation) makes the
+    # client fetch the key set again.
+    return PyJWKClient(f"{euphrosyne_url()}/.well-known/jwks.json", lifespan=3600)
+
+
 def _decode_euphrosyne_jwt(jwt_token: str) -> dict:
     """Decode an access token issued by Euphrosyne."""
     try:
+        key = _jwks_client().get_signing_key_from_jwt(jwt_token).key
         payload = jwt.decode(
             jwt_token,
-            os.environ["EUPHROSYNE_JWT_PUBLIC_KEY"].replace("\\n", "\n"),
+            key,
             algorithms=[EUPHROSYNE_ALGORITHM],
-            options={"require": ["exp"]},
+            # The keys come from this URL: only its tokens are accepted.
+            issuer=euphrosyne_url(),
+            options={"require": ["exp", "iss"]},
         )
-    except InvalidTokenError as error:
+    except PyJWTError as error:
         raise JWT_CREDENTIALS_EXCEPTION from error
-    # Refresh tokens are exchanged with Euphrosyne, never sent as bearers.
-    if payload.get("token_type", "access") != "access":
+    if payload.get("token_use") != "access":
         raise JWT_CREDENTIALS_EXCEPTION
     return payload
 
@@ -245,5 +254,5 @@ def _decode_path_jwt(jwt_token: str) -> dict:
             algorithms=[ALGORITHM],
             options={"require": ["exp"]},
         )
-    except InvalidTokenError as error:
+    except PyJWTError as error:
         raise JWT_CREDENTIALS_EXCEPTION from error

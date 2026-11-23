@@ -202,7 +202,7 @@ Relevant pieces:
 If COOL storage is configured, the service also depends on:
 
 - `EUPHROSYNE_BACKEND_URL`
-- backend authentication via `generate_token_for_euphrosyne_backend()`
+- backend authentication via `get_euphrosyne_backend_token()` (client credentials token from Euphrosyne's OpenID Connect provider)
 
 The lifecycle lookup currently retries transient failures before returning `503 Service
 Unavailable`.
