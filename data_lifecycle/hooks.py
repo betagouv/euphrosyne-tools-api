@@ -7,7 +7,7 @@ from typing import Any
 
 import requests
 
-from auth import generate_token_for_euphrosyne_backend
+from clients.euphrosyne_oidc import EuphrosyneTokenError, get_euphrosyne_backend_token
 from data_lifecycle.models import FromDataDeletionCallback, LifecycleOperation
 
 logger = logging.getLogger(__name__)
@@ -92,7 +92,13 @@ def _post_callback(
         logger.error("EUPHROSYNE_BACKEND_URL environment variable is not set")
         return False
 
-    token = generate_token_for_euphrosyne_backend()
+    try:
+        token = get_euphrosyne_backend_token()
+    except EuphrosyneTokenError as error:
+        logger.error(
+            "Lifecycle callback not sent: operation_id=%s error=%s", operation_id, error
+        )
+        return False
     headers = {"Authorization": f"Bearer {token}"}
     callback_url = f"{euphrosyne_backend_url}{LIFECYCLE_CALLBACK_PATH}"
     context = " ".join(f"{key}={value}" for key, value in log_context.items())

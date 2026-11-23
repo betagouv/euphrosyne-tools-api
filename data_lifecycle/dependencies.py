@@ -5,7 +5,7 @@ import time
 import requests
 from fastapi import HTTPException
 
-from auth import generate_token_for_euphrosyne_backend
+from clients.euphrosyne_oidc import EuphrosyneTokenError, get_euphrosyne_backend_token
 
 from .models import LifecycleState
 
@@ -18,7 +18,14 @@ FETCH_PROJECT_LIFECYCLE_RETRIES = 2
 def fetch_project_lifecycle(project_slug: str) -> LifecycleState:
     """Given project_slug, fetch project data current lifecycle"""
     euphroyne_backend_url = os.environ["EUPHROSYNE_BACKEND_URL"]
-    token = generate_token_for_euphrosyne_backend()
+    try:
+        token = get_euphrosyne_backend_token()
+    except EuphrosyneTokenError as error:
+        logger.error("failed to fetch project data lifecycle.\nReason:\n%s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="Euphrosyne did not issue a token (fetch_project_lifecycle)",
+        ) from error
     headers = {"Authorization": f"Bearer {token}"}
 
     retry = 0
