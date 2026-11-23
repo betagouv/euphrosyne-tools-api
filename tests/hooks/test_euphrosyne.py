@@ -3,6 +3,7 @@ from unittest import mock
 
 import pytest
 
+from clients.euphrosyne_oidc import EuphrosyneTokenError
 from hooks.euphrosyne import post_data_access_event
 
 
@@ -23,7 +24,7 @@ class TestPostDataEvent(unittest.TestCase):
     def test_post_data_access_event_success(self):
         self.monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "http://localhost")
         with mock.patch(
-            "hooks.euphrosyne.generate_token_for_euphrosyne_backend",
+            "hooks.euphrosyne.get_euphrosyne_backend_token",
             return_value="token",
         ):
             self.requests_mock.post.return_value.ok = True
@@ -43,10 +44,20 @@ class TestPostDataEvent(unittest.TestCase):
     def test_post_data_access_event_log_when_failed(self):
         self.monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "http://localhost")
         with mock.patch(
-            "hooks.euphrosyne.generate_token_for_euphrosyne_backend",
+            "hooks.euphrosyne.get_euphrosyne_backend_token",
             return_value="token",
         ):
             self.requests_mock.post.return_value.ok = False
             with mock.patch("hooks.euphrosyne.logger") as logger_mock:
                 post_data_access_event("path", "12")
                 logger_mock.error.assert_called()
+
+    def test_post_data_access_event_logs_when_no_token(self):
+        self.monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "http://localhost")
+        with mock.patch(
+            "hooks.euphrosyne.get_euphrosyne_backend_token",
+            side_effect=EuphrosyneTokenError("refused"),
+        ), mock.patch("hooks.euphrosyne.logger") as logger_mock:
+            post_data_access_event("path", "12")
+        logger_mock.error.assert_called()
+        self.requests_mock.post.assert_not_called()

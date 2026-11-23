@@ -1,12 +1,14 @@
 from unittest.mock import MagicMock
 
 import pytest
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from jwt import PyJWKClient
+from jwt.algorithms import RSAAlgorithm
 from slugify import slugify
 
+import auth
 from auth import Project, User, get_current_user
 from clients.azure import DataAzureClient, VMAzureClient
 from clients.guacamole import GuacamoleClient
@@ -40,23 +42,40 @@ def fixture_client(app: FastAPI):
     return _client
 
 
-# Key pair standing for Euphrosyne's token signing key.
+# Euphrosyne's token signing key and the key set it publishes.
+EUPHROSYNE_URL = "http://euphrosyne.test"
 EUPHROSYNE_PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-EUPHROSYNE_PUBLIC_KEY_PEM = (
-    EUPHROSYNE_PRIVATE_KEY.public_key()
-    .public_bytes(
-        serialization.Encoding.PEM,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
-    )
-    .decode()
-)
+EUPHROSYNE_KID = "euphrosyne-key"
+EUPHROSYNE_JWKS = {
+    "keys": [
+        {
+            **RSAAlgorithm.to_jwk(EUPHROSYNE_PRIVATE_KEY.public_key(), as_dict=True),
+            "kid": EUPHROSYNE_KID,
+            "use": "sig",
+            "alg": "RS256",
+        }
+    ]
+}
+
+
+class StaticJWKClient(PyJWKClient):
+    """Serves EUPHROSYNE_JWKS instead of fetching /.well-known/jwks.json."""
+
+    def fetch_data(self):
+        return EUPHROSYNE_JWKS
 
 
 @pytest.fixture(autouse=True)
 def setenv(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("EUPHROSYNE_JWT_PUBLIC_KEY", EUPHROSYNE_PUBLIC_KEY_PEM)
+    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", EUPHROSYNE_URL)
     monkeypatch.setenv("PATH_TOKEN_SECRET", "secret")
-    monkeypatch.setenv("TOOLS_API_BACKEND_TOKEN_SECRET", "backend-secret")
+    monkeypatch.setenv("EUPHROSYNE_OIDC_CLIENT_ID", "euphrosyne-tools-api")
+    monkeypatch.setenv("EUPHROSYNE_OIDC_CLIENT_SECRET", "client-secret")
+    monkeypatch.setattr(
+        auth,
+        "_jwks_client",
+        lambda: StaticJWKClient(f"{EUPHROSYNE_URL}/.well-known/jwks.json"),
+    )
 
 
 async def get_current_user_override():
