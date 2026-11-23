@@ -5,6 +5,7 @@ import requests
 from fastapi import HTTPException
 from requests import RequestException
 
+from clients.euphrosyne_oidc import EuphrosyneTokenError
 from data_lifecycle.dependencies import (
     FETCH_PROJECT_LIFECYCLE_RETRIES,
     fetch_project_lifecycle,
@@ -21,7 +22,7 @@ def test_fetch_project_lifecycle_returns_storage_role(
 
     with (
         patch(
-            "data_lifecycle.dependencies.generate_token_for_euphrosyne_backend",
+            "data_lifecycle.dependencies.get_euphrosyne_backend_token",
             return_value="token",
         ),
         patch(
@@ -46,7 +47,7 @@ def test_fetch_project_lifecycle_raises_not_found(
 
     with (
         patch(
-            "data_lifecycle.dependencies.generate_token_for_euphrosyne_backend",
+            "data_lifecycle.dependencies.get_euphrosyne_backend_token",
             return_value="token",
         ),
         patch("data_lifecycle.dependencies.requests.get", return_value=response),
@@ -71,7 +72,7 @@ def _make_response(
 def _fetch_with_response(response: requests.Response) -> LifecycleState:
     with (
         patch(
-            "data_lifecycle.dependencies.generate_token_for_euphrosyne_backend",
+            "data_lifecycle.dependencies.get_euphrosyne_backend_token",
             return_value="token",
         ),
         patch("data_lifecycle.dependencies.requests.get", return_value=response),
@@ -136,7 +137,7 @@ def test_fetch_project_lifecycle_retries_then_raises_service_unavailable(
 
     with (
         patch(
-            "data_lifecycle.dependencies.generate_token_for_euphrosyne_backend",
+            "data_lifecycle.dependencies.get_euphrosyne_backend_token",
             return_value="token",
         ),
         patch(
@@ -160,7 +161,7 @@ def test_fetch_project_lifecycle_retries_when_request_exc(
 
     with (
         patch(
-            "data_lifecycle.dependencies.generate_token_for_euphrosyne_backend",
+            "data_lifecycle.dependencies.get_euphrosyne_backend_token",
             return_value="token",
         ),
         patch("data_lifecycle.dependencies.requests.get", new=get_mock),
@@ -172,3 +173,22 @@ def test_fetch_project_lifecycle_retries_when_request_exc(
     assert error.value.status_code == 503
     assert get_mock.call_count == FETCH_PROJECT_LIFECYCLE_RETRIES
     sleep_mock.assert_called_once_with(1)
+
+
+def test_fetch_project_lifecycle_unavailable_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EUPHROSYNE_BACKEND_URL", "https://backend.example")
+
+    with (
+        patch(
+            "data_lifecycle.dependencies.get_euphrosyne_backend_token",
+            side_effect=EuphrosyneTokenError("refused"),
+        ),
+        patch("data_lifecycle.dependencies.requests.get") as get_mock,
+        pytest.raises(HTTPException) as exc,
+    ):
+        fetch_project_lifecycle("project-01")
+
+    assert exc.value.status_code == 503
+    get_mock.assert_not_called()

@@ -8,7 +8,7 @@ from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
-from auth import verify_authenticated_query_url_jwt
+from auth import verify_eros_query_url_jwt
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ async def _reverse_proxy(request: Request, path: str):
     )
 
 
-@router.get("/{path:path}", dependencies=[Depends(verify_authenticated_query_url_jwt)])
-@router.post("/{path:path}", dependencies=[Depends(verify_authenticated_query_url_jwt)])
+@router.get("/{path:path}", dependencies=[Depends(verify_eros_query_url_jwt)])
+@router.post("/{path:path}", dependencies=[Depends(verify_eros_query_url_jwt)])
 async def eros_proxy(request: Request, path: str):
     return await _reverse_proxy(request, path)
