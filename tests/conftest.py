@@ -59,7 +59,6 @@ def setenv(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("EUPHROSYNE_ISSUER", EUPHROSYNE_ISSUER)
     monkeypatch.setenv("PATH_TOKEN_SECRET_KEY", "secret")
     monkeypatch.setenv("TOOLS_API_BACKEND_TOKEN_SECRET", "backend-secret")
-    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
 
 
 async def get_current_user_override():

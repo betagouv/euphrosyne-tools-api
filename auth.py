@@ -219,22 +219,6 @@ def _generate_jwt_token(
     return jwt.encode(payload, secret_key, algorithm=ALGORITHM)
 
 
-def _legacy_secret_key() -> str | None:
-    """Secret shared with Euphrosyne before tokens were signed with RSA. Only
-    set during the transition, until the tokens signed with it have expired
-    (path tokens of data requests last 7 days)."""
-    return os.getenv("JWT_SECRET_KEY") or None
-
-
-def _decode_hs256(jwt_token: str, secret_key: str) -> dict:
-    return jwt.decode(
-        jwt_token,
-        secret_key,
-        algorithms=[ALGORITHM],
-        options={"require": ["exp"]},
-    )
-
-
 def _decode_euphrosyne_jwt(jwt_token: str) -> dict:
     """Decode an access token issued by Euphrosyne."""
     try:
@@ -246,29 +230,21 @@ def _decode_euphrosyne_jwt(jwt_token: str) -> dict:
             options={"require": ["exp", "iss"]},
         )
     except InvalidTokenError as error:
-        legacy_secret_key = _legacy_secret_key()
-        if not legacy_secret_key:
-            raise JWT_CREDENTIALS_EXCEPTION from error
-        try:
-            payload = _decode_hs256(jwt_token, legacy_secret_key)
-        except InvalidTokenError as legacy_error:
-            raise JWT_CREDENTIALS_EXCEPTION from legacy_error
+        raise JWT_CREDENTIALS_EXCEPTION from error
     # Refresh tokens are exchanged with Euphrosyne, never sent as bearers.
     if payload.get("token_type", "access") != "access":
-        raise JWT_CREDENTIALS_EXCEPTION
-    if payload.get("path"):
         raise JWT_CREDENTIALS_EXCEPTION
     return payload
 
 
 def _decode_path_jwt(jwt_token: str) -> dict:
     """Decode a path token signed by the Tools API (generate_token_for_path)."""
-    secret_keys = [os.environ["PATH_TOKEN_SECRET_KEY"]]
-    if legacy_secret_key := _legacy_secret_key():
-        secret_keys.append(legacy_secret_key)
-    for secret_key in secret_keys:
-        try:
-            return _decode_hs256(jwt_token, secret_key)
-        except InvalidTokenError:
-            continue
-    raise JWT_CREDENTIALS_EXCEPTION
+    try:
+        return jwt.decode(
+            jwt_token,
+            os.environ["PATH_TOKEN_SECRET_KEY"],
+            algorithms=[ALGORITHM],
+            options={"require": ["exp"]},
+        )
+    except InvalidTokenError as error:
+        raise JWT_CREDENTIALS_EXCEPTION from error

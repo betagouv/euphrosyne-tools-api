@@ -291,22 +291,6 @@ def test_decode_jwt_rejects_malformed_token():
     assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-@pytest.mark.anyio
-async def test_accepts_legacy_hs256_token_while_legacy_secret_is_set(monkeypatch):
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
-    # Generated with python-jose 3.5.0, HS256 and the test secret.
-    token = (
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-        "eyJ1c2VyX2lkIjo0MiwiaXNfYWRtaW4iOmZhbHNlLCJwcm9qZWN0cyI6W10s"
-        "ImV4cCI6NDEwMjQ0NDgwMH0."
-        "FItKClrvPKMTdjgSPG0zyUBojPbpPRvcZpkaSjWiSYs"
-    )
-
-    user = await get_current_user(token)
-
-    assert user == User(id="42", projects=[], is_admin=False)
-
-
 def test_generate_token_for_euphrosyne_backend():
     token = auth.generate_token_for_euphrosyne_backend()
     decoded_token = jwt.decode(token, "backend-secret", algorithms=[ALGORITHM])
@@ -369,32 +353,13 @@ async def test_returns_user_from_sub_claim():
 
 
 @pytest.mark.anyio
-async def test_rejects_legacy_hs256_token_once_legacy_secret_is_removed():
-    token = jwt.encode(
-        {"user_id": "1", "is_admin": True, "projects": [], "exp": 4102444800},
-        "secret",
-        algorithm=ALGORITHM,
-    )
-
-    with pytest.raises(HTTPException):
-        await get_current_user(token)
-
-
-@pytest.mark.anyio
 async def test_path_token_is_not_a_user_token():
     with pytest.raises(HTTPException):
         await get_current_user(generate_token_for_path("/a/path"))
 
 
-def test_path_token_signed_with_legacy_secret_is_accepted_while_set(monkeypatch):
-    token = _generate_jwt_token({"path": "/a/path"}, secret_key="legacy")
-    monkeypatch.setenv("JWT_SECRET_KEY", "legacy")
-
-    verify_path_permission("/a/path", token)
-
-
 def test_path_token_signed_with_unknown_secret_is_rejected():
-    token = _generate_jwt_token({"path": "/a/path"}, secret_key="legacy")
+    token = _generate_jwt_token({"path": "/a/path"}, secret_key="unknown")
 
     with pytest.raises(HTTPException):
         verify_path_permission("/a/path", token)
