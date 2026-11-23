@@ -226,8 +226,7 @@ def _decode_euphrosyne_jwt(jwt_token: str) -> dict:
             jwt_token,
             os.environ["EUPHROSYNE_JWT_PUBLIC_KEY"].replace("\\n", "\n"),
             algorithms=[EUPHROSYNE_ALGORITHM],
-            issuer=os.environ["EUPHROSYNE_ISSUER"],
-            options={"require": ["exp", "iss"]},
+            options={"require": ["exp"]},
         )
     except InvalidTokenError as error:
         raise JWT_CREDENTIALS_EXCEPTION from error
