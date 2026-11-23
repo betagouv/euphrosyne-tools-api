@@ -28,13 +28,12 @@ from auth import (
 )
 from exceptions import NoProjectMembershipException
 
-from .conftest import EUPHROSYNE_ISSUER, EUPHROSYNE_PRIVATE_KEY
+from .conftest import EUPHROSYNE_PRIVATE_KEY
 
 
 def _generate_token(data: dict):
     """A token as Euphrosyne issues it: RS256 with its private key."""
     to_encode = {
-        "iss": EUPHROSYNE_ISSUER,
         "exp": datetime.now(UTC) + timedelta(minutes=15),
         **data,
     }
@@ -241,7 +240,7 @@ def test_generate_jwt_token():
 
 
 def test_decode_jwt_without_exp_raises():
-    token = jwt.encode({"iss": EUPHROSYNE_ISSUER}, EUPHROSYNE_PRIVATE_KEY, "RS256")
+    token = jwt.encode({}, EUPHROSYNE_PRIVATE_KEY, "RS256")
     with pytest.raises(HTTPException):
         _decode_euphrosyne_jwt(token)
 
@@ -249,28 +248,26 @@ def test_decode_jwt_without_exp_raises():
 @pytest.mark.parametrize(
     ("algorithm", "key", "claims"),
     [
-        ("none", "", {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER}),
+        ("none", "", {"exp": 4102444800}),
         # Secrets the Tools API holds cannot be used to forge Euphrosyne tokens.
-        ("HS256", "secret", {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER}),
-        ("HS256", "backend-secret", {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER}),
+        ("HS256", "secret", {"exp": 4102444800}),
+        ("HS256", "backend-secret", {"exp": 4102444800}),
         (
             "RS256",
             rsa.generate_private_key(public_exponent=65537, key_size=2048),
-            {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER},
+            {"exp": 4102444800},
         ),
-        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": 4102444800}),
-        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": 4102444800, "iss": "http://x"}),
-        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": 1, "iss": EUPHROSYNE_ISSUER}),
-        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": "invalid", "iss": EUPHROSYNE_ISSUER}),
+        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": 1}),
+        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": "invalid"}),
         (
             "RS256",
             EUPHROSYNE_PRIVATE_KEY,
-            {"exp": 4102444800, "nbf": 4102444800, "iss": EUPHROSYNE_ISSUER},
+            {"exp": 4102444800, "nbf": 4102444800},
         ),
         (
             "RS256",
             EUPHROSYNE_PRIVATE_KEY,
-            {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER, "token_type": "refresh"},
+            {"exp": 4102444800, "token_type": "refresh"},
         ),
     ],
 )

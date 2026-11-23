@@ -40,7 +40,6 @@ def fixture_client(app: FastAPI):
     return _client
 
 
-EUPHROSYNE_ISSUER = "http://euphrosyne.test"
 # Key pair standing for Euphrosyne's token signing key.
 EUPHROSYNE_PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 EUPHROSYNE_PUBLIC_KEY_PEM = (
@@ -56,7 +55,6 @@ EUPHROSYNE_PUBLIC_KEY_PEM = (
 @pytest.fixture(autouse=True)
 def setenv(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("EUPHROSYNE_JWT_PUBLIC_KEY", EUPHROSYNE_PUBLIC_KEY_PEM)
-    monkeypatch.setenv("EUPHROSYNE_ISSUER", EUPHROSYNE_ISSUER)
     monkeypatch.setenv("PATH_TOKEN_SECRET_KEY", "secret")
     monkeypatch.setenv("TOOLS_API_BACKEND_TOKEN_SECRET", "backend-secret")
 
