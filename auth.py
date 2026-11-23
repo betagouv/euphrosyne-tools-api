@@ -192,7 +192,7 @@ def generate_token_for_path(
     return _generate_jwt_token(
         payload=payload,
         expiration=expiration,
-        secret_key=os.environ["PATH_TOKEN_SECRET_KEY"],
+        secret_key=os.environ["PATH_TOKEN_SECRET"],
     )
 
 
@@ -241,7 +241,7 @@ def _decode_path_jwt(jwt_token: str) -> dict:
     try:
         return jwt.decode(
             jwt_token,
-            os.environ["PATH_TOKEN_SECRET_KEY"],
+            os.environ["PATH_TOKEN_SECRET"],
             algorithms=[ALGORITHM],
             options={"require": ["exp"]},
         )
