@@ -38,7 +38,6 @@ Ce projet utilise [FastAPI](https://fastapi.tiangolo.com/).
 | EUPHROSYNE_ISSUER                 | Émetteur attendu (`iss`) des tokens émis par `euphrosyne` : son `SITE_URL`.                                                                                                                        |
 | PATH_TOKEN_SECRET_KEY             | Clé secrète propre à l'API pour signer les tokens de chemin (liens de téléchargement).                                                                                                             |
 | TOOLS_API_BACKEND_TOKEN_SECRET    | Clé secrète partagée avec `euphrosyne` pour signer les appels de l'API vers `euphrosyne`. Identique à la variable du même nom côté Euphrosyne.                                                     |
-| JWT_SECRET_KEY                    | Transition uniquement : ancienne clé partagée, encore acceptée pour vérifier les tokens signés avant le passage en RS256. À supprimer 7 jours après le déploiement.                                |
 | VM_LOGIN                          | Nom d'utilisateur utilisé pour se connecter aux machines virtuelles.                                                                                                                               |
 | VM_PASSWORD                       | Mot de passe utilisé pour se connecter aux machines virtuelles.                                                                                                                                    |
 
