@@ -275,7 +275,7 @@ def test_delete_project_data_duplicate_request_does_not_schedule_twice(
     assert add_task_mock.call_count == 1
 
 
-@patch("auth._decode_jwt", MagicMock(return_value={}))
+@patch("auth._decode_path_jwt", MagicMock(return_value={}))
 def test_zip_project_run_data_when_path_incorrect(
     app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
@@ -287,7 +287,7 @@ def test_zip_project_run_data_when_path_incorrect(
     assert response.status_code == 422
 
 
-@patch("auth._decode_jwt", MagicMock(return_value={}))
+@patch("auth._decode_path_jwt", MagicMock(return_value={}))
 def test_zip_project_run_data_when_path_not_found_in_azure(
     app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
@@ -303,7 +303,7 @@ def test_zip_project_run_data_when_path_not_found_in_azure(
     assert response.status_code == 404
 
 
-@patch("auth._decode_jwt", MagicMock(return_value={}))
+@patch("auth._decode_path_jwt", MagicMock(return_value={}))
 def test_zip_project_run_data(
     app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
@@ -330,7 +330,7 @@ def test_zip_project_run_data(
     app.dependency_overrides = {}
 
 
-@patch("auth._decode_jwt")
+@patch("auth._decode_path_jwt")
 def test_zip_project_run_data_with_data_request(
     decode_jwt_mock: MagicMock,
     app: FastAPI,
