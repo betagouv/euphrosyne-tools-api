@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException, status
 
 import auth
@@ -13,11 +14,12 @@ from auth import (
     JWT_CREDENTIALS_EXCEPTION,
     Project,
     User,
-    _decode_jwt,
+    _decode_euphrosyne_jwt,
     _generate_jwt_token,
     generate_token_for_path,
     get_current_user,
     verify_admin_permission,
+    verify_eros_query_url_jwt,
     verify_has_azure_permission,
     verify_is_euphrosyne_backend,
     verify_is_euphrosyne_backend_or_admin,
@@ -26,13 +28,17 @@ from auth import (
 )
 from exceptions import NoProjectMembershipException
 
+from .conftest import EUPHROSYNE_ISSUER, EUPHROSYNE_PRIVATE_KEY
+
 
 def _generate_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.now(UTC) + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, "secret", algorithm=ALGORITHM)
-    return encoded_jwt
+    """A token as Euphrosyne issues it: RS256 with its private key."""
+    to_encode = {
+        "iss": EUPHROSYNE_ISSUER,
+        "exp": datetime.now(UTC) + timedelta(minutes=15),
+        **data,
+    }
+    return jwt.encode(to_encode, EUPHROSYNE_PRIVATE_KEY, algorithm="RS256")
 
 
 @pytest.mark.anyio
@@ -204,31 +210,28 @@ def test_verify_path_permission_with_wrong_path():
         verify_path_permission("/wrong_path", valid_token)
 
 
-def test_generate_token_for_path(monkeypatch: pytest.MonkeyPatch):
+def test_generate_token_for_path():
     path = "/example"
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     token = generate_token_for_path(path)
     assert isinstance(token, str)
     decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
     assert decoded_token["path"] == path
 
 
-def test_generate_token_for_path_with_expiration(monkeypatch: pytest.MonkeyPatch):
+def test_generate_token_for_path_with_expiration():
     path = "/example"
     exp = datetime.now(UTC) + timedelta(minutes=5)
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     token = generate_token_for_path(path, expiration=exp)
     decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
 
     assert decoded_token["exp"] == int(exp.timestamp())
 
 
-def test_generate_jwt_token(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
+def test_generate_jwt_token():
     with patch.object(auth, "datetime") as datetime_mock:
         utcnow = datetime.now(UTC)
         datetime_mock.now.return_value = utcnow
-        token = _generate_jwt_token({"test": "test"})
+        token = _generate_jwt_token({"test": "test"}, secret_key="secret")
     assert isinstance(token, str)
     decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
     assert decoded_token["test"] == "test"
@@ -237,34 +240,45 @@ def test_generate_jwt_token(monkeypatch: pytest.MonkeyPatch):
     )
 
 
-def test_decode_jwt_without_exp_raises(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
-    token = jwt.encode(
-        {},
-        "secret",
-        algorithm=ALGORITHM,
-    )
+def test_decode_jwt_without_exp_raises():
+    token = jwt.encode({"iss": EUPHROSYNE_ISSUER}, EUPHROSYNE_PRIVATE_KEY, "RS256")
     with pytest.raises(HTTPException):
-        _decode_jwt(token)
+        _decode_euphrosyne_jwt(token)
 
 
 @pytest.mark.parametrize(
     ("algorithm", "key", "claims"),
     [
-        ("none", "", {"exp": 4102444800}),
-        ("HS384", "secret", {"exp": 4102444800}),
-        ("HS512", "secret", {"exp": 4102444800}),
-        ("HS256", "wrong-secret", {"exp": 4102444800}),
-        ("HS256", "secret", {"exp": 1}),
-        ("HS256", "secret", {"exp": "invalid"}),
-        ("HS256", "secret", {"exp": 4102444800, "nbf": 4102444800}),
+        ("none", "", {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER}),
+        # Secrets the Tools API holds cannot be used to forge Euphrosyne tokens.
+        ("HS256", "secret", {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER}),
+        ("HS256", "backend-secret", {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER}),
+        (
+            "RS256",
+            rsa.generate_private_key(public_exponent=65537, key_size=2048),
+            {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER},
+        ),
+        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": 4102444800}),
+        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": 4102444800, "iss": "http://x"}),
+        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": 1, "iss": EUPHROSYNE_ISSUER}),
+        ("RS256", EUPHROSYNE_PRIVATE_KEY, {"exp": "invalid", "iss": EUPHROSYNE_ISSUER}),
+        (
+            "RS256",
+            EUPHROSYNE_PRIVATE_KEY,
+            {"exp": 4102444800, "nbf": 4102444800, "iss": EUPHROSYNE_ISSUER},
+        ),
+        (
+            "RS256",
+            EUPHROSYNE_PRIVATE_KEY,
+            {"exp": 4102444800, "iss": EUPHROSYNE_ISSUER, "token_type": "refresh"},
+        ),
     ],
 )
 def test_decode_jwt_rejects_invalid_tokens(algorithm, key, claims):
     token = jwt.encode(claims, key, algorithm=algorithm)
 
     with pytest.raises(HTTPException) as exc:
-        _decode_jwt(token)
+        _decode_euphrosyne_jwt(token)
 
     assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
     assert exc.value.headers == {"WWW-Authenticate": "Bearer"}
@@ -272,13 +286,14 @@ def test_decode_jwt_rejects_invalid_tokens(algorithm, key, claims):
 
 def test_decode_jwt_rejects_malformed_token():
     with pytest.raises(HTTPException) as exc:
-        _decode_jwt("not-a-jwt")
+        _decode_euphrosyne_jwt("not-a-jwt")
 
     assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.anyio
-async def test_accepts_token_generated_with_python_jose():
+async def test_accepts_legacy_hs256_token_while_legacy_secret_is_set(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
     # Generated with python-jose 3.5.0, HS256 and the test secret.
     token = (
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
@@ -292,11 +307,9 @@ async def test_accepts_token_generated_with_python_jose():
     assert user == User(id="42", projects=[], is_admin=False)
 
 
-def test_generate_token_for_euphrosyne_backend(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("JWT_SECRET_KEY", "secret")
-
+def test_generate_token_for_euphrosyne_backend():
     token = auth.generate_token_for_euphrosyne_backend()
-    decoded_token = jwt.decode(token, "secret", algorithms=[ALGORITHM])
+    decoded_token = jwt.decode(token, "backend-secret", algorithms=[ALGORITHM])
 
     assert isinstance(token, str)
     assert decoded_token["user_id"] == EUPHROSYNE_TOKEN_USER_ID_VALUE
@@ -330,15 +343,81 @@ def test_verify_is_euphrosyne_backend_or_admin_backend(monkeypatch):
 
 def test_verify_is_euphrosyne_backend_or_admin_admin(monkeypatch):
     monkeypatch.setattr("auth._is_euphrosyne_backend", lambda token: False)
-    monkeypatch.setattr("auth._decode_jwt", lambda token: {"is_admin": True})
+    monkeypatch.setattr("auth._decode_euphrosyne_jwt", lambda token: {"is_admin": True})
     # Should not raise
     verify_is_euphrosyne_backend_or_admin(jwt_token="token")
 
 
 def test_verify_is_euphrosyne_backend_or_admin_not_admin(monkeypatch):
     monkeypatch.setattr("auth._is_euphrosyne_backend", lambda token: False)
-    monkeypatch.setattr("auth._decode_jwt", lambda token: {"is_admin": False})
+    monkeypatch.setattr(
+        "auth._decode_euphrosyne_jwt", lambda token: {"is_admin": False}
+    )
     with pytest.raises(HTTPException) as exc:
         verify_is_euphrosyne_backend_or_admin(jwt_token="token")
     assert exc.value.status_code == 403
     assert exc.value.detail == "Not allowed"
+
+
+@pytest.mark.anyio
+async def test_returns_user_from_sub_claim():
+    user = await get_current_user(
+        _generate_token({"sub": "7", "is_admin": False, "projects": []})
+    )
+
+    assert user.id == "7"
+
+
+@pytest.mark.anyio
+async def test_rejects_legacy_hs256_token_once_legacy_secret_is_removed():
+    token = jwt.encode(
+        {"user_id": "1", "is_admin": True, "projects": [], "exp": 4102444800},
+        "secret",
+        algorithm=ALGORITHM,
+    )
+
+    with pytest.raises(HTTPException):
+        await get_current_user(token)
+
+
+@pytest.mark.anyio
+async def test_path_token_is_not_a_user_token():
+    with pytest.raises(HTTPException):
+        await get_current_user(generate_token_for_path("/a/path"))
+
+
+def test_path_token_signed_with_legacy_secret_is_accepted_while_set(monkeypatch):
+    token = _generate_jwt_token({"path": "/a/path"}, secret_key="legacy")
+    monkeypatch.setenv("JWT_SECRET_KEY", "legacy")
+
+    verify_path_permission("/a/path", token)
+
+
+def test_path_token_signed_with_unknown_secret_is_rejected():
+    token = _generate_jwt_token({"path": "/a/path"}, secret_key="legacy")
+
+    with pytest.raises(HTTPException):
+        verify_path_permission("/a/path", token)
+
+
+def test_eros_accepts_euphrosyne_image_token():
+    verify_eros_query_url_jwt(_generate_token({"scope": "tools:eros"}))
+
+
+def test_eros_accepts_user_token():
+    verify_eros_query_url_jwt(_generate_token({"sub": "1", "projects": []}))
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        pytest.param(lambda: _generate_token({"scope": "other"}), id="other-scope"),
+        pytest.param(lambda: generate_token_for_path("/a/path"), id="path-token"),
+        pytest.param(
+            lambda: auth.generate_token_for_euphrosyne_backend(), id="backend-token"
+        ),
+    ],
+)
+def test_eros_rejects_other_tokens(token):
+    with pytest.raises(HTTPException):
+        verify_eros_query_url_jwt(token())
