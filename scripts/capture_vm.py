@@ -5,9 +5,11 @@ Capture VM into a new image
 import argparse
 
 from clients.azure import VMAzureClient
+from clients.azure.vm import DEFAULT_IMAGE_VERSIONS_TO_KEEP
 from clients.guacamole import GuacamoleClient
 
 from . import get_logger
+from .purge_image_versions import purge_image_versions
 
 logger = get_logger(__name__)
 
@@ -34,7 +36,23 @@ def capture_vm():
         the default image will be used",
     )
 
+    parser.add_argument(
+        "--purge-old-versions",
+        help="Once the image has been captured, delete the old versions of this "
+        "image definition (those used by a VM are kept)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--keep",
+        type=int,
+        default=DEFAULT_IMAGE_VERSIONS_TO_KEEP,
+        help="Number of most recent versions to keep with --purge-old-versions "
+        f"(default: {DEFAULT_IMAGE_VERSIONS_TO_KEEP})",
+    )
+
     args = parser.parse_args()
+    if args.keep < 1:
+        parser.error("--keep must be at least 1")
 
     azure_client = VMAzureClient()
 
@@ -53,6 +71,17 @@ def capture_vm():
 
         if args.kill:
             kill_vm(azure_client=azure_client, project_name=args.project)
+
+        # After the kill, so that the captured VM no longer protects its version.
+        if args.purge_old_versions:
+            purge_image_versions(
+                azure_client,
+                image_definitions=[
+                    args.image or azure_client.template_specs_image_definition
+                ],
+                keep=args.keep,
+                dry_run=False,
+            )
     else:
         logger.error("Capture failed")
 

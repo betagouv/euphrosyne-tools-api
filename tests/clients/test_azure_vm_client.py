@@ -11,10 +11,12 @@ from pytest import MonkeyPatch
 from clients import VMSizes
 from clients.azure import VMAzureClient
 from clients.azure.vm import (
+    DEFAULT_IMAGE_VERSIONS_TO_KEEP,
     PROJECT_TYPE_VM_SIZE,
     AzureCaptureDeploymentProperties,
     AzureVMDeploymentProperties,
     DeploymentNotFound,
+    ImageVersionsPurgePlan,
     VMNotFound,
     _get_project_name_from_deployment,
     _project_name_to_deployment_name,
@@ -650,3 +652,189 @@ def test_list_vms_with_created_before(client: VMAzureClient):
     )
 
     assert long_running_vms == ["eupro-prod-vm-test1", "eupro-prod-vm-test3"]
+
+
+def _vm_using_image(image_id: str | None, exact_version: str | None = None):
+    image_reference = (
+        MagicMock(id=image_id, exact_version=exact_version) if image_id else None
+    )
+    return MagicMock(storage_profile=MagicMock(image_reference=image_reference))
+
+
+def _gallery_image_id(definition: str, version: str, gallery: str = "image_gallery"):
+    return (
+        "/subscriptions/ID/resourceGroups/resource_group_name/providers/"
+        f"Microsoft.Compute/galleries/{gallery}/images/{definition}/versions/{version}"
+    )
+
+
+def test_get_image_versions_in_use(client: VMAzureClient):
+    client._compute_mgmt_client.virtual_machines.list.return_value = [
+        _vm_using_image(_gallery_image_id("image_definition", "1.0.2")),
+        # Azure names are case insensitive
+        _vm_using_image(_gallery_image_id("Other-Image", "1.0.1", "IMAGE_GALLERY")),
+        # follows the latest version
+        _vm_using_image(
+            _gallery_image_id("image_definition", "latest"), exact_version="1.0.9"
+        ),
+        _vm_using_image(_gallery_image_id("image_definition", "latest")),
+        # other gallery
+        _vm_using_image(_gallery_image_id("image_definition", "1.0.3", "another")),
+        # not created from a gallery image
+        _vm_using_image("/subscriptions/ID/providers/Microsoft.Compute/images/foo"),
+        _vm_using_image(None),
+        MagicMock(storage_profile=None),
+    ]
+
+    assert client.get_image_versions_in_use() == {
+        ("image_definition", "1.0.2"),
+        ("other-image", "1.0.1"),
+        ("image_definition", "1.0.9"),
+    }
+    client._compute_mgmt_client.virtual_machines.list.assert_called_once_with(
+        "resource_group_name"
+    )
+
+
+def test_get_image_versions_in_use_raises_when_vms_cannot_be_listed(
+    client: VMAzureClient,
+):
+    client._compute_mgmt_client.virtual_machines.list.side_effect = RuntimeError
+
+    with pytest.raises(RuntimeError):
+        client.get_image_versions_in_use()
+
+
+def test_plan_image_versions_purge_keeps_most_recent(client: VMAzureClient):
+    with patch.object(
+        client,
+        "_get_image_versions",
+        Mock(return_value=["1.0.10", "1.0.2", "1.0.1", "1.0.9", "1.0.3"]),
+    ):
+        plan = client.plan_image_versions_purge(
+            "image_definition", keep=3, versions_in_use=set()
+        )
+
+    # sorted as versions, not as strings
+    assert plan.to_delete == ["1.0.1", "1.0.2"]
+    assert plan.kept == ["1.0.3", "1.0.9", "1.0.10"]
+    assert not plan.in_use
+    assert not plan.ignored
+
+
+def test_plan_image_versions_purge_default_keeps_three(client: VMAzureClient):
+    assert DEFAULT_IMAGE_VERSIONS_TO_KEEP == 3
+    versions = [f"1.0.{i}" for i in range(10)]
+    with patch.object(client, "_get_image_versions", Mock(return_value=versions)):
+        plan = client.plan_image_versions_purge(
+            "image_definition", versions_in_use=set()
+        )
+
+    assert plan.kept == ["1.0.7", "1.0.8", "1.0.9"]
+    assert plan.to_delete == versions[:7]
+
+
+def test_plan_image_versions_purge_nothing_to_delete(client: VMAzureClient):
+    with patch.object(
+        client, "_get_image_versions", Mock(return_value=["1.0.1", "1.0.2"])
+    ):
+        plan = client.plan_image_versions_purge(
+            "image_definition", keep=3, versions_in_use=set()
+        )
+
+    assert plan.to_delete == []
+    assert plan.kept == ["1.0.1", "1.0.2"]
+
+
+def test_plan_image_versions_purge_keeps_versions_used_by_vms(client: VMAzureClient):
+    with patch.object(
+        client,
+        "_get_image_versions",
+        Mock(return_value=["1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.0.5"]),
+    ):
+        plan = client.plan_image_versions_purge(
+            "Image_Definition",
+            keep=2,
+            versions_in_use={
+                ("image_definition", "1.0.2"),
+                # same version number, other image definition
+                ("other", "1.0.1"),
+            },
+        )
+
+    assert plan.to_delete == ["1.0.1", "1.0.3"]
+    assert plan.in_use == ["1.0.2"]
+    assert plan.kept == ["1.0.4", "1.0.5"]
+
+
+def test_plan_image_versions_purge_fetches_versions_in_use_by_default(
+    client: VMAzureClient,
+):
+    client._compute_mgmt_client.virtual_machines.list.return_value = [
+        _vm_using_image(_gallery_image_id("image_definition", "1.0.1"))
+    ]
+    with patch.object(
+        client,
+        "_get_image_versions",
+        Mock(return_value=["1.0.1", "1.0.2", "1.0.3"]),
+    ):
+        plan = client.plan_image_versions_purge("image_definition", keep=1)
+
+    assert plan.to_delete == ["1.0.2"]
+    assert plan.in_use == ["1.0.1"]
+
+
+def test_plan_image_versions_purge_never_deletes_invalid_versions(
+    client: VMAzureClient,
+):
+    with patch.object(
+        client,
+        "_get_image_versions",
+        Mock(return_value=["1.0.1", "1.0.2", "1.0.3", "test-version", "2.0"]),
+    ):
+        plan = client.plan_image_versions_purge(
+            "image_definition", keep=1, versions_in_use=set()
+        )
+
+    assert plan.to_delete == ["1.0.1", "1.0.2"]
+    assert plan.ignored == ["test-version", "2.0"]
+    assert plan.kept == ["1.0.3"]
+
+
+@pytest.mark.parametrize("keep", [0, -1])
+def test_plan_image_versions_purge_always_keeps_latest_version(
+    client: VMAzureClient, keep: int
+):
+    with pytest.raises(ValueError):
+        client.plan_image_versions_purge(
+            "image_definition", keep=keep, versions_in_use=set()
+        )
+
+
+def test_purge_image_versions_deletes_only_planned_versions(client: VMAzureClient):
+    plan = ImageVersionsPurgePlan(
+        image_definition="image_definition",
+        to_delete=["1.0.1", "1.0.2"],
+        kept=["1.0.3"],
+        in_use=["1.0.0"],
+        ignored=[],
+    )
+
+    pollers = client.purge_image_versions(plan)
+
+    delete = client._compute_mgmt_client.gallery_image_versions.begin_delete
+    assert [version for version, _ in pollers] == ["1.0.1", "1.0.2"]
+    assert [call.kwargs for call in delete.call_args_list] == [
+        {
+            "resource_group_name": "resource_group_name",
+            "gallery_name": "image_gallery",
+            "gallery_image_name": "image_definition",
+            "gallery_image_version_name": version,
+        }
+        for version in ["1.0.1", "1.0.2"]
+    ]
+
+
+def test_list_all_vm_image_definitions_includes_default(client: VMAzureClient):
+    with patch.object(client, "list_vm_image_definitions", Mock(return_value=["a"])):
+        assert client.list_all_vm_image_definitions() == ["image_definition", "a"]
