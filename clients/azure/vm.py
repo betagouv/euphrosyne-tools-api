@@ -47,6 +47,15 @@ DeploymentStatus = Literal[
 
 SecurityType = Literal["Standard", "TrustedLaunch"]
 
+# Number of versions of each image definition kept when purging the gallery.
+DEFAULT_IMAGE_VERSIONS_TO_KEEP = 3
+
+_GALLERY_IMAGE_VERSION_ID_REGEX = re.compile(
+    r"/galleries/(?P<gallery>[^/]+)/images/(?P<definition>[^/]+)"
+    r"/versions/(?P<version>[^/]+)$",
+    re.IGNORECASE,
+)
+
 
 class DeploymentNotFound(Exception):
     pass
@@ -62,6 +71,24 @@ class ImageDefinitionNotFound(Exception):
 
 class ImageCreationError(Exception):
     pass
+
+
+@dataclass
+class ImageVersionsPurgePlan:
+    """Outcome of the analysis of the versions of an image definition.
+
+    - `to_delete`: old versions that can be deleted.
+    - `kept`: the most recent versions, always kept.
+    - `in_use`: old versions kept because an existing VM was created from them.
+    - `ignored`: versions whose name is not a `major.minor.patch` version. They
+      cannot be ordered, so they are never deleted.
+    """
+
+    image_definition: str
+    to_delete: list[str]
+    kept: list[str]
+    in_use: list[str]
+    ignored: list[str]
 
 
 @dataclass
@@ -477,6 +504,110 @@ class VMAzureClient:
                 gallery_name=self.template_specs_image_gallery,
                 gallery_image_name=image_definition,
             )
+        ]
+
+    def get_image_versions_in_use(self) -> set[tuple[str, str]]:
+        """Returns the (image definition, version) pairs of the gallery used by the
+        existing VMs. Names are lower-cased since Azure resource names are case
+        insensitive.
+
+        Raises if the VMs cannot be listed: callers must not guess what is unused."""
+        in_use: set[tuple[str, str]] = set()
+        for vm in self._compute_mgmt_client.virtual_machines.list(
+            self.resource_group_name
+        ):
+            image_reference = vm.storage_profile and vm.storage_profile.image_reference
+            if not image_reference or not image_reference.id:
+                continue
+            match = _GALLERY_IMAGE_VERSION_ID_REGEX.search(image_reference.id)
+            if not match or (
+                match["gallery"].lower() != self.template_specs_image_gallery.lower()
+            ):
+                continue
+            version = match["version"]
+            if version.lower() == "latest":
+                # The VM follows the latest version, `exact_version` is the one it got.
+                version = image_reference.exact_version or ""
+            if version:
+                in_use.add((match["definition"].lower(), version))
+        return in_use
+
+    def list_all_vm_image_definitions(self) -> list[str]:
+        """List all the VM image definitions, default one included."""
+        return [
+            self.template_specs_image_definition,
+            *self.list_vm_image_definitions(),
+        ]
+
+    def plan_image_versions_purge(
+        self,
+        image_definition: str,
+        keep: int = DEFAULT_IMAGE_VERSIONS_TO_KEEP,
+        versions_in_use: set[tuple[str, str]] | None = None,
+    ) -> ImageVersionsPurgePlan:
+        """Lists the versions of an image definition that can be deleted: all but the
+        `keep` most recent ones and the ones used by an existing VM.
+        Does not delete anything.
+
+        Parameters:
+        -----------
+        image_definition: str
+            Name of the image definition
+        keep: int
+            Number of most recent versions to keep, at least 1 (the latest version
+            is never deleted).
+        versions_in_use: set[tuple[str, str]] | None
+            Result of `get_image_versions_in_use`, fetched if not given. Pass it to
+            avoid listing VMs again for each image definition.
+        """
+        if keep < 1:
+            raise ValueError("At least the latest image version must be kept.")
+        if versions_in_use is None:
+            versions_in_use = self.get_image_versions_in_use()
+
+        parsed_versions: list[Version] = []
+        ignored: list[str] = []
+        for version in self._get_image_versions(
+            gallery_name=self.template_specs_image_gallery,
+            gallery_image_name=image_definition,
+        ):
+            try:
+                parsed_versions.append(Version(version))
+            except ValueError:
+                ignored.append(version)
+
+        parsed_versions.sort()
+        recent = [str(v) for v in parsed_versions[-keep:]]
+        old = [str(v) for v in parsed_versions[:-keep]]
+        in_use = [
+            version
+            for version in old
+            if (image_definition.lower(), version) in versions_in_use
+        ]
+        return ImageVersionsPurgePlan(
+            image_definition=image_definition,
+            to_delete=[version for version in old if version not in in_use],
+            kept=recent,
+            in_use=in_use,
+            ignored=ignored,
+        )
+
+    def purge_image_versions(
+        self, plan: ImageVersionsPurgePlan
+    ) -> list[tuple[str, LROPoller]]:
+        """Deletes the versions listed in `plan.to_delete`. Returns the version names
+        and their deletion pollers."""
+        return [
+            (
+                version,
+                self._compute_mgmt_client.gallery_image_versions.begin_delete(
+                    resource_group_name=self.resource_group_name,
+                    gallery_name=self.template_specs_image_gallery,
+                    gallery_image_name=plan.image_definition,
+                    gallery_image_version_name=version,
+                ),
+            )
+            for version in plan.to_delete
         ]
 
     def _get_image_versions(
