@@ -15,6 +15,10 @@
     {
       "command": "*/30 * * * * python -m scripts.sync_guacd_hostname",
       "size": "S"
+    },
+    {
+      "command": "0 3 * * 0 python -m scripts.purge_image_versions --no-dry-run",
+      "size": "S"
     }
   ]
 }
